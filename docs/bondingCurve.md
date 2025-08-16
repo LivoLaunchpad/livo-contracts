@@ -1,3 +1,5 @@
+
+
 # Exponential bonding curve
 
 - Slow price growth at the beggning
@@ -67,3 +69,6 @@ $x = (1/b) * ln(b . 40e18)$
 
 b = 1
 $x = ln(40e18) = 45.135
+
+
+
