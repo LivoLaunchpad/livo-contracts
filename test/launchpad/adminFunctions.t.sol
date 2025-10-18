@@ -23,17 +23,17 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.setLivoTokenImplementation(newImplementation);
+        launchpad.setLivoTokenImplementation(address(newImplementation));
     }
 
     function test_setLivoTokenImplementation_SucceedsForOwner() public {
         IERC20 newImplementation = new LivoToken();
 
         vm.expectEmit(true, true, true, true);
-        emit TokenImplementationUpdated(newImplementation);
+        emit TokenImplementationUpdated(address(newImplementation));
 
         vm.prank(admin);
-        launchpad.setLivoTokenImplementation(newImplementation);
+        launchpad.setLivoTokenImplementation(address(newImplementation));
 
         assertEq(address(launchpad.tokenImplementation()), address(newImplementation));
     }
@@ -206,6 +206,40 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         }
     }
 
+    function test_transferOwnership2step() public {
+        // Start ownership transfer
+        vm.prank(admin);
+        launchpad.transferOwnership(nonOwner);
+        assertEq(launchpad.pendingOwner(), nonOwner);
+
+        // Accept ownership from new owner
+        vm.prank(nonOwner);
+        launchpad.acceptOwnership();
+        assertEq(launchpad.owner(), nonOwner);
+        assertEq(launchpad.pendingOwner(), address(0));
+    }
+
+    function test_transferOwnership_cancelled() public {
+        // Start ownership transfer
+        vm.prank(admin);
+        launchpad.transferOwnership(nonOwner);
+        assertEq(launchpad.pendingOwner(), nonOwner);
+
+        // original owner can still do owner functions
+        vm.prank(admin);
+        launchpad.setEthGraduationThreshold(9 ether);
+
+        // Cancel ownership transfer by setting pending owner to zero address
+        vm.prank(admin);
+        launchpad.transferOwnership(address(0));
+        assertEq(launchpad.pendingOwner(), address(0));
+        assertEq(launchpad.owner(), admin);
+
+        // original owner can still do owner functions
+        vm.prank(admin);
+        launchpad.setEthGraduationThreshold(10 ether);
+    }
+
     function test_collectTreasuryFees_NoFeesToCollect() public {
         // When there are no fees, function should succeed but do nothing
         uint256 initialTreasuryBalance = treasury.balance;
@@ -218,7 +252,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     // Events from the contract - needed for expectEmit
-    event TokenImplementationUpdated(IERC20 newImplementation);
+    event TokenImplementationUpdated(address newImplementation);
     event EthGraduationThresholdUpdated(uint256 newThreshold);
     event GraduationFeeUpdated(uint256 newGraduationFee);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);

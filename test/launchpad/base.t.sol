@@ -75,7 +75,7 @@ contract LaunchpadBaseTests is Test {
 
         vm.startPrank(admin);
         tokenImplementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury, tokenImplementation);
+        launchpad = new LivoLaunchpad(treasury, address(tokenImplementation));
         bondingCurve = new ConstantProductBondingCurve();
         vm.stopPrank();
 
@@ -133,17 +133,12 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
         super.setUp();
 
         vm.prank(admin);
-        liquidityLock = new LiquidityLockUniv4WithFees(uniswapV4NftAddress, positionManagerAddress);
+        liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
 
         // For graduation tests, a new graduator should be deployed, and use fork tests.
         vm.prank(admin);
         graduator = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            uniswapV4NftAddress
+            address(launchpad), address(liquidityLock), poolManagerAddress, positionManagerAddress, permit2Address
         );
 
         vm.prank(admin);

@@ -12,10 +12,8 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
-import {PositionConfig, PositionConfigLibrary} from "lib/v4-periphery/src/libraries/PositionConfig.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
@@ -26,13 +24,15 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 
 contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
-    using PositionConfigLibrary for PositionConfig;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using StateLibrary for IPoolManager;
 
     /// @notice Associated liquidity positionIds for each graduated token
     mapping(address token => uint256 tokenId) public positionIds;
+
+    /// @notice Treasury eth fees collected
+    uint256 public treasuryEthFees;
 
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
@@ -41,16 +41,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     ILiquidityLockUniv4WithFees public immutable LIQUIDITY_LOCK;
 
     /// @notice Permit2 contract for token approvals
-    IPermit2 public immutable PERMIT2;
+    address public immutable PERMIT2;
 
     /// @notice Uniswap V4 pool manager contract
     IPoolManager public immutable UNIV4_POOL_MANAGER;
 
     /// @notice Uniswap V4 position manager contract
-    IPositionManager public immutable UNIV4_POSITION_MANAGER;
-
-    /// @notice Uniswap V4 NFT positions contract
-    IERC721 public immutable UNIV4_NFT_POSITIONS;
+    address public immutable UNIV4_POSITION_MANAGER;
 
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     /// @dev 10000 pips = 1%
@@ -78,7 +75,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     int24 constant TICK_LOWER = -7000;
 
     /// @notice Starting price when graduation occurs, which must be inside the liquidity range
-    /// @dev Graduation price: 39011306440 tokens per ETH -> 0.000000000025633594 eth per token -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
+    /// @dev Graduation price: 39011306440 wei per token -> 0.000000000025633594 tokens per eth -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
     uint160 constant SQRT_PRICEX96_GRADUATION = 401129254579132618442796085280768;
 
     /// @notice The sqrtX96 price at the high tick, i.e., the minimum token price denominated in ETH
@@ -95,6 +92,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error NoTokensToCollectFees();
     error TooManyTokensToCollectFees();
 
+    /////////////////////// Events ///////////////////////
+
+    event EthFeeCollectionTransferFailed(address indexed creator, uint256 amount);
+
     //////////////////////////////////////////////////////
 
     /// @notice Initializes the Uniswap V4 graduator
@@ -103,20 +104,17 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @param _poolManager Address of the Uniswap V4 pool manager
     /// @param _positionManager Address of the Uniswap V4 position manager
     /// @param _permit2 Address of the Permit2 contract
-    /// @param _univ4NftPositions Address of the Uniswap V4 NFT positions contract
     constructor(
         address _launchpad,
         address _liquidityLock,
         address _poolManager,
         address _positionManager,
-        address _permit2,
-        address _univ4NftPositions
+        address _permit2
     ) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
-        UNIV4_POSITION_MANAGER = IPositionManager(_positionManager);
-        PERMIT2 = IPermit2(_permit2);
-        UNIV4_NFT_POSITIONS = IERC721(_univ4NftPositions);
+        UNIV4_POSITION_MANAGER = _positionManager;
+        PERMIT2 = _permit2;
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
 
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_LOWER));
@@ -124,7 +122,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // approve the LIQUIDITY_LOCK to pull any NFT liquidity in this contract
         // instead of having to approve every NFT on every graduation to save gas
-        UNIV4_NFT_POSITIONS.setApprovalForAll(_liquidityLock, true);
+        IERC721(_positionManager).setApprovalForAll(_liquidityLock, true);
     }
 
     modifier onlyLaunchpad() {
@@ -158,13 +156,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
     /// @notice Graduates a token by adding liquidity to Uniswap V4
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
+        // the tokenAmount needs to be in this contract balance before the call. Otherwise it reverts
         uint256 ethValue = msg.value;
-        uint256 tokenBalance = token.balanceOf(address(this));
-
-        require(tokenBalance > 0, NoTokensToGraduate());
+        require(tokenAmount > 0, NoTokensToGraduate());
         require(ethValue > 0, NoETHToGraduate());
 
         // this opens the gate of transferring tokens to the uniswap pair
@@ -174,21 +171,21 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // so no problem with having these dangling approvals
 
         // approve PERMIT2 as a spender
-        token.approve(address(PERMIT2), type(uint256).max);
+        token.approve(PERMIT2, type(uint256).max);
         // approve `PositionManager` as a spender
-        IAllowanceTransfer(address(PERMIT2)).approve(
+        IAllowanceTransfer(PERMIT2).approve(
             address(token), // approved token
-            address(UNIV4_POSITION_MANAGER), // spender
+            UNIV4_POSITION_MANAGER, // spender
             type(uint160).max, // amount
             type(uint48).max // expiration
         );
 
         // uniswap v4 liquidity position creation
-        uint256 liquidity = _depositLiquidity(tokenAddress, tokenBalance, ethValue);
+        uint256 liquidity = _depositLiquidity(tokenAddress, tokenAmount, ethValue);
 
-        // there may be a smal leftover of tokens not deposited
+        // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
-        uint256 tokensDeposited = tokenBalance - tokenBalanceAfterDeposit;
+        uint256 tokensDeposited = tokenAmount - tokenBalanceAfterDeposit;
 
         emit TokenGraduated(tokenAddress, address(UNIV4_POOL_MANAGER), tokensDeposited, ethValue, liquidity);
     }
@@ -211,12 +208,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             totalTreasuryFees += treasuryFees;
 
             address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
-            _transferEth(tokenCreator, creatorFees);
+            // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
+            // This is to prevent fallback functions DOS the fee collection for the treasury.
+            (bool success,) = address(tokenCreator).call{value: creatorFees}("");
+            // emit event for transparency, in case we needed to manually transfer the funds later
+            if (!success) emit EthFeeCollectionTransferFailed(tokenCreator, creatorFees);
         }
-
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-        // put together all the treasury transfers into one tx for gas efficiency
-        _transferEth(treasury, totalTreasuryFees);
+        // the remaining eth balance is considered part of the treasury, and can be collected with sweep()
     }
 
     /// @notice Sweeps any remaining ETH in this contract to the treasury
@@ -227,7 +225,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) {
             address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-            _transferEth(treasury, ethBalance);
+            (bool success,) = address(treasury).call{value: ethBalance}("");
+            require(success, EthTransferFailed());
         }
     }
 
@@ -292,7 +291,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         params[2] = abi.encode(pool.currency0, excessEthRecipient); // sweep all remaining native ETH to recipient
 
         // read the next positionId before minting the position
-        uint256 positionId = UNIV4_POSITION_MANAGER.nextTokenId();
+        uint256 positionId = IPositionManager(UNIV4_POSITION_MANAGER).nextTokenId();
         positionIds[tokenAddress] = positionId;
 
         // the actual call to the position manager to mint the liquidity position
@@ -336,11 +335,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             FullMath.mulDiv(feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128)
         ).toUint128();
 
-        creatorEthFees = tokenAmount / 2;
-    }
-
-    function _transferEth(address to, uint256 value) internal {
-        (bool success,) = address(to).call{value: value}("");
-        require(success, EthTransferFailed());
+        creatorEthFees = tokenAmount - tokenAmount / 2;
     }
 }

@@ -3,14 +3,14 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is Ownable {
+contract LivoLaunchpad is Ownable2Step {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
@@ -29,7 +29,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public graduationExcessCap;
 
     /// @notice LivoToken ERC20 implementation address
-    IERC20 public tokenImplementation;
+    address public tokenImplementation;
 
     /// @notice Eth reserves accumulated by a token to meet graduation criteria. Includes the graduation fees (in wei)
     uint256 public baseEthGraduationThreshold;
@@ -68,7 +68,6 @@ contract LivoLaunchpad is Ownable {
     error NotEnoughSupply();
     error AlreadyGraduated();
     error InsufficientETHReserves();
-    error GraduationCriteriaNotMet();
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
@@ -104,7 +103,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @param _treasury Address of the treasury to receive fees
     /// @param _tokenImplementation Address of the LivoToken implementation for cloning
-    constructor(address _treasury, IERC20 _tokenImplementation) Ownable(msg.sender) {
+    constructor(address _treasury, address _tokenImplementation) Ownable(msg.sender) {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
         setLivoTokenImplementation(_tokenImplementation);
@@ -135,7 +134,7 @@ contract LivoLaunchpad is Ownable {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        token = Clones.clone(address(tokenImplementation));
+        token = Clones.clone(tokenImplementation);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, msg.sender, name, symbol, bondingCurve, graduator);
@@ -249,7 +248,7 @@ contract LivoLaunchpad is Ownable {
             _quoteSellExactTokens(token, tokenAmount);
 
         require(ethForSeller >= minEthAmount, SlippageExceeded());
-        // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
+        // When minEthAmount==0, we assume that the seller accepts any kind of "reasonable" slippage
         // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
         require(ethForSeller > 0, ReceivingZeroAmount());
         // Hopefully this scenario never happens
@@ -281,26 +280,30 @@ contract LivoLaunchpad is Ownable {
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        if (ethValue > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
+
         (ethForPurchase, ethFee, tokensToReceive) = _quoteBuyWithExactEth(token, ethValue);
 
-        if (ethForPurchase > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
         if (tokensToReceive > _availableTokensForPurchase(token)) revert NotEnoughSupply();
     }
 
     /// @notice Quotes the result of selling exact amount of tokens
     /// @param token Address of the token to quote
     /// @param tokenAmount Amount of tokens to sell
-    /// @return ethFromSale Amount of ETH from the sale (before fees are applied)
+    /// @return ethPulledFromReserves Amount of ETH pulled from the reserves before fees are applied
     /// @return ethFee Fee amount in ETH
     /// @return ethForSeller Amount of ETH the seller would receive
     function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
         view
-        returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller)
     {
-        (ethFromSale, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
 
-        if (ethForSeller > _availableEthFromReserves(token)) revert InsufficientETHReserves();
+        (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+
+        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientETHReserves();
     }
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
@@ -336,7 +339,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
     /// @param newImplementation Address of the new token implementation
-    function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
+    function setLivoTokenImplementation(address newImplementation) public onlyOwner {
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(address(newImplementation));
     }
@@ -348,6 +351,9 @@ contract LivoLaunchpad is Ownable {
         emit EthGraduationThresholdUpdated(ethThreshold);
     }
 
+    /// @notice Updates the excess cap above the graduation threshold
+    /// @dev When reserves exceed this amount above the graduation, purchases revert
+    /// @param ethExcessCap The new excess cap in wei
     function setExcessCap(uint256 ethExcessCap) public onlyOwner {
         graduationExcessCap = ethExcessCap;
         emit ExcessCapUpdated(ethExcessCap);
@@ -435,7 +441,8 @@ contract LivoLaunchpad is Ownable {
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+        // pass here the tokensForGraduation to avoid deflation attack in the graduator
+        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokensForGraduation);
 
         emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
     }

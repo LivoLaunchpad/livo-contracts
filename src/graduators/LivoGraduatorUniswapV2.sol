@@ -29,6 +29,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
 
+    error EtherTransferFailed();
+
     /// @notice Initializes the Uniswap V2 graduator
     /// @param _uniswapRouter Address of the Uniswap V2 router
     /// @param _launchpad Address of the LivoLaunchpad contract
@@ -55,14 +57,14 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     /// @notice Graduates a token by adding liquidity to Uniswap V2
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
+        // if tokenAmount is not in this contract balance, the call will fail
         // eth can only enter through msg.value, and all of it is deposited as liquidity
         uint256 ethValue = msg.value;
-        uint256 tokenBalance = token.balanceOf(address(this));
 
-        require(tokenBalance > 0, NoTokensToGraduate());
+        require(tokenAmount > 0, NoTokensToGraduate());
         require(ethValue > 0, NoETHToGraduate());
 
         // the pair should have been pre-created at token launch.
@@ -73,23 +75,23 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         token.markGraduated();
 
         // Approve the router to handle the tokens for liquidity addition
-        token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
+        token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenAmount);
 
-        // syncs and reads the actual reserves in the pair (in case there is unsynced ETH)
+        // syncs and reads the actual reserves in the pair (in case there is unsynced WETH)
         uint256 ethReserve = _getUpdatedEthReserves(pair, tokenAddress);
 
         uint256 amountToken;
         uint256 amountEth;
         uint256 liquidity;
         // We ensure that the token reserve is zero by forbidding transfers to the pair pre-graduation
-        // Therefore, here we only need to check if there is ETH in the pair
+        // Therefore, here we only need to check if there is WETH in the pair
         if (ethReserve == 0) {
-            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenBalance, ethValue);
+            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenAmount, ethValue);
         } else {
             // This path would almost never be executed. But we need to protect against attacks
             // trying to DOS the graduation by sending ETH to the pair pre-graduation
             (amountToken, amountEth, liquidity) =
-                _addLiquidityWithPriceMatching(tokenAddress, ethReserve, tokenBalance, ethValue, pair);
+                _addLiquidityWithPriceMatching(tokenAddress, ethReserve, tokenAmount, ethValue, pair);
         }
 
         // handle any remaining balance in this contract
@@ -99,11 +101,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     }
 
     /// @dev Reads the actual eth reserves after syncing
-    function _getUpdatedEthReserves(address pair, address tokenAddress) internal returns (uint256 ethReserve) {
+    function _getUpdatedEthReserves(address pair, address tokenAddress) internal view returns (uint256 ethReserve) {
         IUniswapV2Pair pairContract = IUniswapV2Pair(pair);
-
-        // in case there is unsynced ETH
-        pairContract.sync();
 
         (uint112 reserve0, uint112 reserve1,) = pairContract.getReserves();
 
@@ -127,28 +126,20 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         uint256 ethValue,
         address pair
     ) internal returns (uint256 amountToken, uint256 amountEth, uint256 liquidity) {
-        // Calculate tokens needed to match existing price
+        // Calculate tokens needed to match target price
         uint256 tokensToTransfer = (tokenBalance * ethReserve) / (ethValue + ethReserve);
 
-        // if there was eth in the contract, then it is guaranteed that tokensToTransfer > 0
-        if (tokensToTransfer < tokenBalance) {
-            // Transfer calculated tokens directly to pair and sync
-            ILivoToken(tokenAddress).safeTransfer(pair, tokensToTransfer);
-            IUniswapV2Pair(pair).sync();
+        // Note: tokensToTransfer is always < tokenBalance due to (ethReserve < ethValue + ethReserve)
+        ILivoToken(tokenAddress).safeTransfer(pair, tokensToTransfer);
+        IUniswapV2Pair(pair).sync();
 
-            // Add remaining tokens and ETH as liquidity
-            uint256 remainingTokens = tokenBalance - tokensToTransfer;
-            (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-                tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp + 3600
-            );
-            // the tokens sent as sync also count as liquidity added ofc
-            amountToken += tokensToTransfer;
-        } else {
-            // Fallback: add all as liquidity
-            // This would only happen if some weirdo sent enough ETH so that the remaining tokens supply cannot match the price
-            // Although highly unlikely, it is important to protect against this scenario
-            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenBalance, ethValue);
-        }
+        // Add remaining tokens and ETH as liquidity
+        uint256 remainingTokens = tokenBalance - tokensToTransfer;
+        (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
+            tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp
+        );
+        // the tokens sent as sync also count as liquidity added ofc
+        amountToken += tokensToTransfer;
     }
 
     /// @dev This blindly adds the liquidity, accepting any LPs, so accepting whatever price ratio is in the pair already
@@ -157,7 +148,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         returns (uint256 amountToken, uint256 amountEth, uint256 liquidity)
     {
         (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-            tokenAddress, tokenBalance, 0, 0, DEAD_ADDRESS, block.timestamp + 3600
+            tokenAddress, tokenBalance, 0, 0, DEAD_ADDRESS, block.timestamp
         );
     }
 
@@ -173,7 +164,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         if (remainingEth > 0) {
             address livoTreasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
             (bool success,) = livoTreasury.call{value: remainingEth}("");
-            require(success, "ETH transfer to treasury failed");
+            require(success, EtherTransferFailed());
 
             // for transparency, to be able to detect if some graduation went completely wrong
             emit SweepedRemainingEth(tokenAddress, remainingEth);
