@@ -210,12 +210,13 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         IERC20(testToken).approve(address(permit2Address), type(uint256).max);
 
         // approve `PositionManager` as a spender
-        IAllowanceTransfer(address(permit2Address)).approve(
-            address(testToken), // approved token
-            address(positionManagerAddress), // spender
-            type(uint160).max, // amount
-            type(uint48).max // expiration
-        );
+        IAllowanceTransfer(address(permit2Address))
+            .approve(
+                address(testToken), // approved token
+                address(positionManagerAddress), // spender
+                type(uint160).max, // amount
+                type(uint48).max // expiration
+            );
 
         PoolKey memory pool = _getPoolKey(testToken);
 

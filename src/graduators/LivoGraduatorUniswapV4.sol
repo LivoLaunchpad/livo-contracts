@@ -193,12 +193,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // approve PERMIT2 as a spender
         token.approve(PERMIT2, type(uint256).max);
         // approve `PositionManager` as a spender
-        IAllowanceTransfer(PERMIT2).approve(
-            address(token), // approved token
-            UNIV4_POSITION_MANAGER, // spender
-            type(uint160).max, // amount
-            type(uint48).max // expiration
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(
+                address(token), // approved token
+                UNIV4_POSITION_MANAGER, // spender
+                type(uint160).max, // amount
+                type(uint48).max // expiration
+            );
 
         /////////////// todo move all this to a single function
         PoolKey memory pool = _getPoolKey(tokenAddress);
@@ -391,9 +392,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             (feeGrowthInside0X128,) = UNIV4_POOL_MANAGER.getFeeGrowthInside(poolId, TICK_LOWER_2, TICK_UPPER_2);
         }
 
-        uint128 tokenAmount = (
-            FullMath.mulDiv(feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128)
-        ).toUint128();
+        uint128 tokenAmount = (FullMath.mulDiv(
+                feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128
+            ))
+        .toUint128();
 
         creatorEthFees = tokenAmount - tokenAmount / 2;
     }
