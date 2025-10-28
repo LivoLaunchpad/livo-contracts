@@ -201,7 +201,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
                 type(uint48).max // expiration
             );
 
-        /////////////// todo move all this to a single function
         PoolKey memory pool = _getPoolKey(tokenAddress);
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
         uint256 ethBalanceBefore = address(this).balance;
@@ -338,9 +337,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // the actual call to the position manager to mint the liquidity position
         // deadline = block.timestamp (no effective deadline)
-        IPositionManager(UNIV4_POSITION_MANAGER).modifyLiquidities{value: ethValue}(
-            abi.encode(actions, params), block.timestamp
-        );
+        IPositionManager(UNIV4_POSITION_MANAGER)
+        .modifyLiquidities{value: ethValue}(abi.encode(actions, params), block.timestamp);
 
         // locks the liquidity position NFT in the liquidity lock contract
         LIQUIDITY_LOCK.lockUniV4Position(positionId, address(this));
@@ -394,8 +392,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         uint128 tokenAmount = (FullMath.mulDiv(
                 feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128
-            ))
-        .toUint128();
+            )).toUint128();
 
         creatorEthFees = tokenAmount - tokenAmount / 2;
     }
