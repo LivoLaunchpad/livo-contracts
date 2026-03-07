@@ -9,9 +9,13 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
+
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     address public uniswapPair;
@@ -24,9 +28,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     modifier createTestTokenWithPair() {
         vm.prank(creator);
-        testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x003", ""
-        );
+        testToken = factoryV2.createToken("TestToken", "TEST", creator, "0x003");
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         _;
     }
@@ -112,9 +114,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     /// @notice Test that it is not possible to create the univ2pair right after token is deployed
     function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
         vm.prank(creator);
-        testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x003", ""
-        );
+        testToken = factoryV2.createToken("TestToken", "TEST", creator, "0x003");
 
         address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         assertTrue(existingPair != address(0), "Pair should already exist from token creation");
@@ -403,12 +403,10 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that the TokenGraduated event is emitted by the graduator
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
-        // skip because the tokenPair address changes with minor changes even in the tests
-        vm.skip(true);
-        address tokenPair = 0x68E1D1946219e1B537dd778Da4Ce022F76243008;
-        vm.expectEmit(true, true, false, true);
-        emit LivoGraduatorUniswapV2.TokenGraduated(
-            testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
+        vm.skip(false);
+        vm.expectEmit(true, false, false, true);
+        emit ILivoGraduator.TokenGraduated(
+            testToken, 200000000000000000000000005, 8000000000000000000, 39999999999999999999000
         );
 
         _graduateToken();
@@ -417,7 +415,8 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted by the Launchpad
     /// @dev After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
-        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        (uint256 purchasedTokens,) = bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - purchasedTokens;
 
         vm.expectEmit(true, false, false, true);
         // Full ethCollected and tokenBalance (graduator handles fees/burning)
@@ -445,7 +444,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         vm.deal(buyer, maxEth + 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: maxEth + 1}(testToken, 0, DEADLINE);
     }
 
@@ -467,5 +466,87 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         launchpad.buyTokensWithExactEth{value: maxEth}(testToken, 0, DEADLINE);
 
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+    }
+}
+
+// ============================================
+// V2 + FeeSplitter + LivoToken
+// ============================================
+
+contract UniswapV2Graduation_Splitter is BaseUniswapV2GraduationTests {
+    address public splitterAddress;
+    address public shareholder1;
+    address public shareholder2;
+
+    function setUp() public override {
+        super.setUp();
+        shareholder1 = makeAddr("shareholder1");
+        shareholder2 = makeAddr("shareholder2");
+    }
+
+    function _recipients() internal view returns (address[] memory r) {
+        r = new address[](2);
+        r[0] = shareholder1;
+        r[1] = shareholder2;
+    }
+
+    function _sharesBps() internal pure returns (uint256[] memory s) {
+        s = new uint256[](2);
+        s[0] = 7000;
+        s[1] = 3000;
+    }
+
+    modifier createSplitterToken() {
+        vm.prank(creator);
+        (address token, address splitter) =
+            factoryV2.createTokenWithFeeSplit("TestToken", "TEST", _recipients(), _sharesBps(), "0x003");
+        testToken = token;
+        splitterAddress = splitter;
+        uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
+        _;
+    }
+
+    /// @notice Graduation succeeds with fee splitter on V2
+    function test_graduation_withFeeSplitter_v2() public createSplitterToken {
+        _graduateToken();
+        assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
+    }
+
+    /// @notice token.feeHandler() returns the splitter
+    function test_feeHandler_isSplitter_v2() public createSplitterToken {
+        _graduateToken();
+        assertEq(ILivoToken(testToken).feeHandler(), splitterAddress, "feeHandler should be splitter");
+        assertEq(ILivoToken(testToken).feeReceiver(), splitterAddress, "feeReceiver should be splitter");
+    }
+
+    /// @notice Graduation compensation is routed through splitter, shareholders can claim
+    function test_graduationCompensation_claimableByShareholders() public createSplitterToken {
+        _graduateToken();
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        address tokenFeeHandler = ILivoToken(testToken).feeHandler();
+        uint256 s1Claimable = ILivoFeeHandler(tokenFeeHandler).getClaimable(tokens, shareholder1)[0];
+        uint256 s2Claimable = ILivoFeeHandler(tokenFeeHandler).getClaimable(tokens, shareholder2)[0];
+
+        assertGt(s1Claimable + s2Claimable, 0, "shareholders should have claimable graduation compensation");
+
+        uint256 s1Before = shareholder1.balance;
+        uint256 s2Before = shareholder2.balance;
+
+        vm.prank(shareholder1);
+        ILivoFeeHandler(tokenFeeHandler).claim(tokens);
+        vm.prank(shareholder2);
+        ILivoFeeHandler(tokenFeeHandler).claim(tokens);
+
+        uint256 s1Earned = shareholder1.balance - s1Before;
+        uint256 s2Earned = shareholder2.balance - s2Before;
+
+        assertGt(s1Earned, 0, "shareholder1 should receive graduation compensation");
+        assertGt(s2Earned, 0, "shareholder2 should receive graduation compensation");
+
+        // 70/30 split of graduation compensation
+        assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 }

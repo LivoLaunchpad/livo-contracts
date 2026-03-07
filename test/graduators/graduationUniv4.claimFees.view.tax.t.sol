@@ -30,61 +30,45 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    modifier createAndGraduateToken() override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+        internal
+        override
+        returns (address)
+    {
         vm.prank(creator);
-        testToken = launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x12",
-            tokenCalldata
-        );
-
-        _graduateToken();
-        _;
+        return
+            factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
     }
 
-    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+    /// @notice Verify that sell tax math is correct: tax/T == taxBps and claimable == tax
+    function test_sellTax_amountIsCorrect() public createAndGraduateToken {
+        uint256 claimableBefore = _creatorClaimable();
+        uint256 ethBefore = buyer.balance;
 
-        vm.startPrank(creator);
-        testToken1 = launchpad.createToken(
-            "TestToken1",
-            "TEST1",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x1a3a",
-            tokenCalldata
-        );
-        testToken2 = launchpad.createToken(
-            "TestToken2",
-            "TEST2",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x1a3a",
-            tokenCalldata
-        );
-        vm.stopPrank();
+        uint256 sellAmount = 100_000_000e18;
+        _swapSell(buyer, sellAmount, 0.1 ether, true);
 
-        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
-        vm.deal(buyer, 100 ether);
-        vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
-        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
+        uint256 Y = buyer.balance - ethBefore; // ETH received by seller
+        uint256 tax = _creatorClaimable() - claimableBefore; // tax accrued as claimable
+        uint256 T = Y + tax; // total ETH that left the pool
 
-        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
-        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
+        // tax / T == 5%
+        assertApproxEqRel(tax * 10_000 / T, DEFAULT_SELL_TAX_BPS, 0.000001e18, "tax/T should be ~5%");
+        // Y / T == 95%
+        assertApproxEqRel(Y * 10_000 / T, 10_000 - DEFAULT_SELL_TAX_BPS, 0.000001e18, "Y/T should be ~95%");
+    }
 
-        _swap(buyer, testToken1, buyAmount, 1, true, true);
-        _swap(buyer, testToken2, buyAmount, 1, true, true);
-        vm.stopPrank();
-        _;
+    /// @notice Verify that buys have no sell tax, only 1% LP fees
+    function test_buyTax_noSellTaxOnlyLpFees() public createAndGraduateToken {
+        uint256 claimableBefore = _creatorClaimable();
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 claimableDelta = _creatorClaimable() - claimableBefore;
+
+        // Creator gets 0.5% LP fees on buys (half of 1% total LP fee)
+        assertApproxEqAbs(claimableDelta, buyAmount / 200, 1, "buy claimable should be ~0.5% LP fee share");
     }
 }

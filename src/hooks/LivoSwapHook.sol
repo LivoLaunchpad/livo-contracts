@@ -12,10 +12,6 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-interface IGraduatorTaxCollector {
-    function depositAccruedTaxes(address token, address taxRecipient) external payable;
-}
-
 /// @title LivoSwapHook
 /// @notice Uniswap V4 hook that collects time-limited sell taxes on token swaps
 /// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4
@@ -23,6 +19,9 @@ interface IGraduatorTaxCollector {
 contract LivoSwapHook is BaseHook {
     /// @notice Custom error for preventing swaps before graduation
     error NoSwapsBeforeGraduation();
+
+    /// @notice Emitted when creator taxes are accrued from a taxed swap
+    event CreatorTaxesAccrued(address indexed token, address indexed feeReceiver, uint256 amount);
 
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
@@ -33,7 +32,8 @@ contract LivoSwapHook is BaseHook {
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
     /// @notice Allows contract to receive ETH from poolManager.take()
-    /// question for auditor: ETH could get stuck here as there is no way to rescue eth. But I don't want to make this contract Ownable, and I don't want to add a permisionless rescueEth() function to avoid introducing security risks.
+    /// question for auditor: ETH could get stuck here as there is no way to rescue eth.
+    ///          But I don't want to make this contract Ownable, and I don't want to add a permisionless rescueEth() function to avoid introducing security risks.
     receive() external payable {}
 
     /// @notice Returns the hook permissions indicating which callbacks are implemented
@@ -71,7 +71,7 @@ contract LivoSwapHook is BaseHook {
     {
         // Get token address and tax config
         address tokenAddress = Currency.unwrap(key.currency1);
-        (bool shouldTax, uint16 taxBps, address taxRecipient) = _getTaxParams(tokenAddress, params.zeroForOne);
+        (bool shouldTax, uint16 taxBps) = _getTaxParams(tokenAddress, params.zeroForOne);
 
         // if tax=0 or, out of tax period, or no tax config, then we exit here without taxation
         if (!shouldTax) {
@@ -84,7 +84,7 @@ contract LivoSwapHook is BaseHook {
         }
 
         // SELL: Tax is taken from ETH output (seller receives less ETH)
-        return _collectSellTax(key.currency0, tokenAddress, taxRecipient, delta.amount0(), taxBps);
+        return _collectSellTax(key.currency0, tokenAddress, delta.amount0(), taxBps);
     }
 
     /// @notice Prevents swaps if the token has not been graduated
@@ -115,50 +115,46 @@ contract LivoSwapHook is BaseHook {
     /// @notice Get tax parameters for a token
     /// @return shouldTax Whether tax should be collected
     /// @return taxBps The tax rate in basis points
-    /// @return taxRecipient The token owner to whom taxes are attributed
-    function _getTaxParams(address tokenAddress, bool isBuy)
-        internal
-        view
-        returns (bool shouldTax, uint16 taxBps, address taxRecipient)
-    {
+    function _getTaxParams(address tokenAddress, bool isBuy) internal view returns (bool shouldTax, uint16 taxBps) {
         ILivoToken.TaxConfig memory config = ILivoToken(tokenAddress).getTaxConfig();
 
         // Check if token has graduated
         if (config.graduationTimestamp == 0) {
-            return (false, 0, address(0));
+            return (false, 0);
         }
 
         // Check if tax period has expired
         if (block.timestamp > config.graduationTimestamp + config.taxDurationSeconds) {
-            return (false, 0, address(0));
+            return (false, 0);
         }
 
         // buy tax will always be zero in the current tax-token implementation
         taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
         if (taxBps == 0) {
-            return (false, 0, address(0));
+            return (false, 0);
         }
-        // In this system, `taxRecipient` is always the token owner.
-        return (true, taxBps, config.taxRecipient);
+
+        return (true, taxBps);
     }
 
-    /// @notice Collect sell tax in ETH and attribute it in the graduator
-    function _collectSellTax(
-        Currency currency,
-        address tokenAddress,
-        address taxRecipient,
-        int128 ethDelta,
-        uint16 taxBps
-    ) internal returns (bytes4 selector, int128 taxCollected) {
+    /// @notice Collect sell tax in ETH and deposit it in the token fee handler
+    function _collectSellTax(Currency currency, address tokenAddress, int128 ethDelta, uint16 taxBps)
+        internal
+        returns (bytes4 selector, int128 taxCollected)
+    {
+        // casting to 'uint256' is safe because max of uint128 is way above any realistic value for eth
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absEthAmount = uint256(uint128(ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
-        // Take ETH to this contract first so we can forward it to the graduator
+        // Take ETH to this contract first so we can forward it to the token fee handler
         poolManager.take(currency, address(this), taxAmount);
 
-        address graduator = ILivoToken(tokenAddress).graduator();
-        IGraduatorTaxCollector(graduator).depositAccruedTaxes{value: taxAmount}(tokenAddress, taxRecipient);
+        emit CreatorTaxesAccrued(tokenAddress, ILivoToken(tokenAddress).feeReceiver(), taxAmount);
+        ILivoToken(tokenAddress).accrueFees{value: taxAmount}();
 
+        // casting to 'uint128' is safe because it is known to be a positive eth value well below eth max supply
+        // forge-lint: disable-next-line(unsafe-typecast)
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 }

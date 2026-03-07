@@ -25,6 +25,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
@@ -691,13 +692,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ4() public createTestToken {
         vm.skip(true);
-        vm.expectEmit(true, true, false, true);
-        emit LivoGraduatorUniswapV4.TokenGraduated(
-            testToken,
-            bytes32(0xb8316c7a029f0486576cea8a548043cc6942604f7a8ffb742a5bcc103a03b821),
-            191123250949901652977521310,
-            7456000000000052224,
-            55296381402046003400649
+        vm.expectEmit(true, false, false, true);
+        emit ILivoGraduator.TokenGraduated(
+            testToken, 191123250949901652977521310, 7456000000000052224, 55296381402046003400649
         );
 
         _graduateToken();
@@ -705,7 +702,8 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
 
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ4() public createTestToken {
-        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        (uint256 purchasedTokens,) = bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - purchasedTokens;
 
         vm.expectEmit(true, false, false, true);
         // After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
@@ -867,19 +865,11 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    /// @notice Override createTestToken modifier to provide tokenCalldata for tax configuration
+    /// @notice Override createTestToken modifier to provide tax configuration
     modifier createTestToken() override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-
         vm.prank(creator);
-        testToken = launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x003",
-            tokenCalldata
+        testToken = factoryTax.createToken(
+            "TestToken", "TEST", creator, "0x003", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
         );
         _;
     }
@@ -889,6 +879,12 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public override createTestToken {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
+        // Graduation deposits creator compensation into the fee handler (not the pool),
+        // so we capture it here to exclude from pool-balance accounting.
+        address[] memory _tokens = new address[](1);
+        _tokens[0] = testToken;
+        uint256 graduationDeposit =
+            ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
@@ -914,19 +910,18 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         // this should transfer taxes to the creator, completing the fund flow
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
         vm.prank(creator);
-        LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
+        vm.prank(creator);
+        feeHandlerV4.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
-        uint256 wethFeesEarnedByCreator = WETH.balanceOf(creator);
 
-        // check that the eth collected by buyer and seller matches the eth left the pool
+        // Subtract graduation deposit: it came from the fee handler, not the pool manager
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator,
+            ethRecoveredByBuyer + ethRecoveredByCreator - graduationDeposit,
             ethLeavingFromThePoolManager,
             "eth recovered by buyer and creator should match eth in pool"
         );

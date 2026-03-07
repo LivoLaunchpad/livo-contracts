@@ -34,20 +34,55 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     // IMPORTANT: These constants define a curve that doesn't behave well for ethReserves > 30 eth.
     // This is not a problem in practice as long as the graduation threshold + limit excess is well below that.
 
+    /// @notice The graduation threshold in terms of ETH reserves
+    uint256 internal constant _GRADUATION_THRESHOLD = 8.5 ether;
+
+    /// @notice Max amount of eth above the graduation that the curve accepts
+    uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.1 ether;
+
+    /// @notice Returns the ETH reserves threshold at which graduation can be triggered
+    function ethGraduationThreshold() external pure returns (uint256) {
+        return _GRADUATION_THRESHOLD;
+    }
+
+    /// @notice Returns the maximum ETH excess allowed above the graduation threshold
+    function maxExcessOverThreshold() external pure returns (uint256) {
+        return _MAX_EXCESS_OVER_THRESHOLD;
+    }
+
+    /// @notice Returns the graduation configuration
+    function getGraduationConfig() external pure returns (GraduationConfig memory) {
+        return GraduationConfig({
+            ethGraduationThreshold: _GRADUATION_THRESHOLD, maxExcessOverThreshold: _MAX_EXCESS_OVER_THRESHOLD
+        });
+    }
+
+    /// @notice Returns the absolute maximum ETH reserves (graduation threshold + max excess)
+    function maxEthReserves() external pure returns (uint256) {
+        return _maxEthReserves();
+    }
+
     /// @notice Calculates how many tokens can be purchased with a given amount of ETH
     /// @param ethReserves Current ETH reserves in the bonding curve
     /// @param ethAmount Amount of ETH to spend
     /// @return tokensReceived Amount of tokens that would be received
+    /// @return canGraduate Whether this buy reaches the graduation threshold
     function buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         pure
-        returns (uint256 tokensReceived)
+        returns (uint256 tokensReceived, bool canGraduate)
     {
+        uint256 newEthReserves = ethReserves + ethAmount;
+        if (newEthReserves > _maxEthReserves()) {
+            revert MaxEthReservesExceeded();
+        }
+
         // The final expression is derived from these two:
         //      tokenReserves = K / (ethReserves + E0) - T0;
         //      tokensReceived = T0 + tokenReserves - K / (ethReserves + ethAmount + E0);
         // The denominator can never be 0, as E0 is a non-zero constant
         tokensReceived = K * ethAmount / ((ethReserves + E0) * (ethReserves + ethAmount + E0));
+        canGraduate = newEthReserves >= _GRADUATION_THRESHOLD;
     }
 
     /// @notice Calculates how much ETH will be received when selling an exact amount of tokens
@@ -77,5 +112,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         // So this curve should not be used in that range
         // For the current graduation setup it should be safe, as the graduation happens at around 8.5 ether
         return K / (ethReserves + E0) - T0;
+    }
+
+    function _maxEthReserves() internal pure returns (uint256) {
+        return _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD;
     }
 }

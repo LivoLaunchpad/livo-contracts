@@ -7,6 +7,7 @@ import {
     LaunchpadBaseTestsWithUniv4Graduator
 } from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -173,7 +174,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -201,7 +202,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -295,9 +296,9 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
-        address testToken2 = launchpad.createToken(
-            "Test Token 2", "TT2", address(implementation), address(bondingCurve), address(graduator), "0x12", ""
-        );
+        address testToken2 = address(graduator) == address(graduatorV2)
+            ? factoryV2.createToken("Test Token 2", "TT2", creator, "0x12")
+            : factoryV4.createToken("Test Token 2", "TT2", creator, "0x12");
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");
@@ -384,7 +385,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
         uint256 maxValue = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.quoteBuyWithExactEth(testToken, maxValue);
 
         // however, one wei less should be fine
