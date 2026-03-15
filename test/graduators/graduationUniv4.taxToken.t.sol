@@ -9,46 +9,31 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-
-interface ILivoGraduatorWithFees is ILivoGraduator {
-    function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
-    function positionIds(address token, uint256 positionIndex) external view returns (uint256);
-    function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
-        external
-        view
-        returns (uint256[] memory creatorFees);
-    function treasuryClaim() external;
-    function pendingCreatorClaims(address token, address tokenOwner) external view returns (uint256);
-}
+import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
-    ILivoGraduatorWithFees graduatorWithFees;
-
     function setUp() public override {
         super.setUp();
-        graduatorWithFees = ILivoGraduatorWithFees(address(graduator));
-    }
-
-    function _singleElementArray(uint256 value) internal pure returns (uint256[] memory) {
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = value;
-        return arr;
     }
 
     /// @notice Helper to collect LP fees from a single token
     function _collectFees(address token) internal {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
         vm.prank(creator);
-        graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
+
+        vm.prank(creator);
+        feeHandlerV4.claim(tokens);
     }
 
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
-        return graduatorWithFees.pendingCreatorClaims(token, tokenOwner);
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -57,7 +42,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_noTaxesBeforeGraduation_launchpadPurchases() public createDefaultTaxToken {
         uint256 creatorPendingTaxesBefore = _pendingTaxes(testToken, creator);
 
-        (,, uint256 tokensToReceive) = launchpad.quoteBuyWithExactEth(testToken, 1 ether);
+        (,, uint256 tokensToReceive) = launchpad.quoteBuyTokensWithExactEth(testToken, 1 ether);
 
         uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
         // Multiple users buy tokens through launchpad
@@ -147,21 +132,42 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         /////////// now update token owner by transferring ownership
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
-        assertEq(launchpad.getTokenOwner(testToken), alice, "New token owner should be Alice");
+        ILivoToken(testToken).acceptTokenOwnership();
+        assertEq(ILivoToken(testToken).owner(), alice, "New token owner should be Alice");
 
-        // Verify that sell taxes are now redirected to the new owner
+        // By default, fee receiver is unchanged after ownership transfer
         uint256 aliceTaxesBefore = _pendingTaxes(testToken, alice);
         creatorTaxesBefore = _pendingTaxes(testToken, creator);
 
         sellAmount = buyerTokenBalance / 2;
         // Buyer swaps tokens for ETH via UniV4
         _swapSell(buyer, sellAmount, 0, true);
-        assertGt(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should accrue sell tax");
-        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should not accrue new sell tax");
+        assertEq(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should not accrue without receiver update");
+        assertGt(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should keep accruing sell tax");
+
+        // New owner can manually update the fee receiver
+        vm.prank(alice);
+        ILivoToken(testToken).setFeeReceiver(alice);
+
+        // Ensure buyer has fresh tokens for a post-update sell path
+        deal(buyer, 0.2 ether);
+        _swapBuy(buyer, 0.1 ether, 0, true);
+
+        aliceTaxesBefore = _pendingTaxes(testToken, alice);
+        creatorTaxesBefore = _pendingTaxes(testToken, creator);
+
+        buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
+        assertGt(buyerTokenBalance, 0, "buyer should have tokens for post-update sell");
+        sellAmount = buyerTokenBalance / 2;
+        _swapSell(buyer, sellAmount, 0, true);
+
+        assertGt(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should accrue after receiver update");
+        assertEq(
+            _pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should stop accruing after receiver update"
+        );
     }
 
     /// @notice Test that sell tax rates are applied correctly
@@ -322,7 +328,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertEq(
             IERC20(testToken).balanceOf(testToken), tokenContractBalanceBeforeBuy, "No buy tax should ever be collected"
         );
-        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBeforeBuy, "No buy tax should ever be accrued");
+        assertGt(_pendingTaxes(testToken, creator), creatorTaxesBeforeBuy, "Buy should only add LP-fee claimable");
 
         // Perform sell swap - should accrue no tax after period expires
         uint256 creatorTaxesBeforeSell = _pendingTaxes(testToken, creator);
@@ -330,11 +336,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
 
-        assertEq(
-            _pendingTaxes(testToken, creator),
-            creatorTaxesBeforeSell,
-            "No sell tax should be accrued after period expires"
-        );
+        assertGe(_pendingTaxes(testToken, creator), creatorTaxesBeforeSell, "Sell should not add sell-tax claimable");
     }
 
     /// @notice Test exact boundary conditions for sell tax period
@@ -432,22 +434,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
-            600, // > MAX_TAX_BPS (500)
-            14 days
-        );
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, 600));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
         vm.prank(creator);
-        launchpad.createToken(
-            "InvalidToken",
-            "INV",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4),
-            "0x003",
-            tokenCalldata
-        );
+        factoryTax.createToken("InvalidToken", "INV", creator, "0x003", 600, uint32(14 days));
     }
 
     /// @notice Test that swap before graduation has no liquidity to swap with
@@ -550,6 +539,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @notice Test that LP fees can be claimed by token owner for graduated tax token
     function test_claimLPFees_happyPath_tokenOwnerReceivesFees() public createDefaultTaxToken {
         _graduateToken();
+        address[] memory _t = new address[](1);
+        _t[0] = testToken;
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
@@ -562,23 +554,25 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify fees accumulated
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
         assertGt(fees[0], 0, "Fees should have accumulated");
-        assertApproxEqAbs(fees[0], buyAmount / 200, 1, "Expected ~0.5% of buy amount");
+        assertApproxEqAbs(fees[0] - graduationDeposit, buyAmount / 200, 1, "Expected ~0.5% of buy amount");
 
         // Claim LP fees
         _collectFees(testToken);
-        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
 
-        // Verify creator received ~0.5% of buy amount
+        // Verify creator received graduation deposit + ~0.5% of buy amount
         assertApproxEqAbs(
-            creatorEthBalanceAfter - creatorEthBalanceBefore, buyAmount / 200, 1, "Creator should receive ~0.5% LP fees"
+            creatorEthBalanceAfter - creatorEthBalanceBefore - graduationDeposit,
+            buyAmount / 200,
+            1,
+            "Creator should receive ~0.5% LP fees"
         );
 
-        // Verify treasury received ~0.5% of buy amount
+        // Verify treasury received ~0.5% of buy amount (sent directly on accrual)
         assertApproxEqAbs(
             treasuryEthBalanceAfter - treasuryEthBalanceBefore,
             buyAmount / 200,
@@ -595,6 +589,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
 
         _graduateToken();
+        address[] memory _t = new address[](1);
+        _t[0] = testToken;
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 creatorTaxesBefore = _pendingTaxes(testToken, creator);
@@ -611,8 +608,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify LP fees accumulated from buy (in ETH, not WETH)
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory claimableFees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
-        assertApproxEqAbs(claimableFees[0], buyAmount / 200, 5, "LP fees should be ~0.5% of buy amount in ETH");
+        uint256[] memory claimableFees = feeHandlerV4.getClaimable(tokens, creator);
+        assertApproxEqAbs(
+            claimableFees[0] - graduationDeposit, buyAmount / 200, 5, "LP fees should be ~0.5% of buy amount in ETH"
+        );
 
         // Perform sell swap during active tax period
         // This generates both: sell tax (accrued in graduator) + LP fees (ETH ~0.5%)
@@ -625,7 +624,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim LP fees (paid in native ETH to creator)
         _collectFees(testToken);
-        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfterLPClaim = creator.balance;
         uint256 lpFeesReceivedEth = creatorEthBalanceAfterLPClaim - creatorEthBalanceBefore;
@@ -641,6 +639,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @notice Test that LP fees continue to be claimable after tax period expires
     function test_claimLPFees_afterTaxPeriodExpires_stillClaimable() public createDefaultTaxToken {
         _graduateToken();
+        address[] memory _t2 = new address[](1);
+        _t2[0] = testToken;
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t2, creator)[0];
 
         // Fast-forward past tax period
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
@@ -673,9 +674,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "No sell tax should accumulate after period expires"
         );
 
-        // Claim LP fees from both swaps
+        // Claim LP fees from both swaps (treasury receives directly on accrual)
         _collectFees(testToken);
-        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -687,27 +687,33 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertGt(creatorFeesReceived, 0, "Creator should receive LP fees");
         assertGt(treasuryFeesReceived, 0, "Treasury should receive LP fees");
 
-        // Total fees should be ~1% of buy amount (buy generates more fees than sell due to amounts)
+        // Total LP fees (excluding graduation deposit) should be ~1% of buy amount
         assertApproxEqAbs(
-            creatorFeesReceived + treasuryFeesReceived, buyAmount / 100, 2, "Total LP fees should be ~1% of buy volume"
+            creatorFeesReceived + treasuryFeesReceived - graduationDeposit,
+            buyAmount / 100,
+            2,
+            "Total LP fees should be ~1% of buy volume"
         );
     }
 
-    /// @notice Test that LP fees are redirected to new owner after token ownership transfer
-    function test_claimLPFees_withTokenOwnershipTransfer_feesGoToNewOwner() public createDefaultTaxToken {
+    /// @notice Test that LP fee accrual/claim flow still works after token ownership transfer
+    function test_claimLPFees_withTokenOwnershipTransfer_claimFlowStillWorks() public createDefaultTaxToken {
         _graduateToken();
 
-        // Perform buy swap to generate LP fees
+        // Perform a buy before transfer
         uint256 buyAmount = 1 ether;
-        deal(buyer, buyAmount);
+        deal(buyer, buyAmount * 2);
         _swapBuy(buyer, buyAmount, 0, true);
 
         // Transfer ownership to alice
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
-        assertEq(launchpad.getTokenOwner(testToken), alice, "Alice should be the new token owner");
+        ILivoToken(testToken).acceptTokenOwnership();
+        assertEq(ILivoToken(testToken).owner(), alice, "Alice should be the new token owner");
+
+        // Generate fresh LP fees after ownership transfer so they belong to the new owner path
+        _swapBuy(buyer, buyAmount, 0, true);
 
         // Record balances before claiming
         uint256 creatorEthBalanceBefore = creator.balance;
@@ -716,24 +722,23 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Claim LP fees
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
 
         vm.prank(alice);
-        graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
+        vm.prank(alice);
+        feeHandlerV4.claim(tokens);
 
-        graduatorWithFees.treasuryClaim();
+        vm.prank(creator);
+        feeHandlerV4.claim(tokens);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 aliceEthBalanceAfter = alice.balance;
 
-        // Verify alice received fees, creator did not
-        assertGt(aliceEthBalanceAfter, aliceEthBalanceBefore, "Alice should receive LP fees as new owner");
-        assertEq(creatorEthBalanceAfter, creatorEthBalanceBefore, "Creator should not receive fees after transfer");
-
-        // Verify alice received ~0.5% of buy amount
-        assertApproxEqAbs(
-            aliceEthBalanceAfter - aliceEthBalanceBefore, buyAmount / 200, 1, "Alice should receive ~0.5% LP fees"
+        assertEq(
+            aliceEthBalanceAfter, aliceEthBalanceBefore, "Alice claim should not transfer configured fee receiver funds"
+        );
+        assertGt(
+            creatorEthBalanceAfter, creatorEthBalanceBefore, "Configured fee receiver should still be able to claim"
         );
     }
 
@@ -754,22 +759,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory positionIndexesAll = new uint256[](2);
-        positionIndexesAll[0] = 0;
-        positionIndexesAll[1] = 1;
-        uint256[] memory totalClaimable = graduatorWithFees.getClaimable(tokens, positionIndexesAll, creator);
+        uint256[] memory totalClaimable = feeHandlerV4.getClaimable(tokens, creator);
         assertGt(totalClaimable[0], 0, "claimable amount should be positive");
 
         // Record balances
         uint256 creatorEthBalanceBefore = creator.balance;
 
         // Claim from both positions
-        uint256[] memory positionIndexes = new uint256[](2);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 1;
         vm.prank(creator);
-        graduatorWithFees.creatorClaim(tokens, positionIndexes);
-        graduatorWithFees.treasuryClaim();
+        feeHandlerV4.accrueTokenFees(tokens);
+        vm.prank(creator);
+        feeHandlerV4.claim(tokens);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 totalCreatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;
@@ -778,28 +778,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(totalCreatorFees, totalClaimable[0], 1, "Claimed fees should match claimable total");
     }
 
-    function test_deployLivoToken_withEncodedCalldataFromWrongImplementation() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
-
-        vm.expectRevert("Token calldata must be empty");
-        launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x12",
-            tokenCalldata
-        );
-    }
-
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
-        launchpad.createToken(
-            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 550, uint32(4 days));
     }
 
     // This test is removed because buy taxes no longer exist, so there's no tax swap to trigger
@@ -826,7 +807,12 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             tokenContractBalanceBefore,
             "Token contract balance should not change (no buy tax)"
         );
-        assertEq(_pendingTaxes(testToken, creator), tokenOwnerTaxesBefore, "Token owner taxes should not change on buy");
+        assertApproxEqAbs(
+            _pendingTaxes(testToken, creator) - tokenOwnerTaxesBefore,
+            1 ether / 200,
+            1,
+            "Claimable should increase only by LP fee share on buy"
+        );
         assertEq(
             IERC20(testToken).balanceOf(creator),
             tokenOwnerTokenBefore,
@@ -841,12 +827,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Record balances before buy swap
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
-        uint256 tokenOwnerTaxesBefore = _pendingTaxes(testToken, creator);
         uint256 tokenOwnerTokenBefore = IERC20(testToken).balanceOf(creator);
 
         // Perform buy swap
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
+
+        uint256 tokenOwnerTaxesAfterBuy = _pendingTaxes(testToken, creator);
 
         // Trigger a zero-value transfer (which could trigger tax swaps in old implementation)
         address zeroBalanceAccount = makeAddr("zeroBalanceAccount");
@@ -861,7 +848,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
         assertEq(
             _pendingTaxes(testToken, creator),
-            tokenOwnerTaxesBefore,
+            tokenOwnerTaxesAfterBuy,
             "Token owner taxes should not change after zero transfer"
         );
         assertEq(

@@ -4,14 +4,20 @@
 
 | Contract Name               | Address                                    |
 | --------------------------- | ------------------------------------------ |
-| LivoToken                   | 0x5e4887319f62c09884964985909a6E1E14875763 |
-| ConstantProductBondingCurve | 0x67bdc54550658BD5607c66724019Cb25E5c23A4C |
-| LivoLaunchpad               | 0xF51212C9Fa9f69e05964d5E9DD31D7dacE6a5B17 |
-| LivoGraduatorUniswapV2      | 0x9Ae43b768aB1a97Db6986c09aD6f1B7031e5BAF7 |
-| LiquidityLockUniv4WithFees  | 0x2941f8CB877c8ad74d83b3116652dc3DE788977E |
-| LivoGraduatorUniswapV4      | 0x7026A21E398376af77c4f074c6401326f7947Cff |
-| LivoTaxableTokenUniV4       | 0xe4333981Fe3b821037565AF7547A461f683Da2E7 |
-| LivoSwapHook                | 0x5a9ae42f0F59dDB200E6acFAC2f85a6990C600c4 |
+| LivoToken                   | 0xf8d8852Ff490Bc4278db0A051a86266444F3567E |
+| LivoTaxableTokenUniV4       | 0x83dF9a6f24E4C1ed8f33a1f14e3e180bA3899211 |
+| ConstantProductBondingCurve | 0x36cfDfd23fDe89dc067ac17901BC5959c6bD2eeB |
+| LivoLaunchpad               | 0xf29c6a8eCAD0a2ca908c9076dD2E4A025be75EF7 |
+| LivoGraduatorUniswapV2      | 0x6aCB368dB13eF4d29F516DDB464f62A6D168C248 |
+| LiquidityLockUniv4WithFees  | 0xefAEEde871491AF6EDE77c31739091eFF434fC8f |
+| LivoFeeHandlerUniV2         | 0x83c0F4EE4C00B685A400723C3bEF05c3b77cEbe6 |
+| LivoFeeHandlerUniV4         | 0xa47049C38f4a1D704939863E36b9A7Fbad761471 |
+| LivoGraduatorUniswapV4      | 0x23DAE4f548af2F7e7a65C903c74F3168Ba1C734D |
+| LivoFeeSplitter (impl)      | 0x9Ce6c7cFB9a54a6e3531f92aDC37C2960A657638 |
+| LivoFactory (V2)            | 0x494BDb64b52c54c3c9133308c34253a492f925Be |
+| LivoFactory (V4)            | 0xA3bcfc113064A4b8bFC15d219146c6b0141C2C1B |
+| LivoFactoryTaxToken (V4)    | 0x4c1F43317137485763eDFAE1eA4c727e42ee7306 |
+| LivoSwapHook                | 0x62FB818a1aB96211531641AeE3244E42deD8C0C4 |
 
 ## Accounts
 
