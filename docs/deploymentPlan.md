@@ -37,26 +37,17 @@ forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+com
 
 # Operation
 
-## 1. Graduation fees
+## 1. Treasury fees
 
-Sent directly to the treasury in graduation transactions
+All treasury fees are collected automatically to the treasury address
 
-## 2. Collect trading fees from launchpad
+## 2. Whitelisted factories
 
-Any address can collect, but they go automatically to the treasury:
+Future creation mechanics can be deployed with new factories. Or even same mechanics but with different:
+- bonding curves
+- graduators
+- token implementations
+- graduation thresholds
 
-```bash
-cast send {{LAUNCHPAD}} "claimTreasuryFees()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
-```
-
-## 3. Collect LP fees from uniswap v4
-
-Any address can collect, but they go automatically to the treasury:
-
-```bash
-cast send {{GRADUATORV4}} "treasuryClaim()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
-```
-
-## Whitelisting new components etc
 
 ...
