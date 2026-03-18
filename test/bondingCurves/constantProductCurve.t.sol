@@ -70,6 +70,15 @@ contract ConstantProductBondingCurveTest is Test {
         assertLt(tokenPrice, 3000000000, "Initial token price should be very low");
     }
 
+    function test_initialPrice_isAround2point25GweiPerToken() public {
+        uint256 ethAmount = 0.00000000001e18; // very small ETH to approximate marginal price
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(0, ethAmount);
+        uint256 priceWeiPerToken = 1e18 * ethAmount / tokensReceived;
+
+        // Expected: ~2.25e9 wei/token (2.25 gwei/token), derived from 1e18 * E0^2 / K
+        assertApproxEqRel(priceWeiPerToken, 2.25e9, 0.0000000000001e18, "Initial price should be ~2.25 gwei/token");
+    }
+
     function test_tokenPriceAtGraduationPoint_matchesUniswap() public view {
         // reserves pre-graduation
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
