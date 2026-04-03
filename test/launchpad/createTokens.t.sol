@@ -15,7 +15,8 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployLivoToken_happyPath() public {
         vm.prank(creator);
-        address deployedToken = factoryV2.createToken("TestToken", "TEST", creator, "0x12");
+        address deployedToken =
+            factoryV2.createToken("TestToken", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken)));
 
         assertTrue(deployedToken != address(0));
 
@@ -57,7 +58,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
         vm.prank(creator);
-        address deployedToken = factoryV2.createToken("Sanitator", "SANIT", creator, "0x12");
+        address deployedToken = factoryV2.createToken(
+            "Sanitator", "SANIT", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+        );
 
         assertTrue(deployedToken != address(0));
         assertTrue(deployedToken != address(livoToken));
@@ -75,12 +78,28 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         factoryV2.createToken("TestToken", "", creator, "0x0");
     }
 
+    function testCannotCreateTokenWithWrongEnding() public {
+        bytes32 correctSalt = _nextValidSalt(address(factoryV2), address(livoToken));
+
+        vm.startPrank(creator);
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenAddress.selector));
+        factoryV2.createToken("TestToken1", "TEST", creator, bytes32(uint256(correctSalt) + 1));
+
+        // with correct salt it should succeed
+        factoryV2.createToken("TestToken1", "TEST", creator, correctSalt);
+        vm.stopPrank();
+    }
+
     function testCanCreateTokenWithDuplicateSymbol() public {
         vm.prank(creator);
-        address token1 = factoryV2.createToken("TestToken1", "TEST", creator, "0x12");
+        address token1 = factoryV2.createToken(
+            "TestToken1", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+        );
 
         vm.prank(creator);
-        address token2 = factoryV2.createToken("TestToken2", "TEST", creator, "0x12342");
+        address token2 = factoryV2.createToken(
+            "TestToken2", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+        );
 
         assertTrue(token1 != address(0));
         assertTrue(token2 != address(0));
@@ -94,10 +113,14 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function testCanCreateTokensWithDifferentSymbols() public {
         vm.prank(creator);
-        address token1 = factoryV2.createToken("TestToken1", "TEST1", creator, "0x0");
+        address token1 = factoryV2.createToken(
+            "TestToken1", "TEST1", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+        );
 
         vm.prank(creator);
-        address token2 = factoryV2.createToken("TestToken2", "TEST2", creator, "0x12");
+        address token2 = factoryV2.createToken(
+            "TestToken2", "TEST2", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+        );
 
         assertTrue(token1 != address(0));
         assertTrue(token2 != address(0));
@@ -141,7 +164,15 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         emit LivoTaxableTokenUniV4.LivoTaxableTokenInitialized(0, 500, 14 days);
 
         vm.prank(creator);
-        address deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        address deployedToken = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
 
         assertTrue(deployedToken != address(0));
     }
@@ -150,7 +181,15 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         vm.recordLogs();
 
         vm.prank(creator);
-        address deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        address deployedToken = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
 

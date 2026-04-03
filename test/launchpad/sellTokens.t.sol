@@ -351,8 +351,12 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         // Reset state by creating a new token and setting up the same initial conditions
         vm.prank(creator);
         address testToken2 = address(graduator) == address(graduatorV2)
-            ? factoryV2.createToken("Test Token 2", "TT2", creator, "0x12")
-            : factoryV4.createToken("Test Token 2", "TT2", creator, "0x12");
+            ? factoryV2.createToken(
+                "Test Token 2", "TT2", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+            )
+            : factoryV4.createToken(
+                "Test Token 2", "TT2", creator, _nextValidSalt(address(factoryV4), address(livoToken))
+            );
 
         // Buy the same amount for both scenarios to establish identical starting conditions
         vm.prank(alice);

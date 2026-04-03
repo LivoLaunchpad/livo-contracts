@@ -92,6 +92,7 @@ contract LivoFactoryBase is ILivoFactory {
 
         // minimal proxy pattern to deploy a new LivoToken instance
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt);
+        require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         // IMPORTANT: TokenCreated must be emitted BEFORE initialize() because the indexer
         // creates the TokenData entity from this event, and events emitted during initialize()

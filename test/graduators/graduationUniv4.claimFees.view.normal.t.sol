@@ -16,7 +16,8 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
     function test_viewFunction_getClaimable_feeReceiverDifferentFromOwner() public {
         // Create token with creator as msg.sender (owner), alice as feeReceiver
         vm.prank(creator);
-        testToken = factoryV4.createToken("TestToken", "TEST", alice, "0x12");
+        testToken =
+            factoryV4.createToken("TestToken", "TEST", alice, _nextValidSalt(address(factoryV4), address(livoToken)));
 
         _graduateToken();
 
@@ -31,7 +32,8 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
     function test_viewFunction_getClaimable_tokenOwnerGetsZeroWhenNotFeeReceiver() public {
         // Create token with creator as msg.sender (owner), alice as feeReceiver
         vm.prank(creator);
-        testToken = factoryV4.createToken("TestToken", "TEST", alice, "0x12");
+        testToken =
+            factoryV4.createToken("TestToken", "TEST", alice, _nextValidSalt(address(factoryV4), address(livoToken)));
 
         _graduateToken();
 

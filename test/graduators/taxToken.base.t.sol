@@ -48,7 +48,13 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     {
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(
-            "TaxToken", "TAX", creator, "0x003", buyTaxBps, sellTaxBps, uint32(taxDurationSeconds)
+            "TaxToken",
+            "TAX",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            buyTaxBps,
+            sellTaxBps,
+            uint32(taxDurationSeconds)
         );
     }
 

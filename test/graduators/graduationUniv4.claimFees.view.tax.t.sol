@@ -30,16 +30,21 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32)
         internal
         override
         returns (address)
     {
         vm.prank(creator);
-        return
-            factoryTax.createToken(
-                name, symbol, creator, metadata, 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-            );
+        return factoryTax.createToken(
+            name,
+            symbol,
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            DEFAULT_SELL_TAX_BPS,
+            uint32(DEFAULT_TAX_DURATION)
+        );
     }
 
     /// @notice Verify that sell tax math is correct: tax/gross == taxBps

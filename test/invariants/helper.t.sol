@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {TokenState} from "src/types/tokenData.sol";
 
@@ -47,6 +48,18 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 public globalAggregatedEthFromSells;
 
     uint256 constant FAR_IN_FUTURE = 9758664012;
+    uint256 internal _saltCounter;
+
+    function _nextValidSalt(address factory, address impl) internal returns (bytes32) {
+        for (uint256 i = _saltCounter;; i++) {
+            bytes32 salt = bytes32(i);
+            address predicted = Clones.predictDeterministicAddress(impl, salt, factory);
+            if (uint16(uint160(predicted)) == 0x1110) {
+                _saltCounter = i + 1;
+                return salt;
+            }
+        }
+    }
 
     /////////////////////////////////////////////////////
     constructor(LivoLaunchpad _launchpad, LivoFactoryBase _factoryV2, LivoFactoryBase _factoryV4) {
@@ -99,10 +112,10 @@ contract InvariantsHelperLaunchpad is Test {
     //////////////////////////////////////////////////////////
 
     function createToken(uint256 seed) public passTime(seed) choseActor(seed) {
+        LivoFactoryBase factory = seed % 2 == 0 ? factoryV2 : factoryV4;
+        bytes32 salt = _nextValidSalt(address(factory), address(factory.TOKEN_IMPLEMENTATION()));
         vm.prank(currentActor);
-        address token = seed % 2 == 0
-            ? factoryV2.createToken("TestToken", "TEST", currentActor, "0x12")
-            : factoryV4.createToken("TestToken", "TEST", currentActor, "0x12");
+        address token = factory.createToken("TestToken", "TEST", currentActor, salt);
         _tokens.add(token);
     }
 

@@ -875,7 +875,13 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     modifier createTestToken() override {
         vm.prank(creator);
         testToken = factoryTax.createToken(
-            "TestToken", "TEST", creator, "0x003", 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            DEFAULT_SELL_TAX_BPS,
+            uint32(DEFAULT_TAX_DURATION)
         );
         _;
     }

@@ -122,6 +122,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
 
         // minimal proxy pattern to deploy a new LivoToken instance
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt);
+        require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(
             token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver

@@ -4,18 +4,18 @@
 
 | Contract Name               | Address                                    |
 | --------------------------- | ------------------------------------------ |
-| LivoToken                   | 0xD3BE3296281e8A6f78281fF554B5d9b5Cb37a54C |
-| LivoTaxableTokenUniV4       | 0xacEAab1186a8068A63dD3d1f096D936997a32533 |
-| ConstantProductBondingCurve | 0x0c8Fb8bf3f41501EA5435e30DbcA6209D0062298 |
-| LivoLaunchpad               | 0x540a4974BbCc1DB8ed092923e32f735FE70b1110 |
-| LivoFeeHandler              | 0xeDF3aca6515c2b0F61A40cA9b7e595B878b061d5 |
-| LivoSwapHook                | 0x869Fff3eecFc8234887b8326BA7bcc6f7c6C80Cc |
-| LivoGraduatorUniswapV2      | 0x5022dD5e099d50738F85dC724D7c097C88F0AA7C |
-| LivoGraduatorUniswapV4      | 0x0507a5cA2E3CC51ac8b4dA281AC83628e29f27dE |
-| LivoFeeSplitter (impl)      | 0x3c5A5ab3Cdc4a92b78a55CABBc5675064a91AacA |
-| LivoFactory (V2)            | 0x41de703c64a26101A7D7A8d7Cd1c56e6132AAf46 |
-| LivoFactory (V4)            | 0xb42a53d6Bb0c700C536160181D8f08702553c874 |
-| LivoFactoryTaxToken (V4)    | 0x140605F8a8C0811FDEC7b076538186788CF50F7F |
+| LivoToken                   | 0x24A406fE27d5BFE03611dcBB7e97FCEa6070E16e |
+| LivoTaxableTokenUniV4       | 0x3410A5Aa23EAc16c077B8913Ce622ef2735D8A05 |
+| ConstantProductBondingCurve | 0x319F155b9558cdA0a14430CaCAa925b26bCD71d3 |
+| LivoLaunchpad               | 0xd4bc617aE54481f0f879A8E167D5Ac1607521110 |
+| LivoFeeHandler              | 0xEb80077542Dcf0d9041DA93E716eC792558c8088 |
+| LivoSwapHook                | 0xa7dD6b53AE73d63566F14Cf6bB1EFF31795440Cc |
+| LivoGraduatorUniswapV2      | 0xfa6B969B3a10153D59Ec94d0D6139A5193eeB226 |
+| LivoGraduatorUniswapV4      | 0x17669728076d328a03B2C5C691893369E3F73E12 |
+| LivoFeeSplitter (impl)      | 0x2E2cA3FF445D8cAff0C811343e462B23Af622D86 |
+| LivoFactory (V2)            | 0xcEdDbD29FeD7f54F1A8c41390e4c43B9b9E3704E |
+| LivoFactory (V4)            | 0xA6D8344686dD92908Ffc68c72D0a4C7A113a1bdd |
+| LivoFactoryTaxToken (V4)    | 0x7Bc3E3f9CbF4aA20eBF1C8fd4EF0906598308DcD |
 
 ## Accounts
 

@@ -8,6 +8,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     address public deployedToken;
@@ -16,7 +17,15 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
 
     modifier withTaxTokenCreated(uint16 sellTaxBps, uint32 taxDuration) {
         vm.prank(creator);
-        deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, sellTaxBps, taxDuration);
+        deployedToken = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            sellTaxBps,
+            taxDuration
+        );
         _;
     }
 
@@ -74,6 +83,24 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         factoryTax.createToken("TestToken", "TEST", address(0), "0x12", 0, 500, uint32(14 days));
     }
 
+    // ============ Vanity Address Validation ============
+
+    /// @dev when salt produces a token address not ending in 0x1110, then createToken reverts with InvalidTokenAddress
+    function test_createToken_revertsOnInvalidTokenAddress() public {
+        bytes32 badSalt;
+        for (uint256 i = 0;; i++) {
+            bytes32 salt = bytes32(i);
+            address predicted = Clones.predictDeterministicAddress(address(livoTaxToken), salt, address(factoryTax));
+            if (uint16(uint160(predicted)) != 0x1110) {
+                badSalt = salt;
+                break;
+            }
+        }
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenAddress.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, badSalt, 0, 500, uint32(14 days));
+    }
+
     // ============ Events ============
 
     /// @dev when tax token is created, then LivoTaxableTokenInitialized event is emitted with correct params
@@ -82,7 +109,15 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         emit LivoTaxableTokenUniV4.LivoTaxableTokenInitialized(0, 500, 14 days);
 
         vm.prank(creator);
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
     }
 
     /// @dev when tax token is created, then launchpad does not emit the old TokenCreated event
@@ -90,7 +125,15 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         vm.recordLogs();
 
         vm.prank(creator);
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertTrue(logs.length > 0);
@@ -118,7 +161,15 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
         assertTrue(launchpad.whitelistedFactories(address(factoryTax)));
 
         vm.prank(creator);
-        address token = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        address token = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
         assertTrue(token != address(0));
     }
 
@@ -128,7 +179,15 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
     }
 
     /// @dev when factory is whitelisted then blacklisted, then createToken reverts with UnauthorizedFactory
@@ -140,7 +199,15 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
     }
 
     /// @dev when factory is blacklisted then re-whitelisted, then createToken succeeds again
@@ -149,7 +216,15 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
         launchpad.whitelistFactory(address(factoryTax));
 
         vm.prank(creator);
-        address token = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
+        address token = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            500,
+            uint32(14 days)
+        );
         assertTrue(token != address(0));
     }
 

@@ -39,15 +39,16 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
         s[1] = SHARE_2;
     }
 
-    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32)
         internal
         virtual
         override
         returns (address)
     {
         vm.prank(creator);
-        (address token, address splitter) =
-            factoryV4.createTokenWithFeeSplit(name, symbol, _recipients(), _sharesBps(), metadata);
+        (address token, address splitter) = factoryV4.createTokenWithFeeSplit(
+            name, symbol, _recipients(), _sharesBps(), _nextValidSalt(address(factoryV4), address(livoToken))
+        );
         splitterAddress = splitter;
         return token;
     }
@@ -174,14 +175,21 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32)
         internal
         override
         returns (address)
     {
         vm.prank(creator);
         (address token, address splitter) = factoryTax.createTokenWithFeeSplit(
-            name, symbol, _recipients(), _sharesBps(), metadata, 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+            name,
+            symbol,
+            _recipients(),
+            _sharesBps(),
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            DEFAULT_SELL_TAX_BPS,
+            uint32(DEFAULT_TAX_DURATION)
         );
         splitterAddress = splitter;
         return token;

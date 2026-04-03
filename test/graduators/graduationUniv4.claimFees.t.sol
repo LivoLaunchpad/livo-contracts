@@ -48,17 +48,17 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         deal(buyer, 10 ether);
     }
 
-    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32)
         internal
         virtual
         returns (address)
     {
         vm.prank(creator);
-        return factoryV4.createToken(name, symbol, creator, metadata);
+        return factoryV4.createToken(name, symbol, creator, _nextValidSalt(address(factoryV4), address(livoToken)));
     }
 
     modifier createAndGraduateToken() virtual {
-        testToken = _createTokenForCreator("TestToken", "TEST", "0x12");
+        testToken = _createTokenForCreator("TestToken", "TEST", bytes32(0));
 
         _graduateToken();
         // used as a baseline in several tests
@@ -99,8 +99,8 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     }
 
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
-        testToken1 = _createTokenForCreator("TestToken1", "TEST1", "0x1a3a");
-        testToken2 = _createTokenForCreator("TestToken2", "TEST2", "0x1a3b");
+        testToken1 = _createTokenForCreator("TestToken1", "TEST1", bytes32(0));
+        testToken2 = _createTokenForCreator("TestToken2", "TEST2", bytes32(0));
 
         // graduate token1 and token2
         uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
@@ -1237,15 +1237,20 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32)
         internal
         override
         returns (address)
     {
         vm.prank(creator);
-        return
-            factoryTax.createToken(
-                name, symbol, creator, metadata, 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-            );
+        return factoryTax.createToken(
+            name,
+            symbol,
+            creator,
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            0,
+            DEFAULT_SELL_TAX_BPS,
+            uint32(DEFAULT_TAX_DURATION)
+        );
     }
 }

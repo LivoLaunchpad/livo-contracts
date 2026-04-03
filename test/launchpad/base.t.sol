@@ -17,6 +17,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
@@ -101,6 +102,19 @@ contract LaunchpadBaseTests is Test {
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoSwapHook public taxHook;
 
+    uint256 internal _saltCounter;
+
+    function _nextValidSalt(address factory, address impl) internal returns (bytes32 salt) {
+        for (uint256 i = _saltCounter;; i++) {
+            salt = bytes32(i);
+            address predicted = Clones.predictDeterministicAddress(impl, salt, factory);
+            if (uint16(uint160(predicted)) == 0x1110) {
+                _saltCounter = i + 1;
+                return salt;
+            }
+        }
+    }
+
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
@@ -172,12 +186,24 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                testToken = factoryTax.createToken("TestToken", "TEST", creator, "0x003", 0, 500, uint32(14 days));
+                testToken = factoryTax.createToken(
+                    "TestToken",
+                    "TEST",
+                    creator,
+                    _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+                    0,
+                    500,
+                    uint32(14 days)
+                );
             } else {
-                testToken = factoryV4.createToken("TestToken", "TEST", creator, "0x003");
+                testToken = factoryV4.createToken(
+                    "TestToken", "TEST", creator, _nextValidSalt(address(factoryV4), address(livoToken))
+                );
             }
         } else {
-            testToken = factoryV2.createToken("TestToken", "TEST", creator, "0x003");
+            testToken = factoryV2.createToken(
+                "TestToken", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken))
+            );
         }
         _;
     }

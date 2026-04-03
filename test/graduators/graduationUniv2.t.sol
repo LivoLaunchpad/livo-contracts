@@ -28,7 +28,8 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     modifier createTestTokenWithPair() {
         vm.prank(creator);
-        testToken = factoryV2.createToken("TestToken", "TEST", creator, "0x003");
+        testToken =
+            factoryV2.createToken("TestToken", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken)));
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         _;
     }
@@ -114,7 +115,8 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     /// @notice Test that it is not possible to create the univ2pair right after token is deployed
     function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
         vm.prank(creator);
-        testToken = factoryV2.createToken("TestToken", "TEST", creator, "0x003");
+        testToken =
+            factoryV2.createToken("TestToken", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken)));
 
         address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         assertTrue(existingPair != address(0), "Pair should already exist from token creation");
@@ -498,8 +500,9 @@ contract UniswapV2Graduation_Splitter is BaseUniswapV2GraduationTests {
 
     modifier createSplitterToken() {
         vm.prank(creator);
-        (address token, address splitter) =
-            factoryV2.createTokenWithFeeSplit("TestToken", "TEST", _recipients(), _sharesBps(), "0x003");
+        (address token, address splitter) = factoryV2.createTokenWithFeeSplit(
+            "TestToken", "TEST", _recipients(), _sharesBps(), _nextValidSalt(address(factoryV2), address(livoToken))
+        );
         testToken = token;
         splitterAddress = splitter;
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
