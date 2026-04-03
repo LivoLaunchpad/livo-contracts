@@ -85,7 +85,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
     ) external returns (address token, address feeSplitter) {
-        feeSplitter = _deployFeeSplitter(symbol, salt);
+        feeSplitter = _deployFeeSplitter(salt);
         token = _createAndInitializeTaxToken(
             name, symbol, feeSplitter, feeSplitter, salt, buyTaxBps, sellTaxBps, taxDurationSeconds
         );
@@ -98,11 +98,9 @@ contract LivoFactoryTaxToken is ILivoFactory {
 
     /////////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
+    function _deployFeeSplitter(bytes32 salt) internal returns (address feeSplitter) {
         // forge-lint: disable-next-line
-        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
-        // forge-lint: disable-next-line
-        bytes32 splitterSalt = keccak256(abi.encodePacked(salt_, "feeSplitter"));
+        bytes32 splitterSalt = keccak256(abi.encodePacked(salt, "feeSplitter"));
         feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
     }
 
@@ -122,12 +120,8 @@ contract LivoFactoryTaxToken is ILivoFactory {
         require(buyTaxBps <= MAX_TAX_BPS && sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
         require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
 
-        {
-            // forge-lint: disable-next-line
-            bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
-            // minimal proxy pattern to deploy a new LivoToken instance
-            token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
-        }
+        // minimal proxy pattern to deploy a new LivoToken instance
+        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt);
 
         emit TokenCreated(
             token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver

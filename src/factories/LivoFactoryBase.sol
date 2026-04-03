@@ -63,7 +63,7 @@ contract LivoFactoryBase is ILivoFactory {
         uint256[] calldata sharesBps,
         bytes32 salt
     ) external returns (address token, address feeSplitter) {
-        feeSplitter = _deployFeeSplitter(symbol, salt);
+        feeSplitter = _deployFeeSplitter(salt);
         token = _createAndInitializeToken(name, symbol, feeSplitter, feeSplitter, salt);
         // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
         // creates the FeeSplitter entity from this event, and events emitted during initialize()
@@ -74,11 +74,9 @@ contract LivoFactoryBase is ILivoFactory {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
+    function _deployFeeSplitter(bytes32 salt) internal returns (address feeSplitter) {
         // forge-lint: disable-next-line
-        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
-        // forge-lint: disable-next-line
-        bytes32 splitterSalt = keccak256(abi.encodePacked(salt_, "feeSplitter"));
+        bytes32 splitterSalt = keccak256(abi.encodePacked(salt, "feeSplitter"));
         feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
     }
 
@@ -92,10 +90,8 @@ contract LivoFactoryBase is ILivoFactory {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
 
-        // forge-lint: disable-next-line
-        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
-        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
+        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt);
 
         // IMPORTANT: TokenCreated must be emitted BEFORE initialize() because the indexer
         // creates the TokenData entity from this event, and events emitted during initialize()

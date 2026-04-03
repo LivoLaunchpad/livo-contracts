@@ -100,7 +100,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
         testToken1 = _createTokenForCreator("TestToken1", "TEST1", "0x1a3a");
-        testToken2 = _createTokenForCreator("TestToken2", "TEST2", "0x1a3a");
+        testToken2 = _createTokenForCreator("TestToken2", "TEST2", "0x1a3b");
 
         // graduate token1 and token2
         uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
