@@ -30,8 +30,19 @@ contract Deployments is Script {
     // set to livodev in sepolia
     address constant TREASURY = DeploymentAddressesMainnet.LIVO_TREASURY;
 
+    // Deployer EOA (owner of deployed contracts)
+    address constant DEPLOYER = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+
     // Foundry's deterministic deployment proxy (Create2 deployer)
     address constant FOUNDRY_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
+    // Vanity suffix for LivoLaunchpad address: 0x1110
+    // 4 hex chars = 16 bits → mask 0xFFFF, ~65k attempts on average
+    uint160 constant VANITY_MASK = 0xFFFF;
+    uint160 constant VANITY_TARGET = 0x1110;
+
+    // Bump this after each deployment to skip already-used CREATE2 salts
+    uint256 constant VANITY_SALT_OFFSET = 0x23421;
 
     // ========================= Network Config =========================
 
@@ -82,6 +93,30 @@ contract Deployments is Script {
         require(address(livoSwapHook) == hookAddress, "Hook address mismatch");
     }
 
+    // ========================= Vanity Address Mining =========================
+
+    /// @notice Mines a CREATE2 salt that produces an address with a vanity suffix
+    /// @dev Precomputes initCodeHash and uses a single abi.encodePacked per iteration with fixed-size args
+    ///      to minimize memory growth (same approach as HookMiner but with precomputed hash)
+    function _mineVanitySalt(address treasury, address owner)
+        internal
+        pure
+        returns (bytes32 salt, address vanityAddress)
+    {
+        bytes32 initCodeHash =
+            keccak256(abi.encodePacked(type(LivoLaunchpad).creationCode, abi.encode(treasury, owner)));
+
+        for (uint256 i = VANITY_SALT_OFFSET; i < VANITY_SALT_OFFSET + 500_000; i++) {
+            vanityAddress = address(
+                uint160(uint256(keccak256(abi.encodePacked(bytes1(0xFF), FOUNDRY_CREATE2_DEPLOYER, i, initCodeHash))))
+            );
+            if (uint160(vanityAddress) & VANITY_MASK == VANITY_TARGET) {
+                return (bytes32(i), vanityAddress);
+            }
+        }
+        revert("VanityMiner: could not find salt");
+    }
+
     // ========================= Deployment =========================
 
     function run() public {
@@ -95,6 +130,10 @@ contract Deployments is Script {
         console.log("Deployer:", msg.sender);
         console.log("Treasury:", TREASURY);
         console.log("");
+
+        // Mine vanity salt before broadcast (pure computation, no on-chain cost)
+        (bytes32 launchpadSalt, address expectedLaunchpad) = _mineVanitySalt(TREASURY, DEPLOYER);
+        console.log("Launchpad vanity salt mined, expected address:", expectedLaunchpad);
 
         console.log("");
         console.log("Deploying contracts...");
@@ -118,8 +157,9 @@ contract Deployments is Script {
         ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
         console.log("| ConstantProductBondingCurve | ", address(bondingCurve));
 
-        // 3. Deploy LivoLaunchpad
-        LivoLaunchpad launchpad = new LivoLaunchpad(TREASURY);
+        // 3. Deploy LivoLaunchpad with vanity address via CREATE2
+        LivoLaunchpad launchpad = new LivoLaunchpad{salt: launchpadSalt}(TREASURY, DEPLOYER);
+        require(address(launchpad) == expectedLaunchpad, "Launchpad vanity address mismatch");
         console.log("| LivoLaunchpad | ", address(launchpad));
 
         // 5. Deploy fee handler used by all factories

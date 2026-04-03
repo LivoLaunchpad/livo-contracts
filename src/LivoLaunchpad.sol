@@ -81,11 +81,16 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /////////////////////////////////////////////////
 
     /// @param _treasury Address of the treasury to receive fees
-    constructor(address _treasury) Ownable(msg.sender) {
-        // Set initial values and emit events for off-chain indexers
-        setTreasuryAddress(_treasury);
-        // buy/sell fees at 1%
-        setTradingFees(100, 100);
+    /// @param _owner Address of the contract owner
+    constructor(address _treasury, address _owner) Ownable(_owner) {
+        // Set initial values directly (not via onlyOwner setters) to support CREATE2 deployment
+        require(_treasury != address(0), InvalidAddress());
+        treasury = _treasury;
+        emit TreasuryAddressUpdated(_treasury);
+
+        baseBuyFeeBps = 100;
+        baseSellFeeBps = 100;
+        emit TradingFeesUpdated(100, 100);
     }
 
     /// @notice Registers a new token in the launchpad with its bonding curve, callable only by whitelisted factories

@@ -117,7 +117,7 @@ contract LaunchpadBaseTests is Test {
 
         // todo do we need this outside this setup ?
         implementation = livoToken;
-        launchpad = new LivoLaunchpad(treasury);
+        launchpad = new LivoLaunchpad(treasury, admin);
         bondingCurve = new ConstantProductBondingCurve();
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
