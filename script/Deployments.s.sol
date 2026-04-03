@@ -42,7 +42,7 @@ contract Deployments is Script {
     uint160 constant VANITY_TARGET = 0x1110;
 
     // Bump this after each deployment to skip already-used CREATE2 salts
-    uint256 constant VANITY_SALT_OFFSET = 0x23421;
+    uint256 constant VANITY_SALT_OFFSET = 0x11123421;
 
     // ========================= Network Config =========================
 
