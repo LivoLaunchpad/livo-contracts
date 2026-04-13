@@ -94,7 +94,7 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
         require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
 
         // minimal proxy pattern to deploy a new LivoToken instance
-        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt);
+        token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(

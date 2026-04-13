@@ -23,6 +23,8 @@ interface ILivoFactory {
 
     event MaxDeployerBuyBpsUpdated(uint256 newMaxDeployerBuyBps);
 
+    event TokenImplementationUpdated(address newTokenImplementation);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();
@@ -30,6 +32,7 @@ interface ILivoFactory {
     error InvalidFeeReceiver();
     error InvalidTokenAddress();
     error InvalidDeployerBuy();
+    error InvalidTokenImplementation();
 
     ////////////////// Views //////////////////////
 
