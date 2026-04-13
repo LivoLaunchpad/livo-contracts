@@ -21,7 +21,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     uint256 public constant BASIS_POINTS = 10_000;
 
     /// @notice Token implementation contract used as the clone source
-    ILivoToken public immutable TOKEN_IMPLEMENTATION;
+    ILivoToken internal _tokenImplementation;
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
     /// @notice Graduator contract that handles token graduation to Uniswap
@@ -46,7 +46,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         address feeSplitterImplementation
     ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
-        TOKEN_IMPLEMENTATION = ILivoToken(tokenImplementation);
+        _tokenImplementation = ILivoToken(tokenImplementation);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
@@ -54,6 +54,19 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
+
+    /// @notice Returns the token implementation contract used as the clone source
+    function TOKEN_IMPLEMENTATION() public view returns (ILivoToken) {
+        return _tokenImplementation;
+    }
+
+    /// @notice Updates the token implementation contract used as the clone source
+    /// @param newTokenImplementation Address of the new token implementation
+    function setTokenImplementation(address newTokenImplementation) external onlyOwner {
+        require(newTokenImplementation != address(0), InvalidTokenImplementation());
+        _tokenImplementation = ILivoToken(newTokenImplementation);
+        emit TokenImplementationUpdated(newTokenImplementation);
+    }
 
     /// @notice Updates the max deployer buy percentage
     /// @param newMaxDeployerBuyBps New max in basis points (e.g. 1000 = 10%)
