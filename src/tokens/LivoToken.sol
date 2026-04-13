@@ -115,6 +115,15 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit OwnershipTransferred(msg.sender);
     }
 
+    /// @notice Permanently renounces ownership. Only callable by the current owner.
+    /// @dev Clears both owner and any pending proposedOwner.
+    function renounceOwnership() external {
+        require(msg.sender == owner, Unauthorized());
+        delete owner;
+        delete proposedOwner;
+        emit OwnershipTransferred(address(0));
+    }
+
     /// @notice Updates the fee receiver address, only callable by the token owner
     function setFeeReceiver(address newFeeReceiver) external {
         require(msg.sender == owner, Unauthorized());

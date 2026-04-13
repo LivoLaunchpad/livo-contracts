@@ -84,4 +84,54 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         ILivoToken(testToken).proposeNewOwner(alice);
     }
+
+    /// @dev owner renounces, owner becomes address(0), proposedOwner cleared, event emitted
+    function test_renounceOwnership_happyPath() public createTestToken {
+        vm.expectEmit(address(testToken));
+        emit ILivoToken.OwnershipTransferred(address(0));
+
+        vm.prank(creator);
+        ILivoToken(testToken).renounceOwnership();
+
+        assertEq(ILivoToken(testToken).owner(), address(0));
+        assertEq(ILivoToken(testToken).proposedOwner(), address(0));
+    }
+
+    /// @dev non-owner cannot renounce
+    function test_renounceOwnership_revertsIfNotOwner() public createTestToken {
+        vm.prank(alice);
+        vm.expectRevert(LivoToken.Unauthorized.selector);
+        ILivoToken(testToken).renounceOwnership();
+    }
+
+    /// @dev if a proposedOwner was set, it gets cleared on renounce
+    function test_renounceOwnership_clearsPendingProposal() public createTestToken proposedOwner(creator, alice) {
+        assertEq(ILivoToken(testToken).proposedOwner(), alice);
+
+        vm.prank(creator);
+        ILivoToken(testToken).renounceOwnership();
+
+        assertEq(ILivoToken(testToken).owner(), address(0));
+        assertEq(ILivoToken(testToken).proposedOwner(), address(0));
+    }
+
+    /// @dev proposeNewOwner reverts after ownership is renounced
+    function test_renounceOwnership_cannotProposeAfterRenounce() public createTestToken {
+        vm.prank(creator);
+        ILivoToken(testToken).renounceOwnership();
+
+        vm.prank(creator);
+        vm.expectRevert(LivoToken.Unauthorized.selector);
+        ILivoToken(testToken).proposeNewOwner(alice);
+    }
+
+    /// @dev setFeeReceiver reverts after ownership is renounced
+    function test_renounceOwnership_cannotSetFeeReceiverAfterRenounce() public createTestToken {
+        vm.prank(creator);
+        ILivoToken(testToken).renounceOwnership();
+
+        vm.prank(creator);
+        vm.expectRevert(LivoToken.Unauthorized.selector);
+        ILivoToken(testToken).setFeeReceiver(alice);
+    }
 }
