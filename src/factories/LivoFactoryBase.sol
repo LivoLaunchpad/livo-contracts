@@ -45,9 +45,8 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
         address graduator,
         address feeHandler,
         address feeSplitterImplementation,
-        address admin,
         uint256 maxDeployerBuyBps_
-    ) Ownable(admin) {
+    ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         TOKEN_IMPLEMENTATION = ILivoToken(tokenImplementation);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);

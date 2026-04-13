@@ -30,11 +30,10 @@ contract TestLivoFactory is LivoFactoryBase {
         address graduator,
         address feeHandler,
         address feeSplitterImplementation,
-        address admin,
         uint256 maxDeployerBuyBps_
     )
         LivoFactoryBase(
-            launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation, admin, maxDeployerBuyBps_
+            launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation, maxDeployerBuyBps_
         )
     {}
 }
@@ -161,7 +160,6 @@ contract LaunchpadBaseTests is Test {
             address(graduatorV2),
             address(feeHandler),
             address(feeSplitterImpl),
-            admin,
             1_000 // 10% max deployer buy
         );
 
@@ -172,7 +170,6 @@ contract LaunchpadBaseTests is Test {
             address(graduatorV4),
             address(feeHandler),
             address(feeSplitterImpl),
-            admin,
             1_000 // 10% max deployer buy
         );
 
@@ -183,7 +180,6 @@ contract LaunchpadBaseTests is Test {
             address(graduatorV4),
             address(feeHandler),
             address(feeSplitterImpl),
-            admin,
             1_000 // 10% max deployer buy
         );
 

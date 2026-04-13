@@ -93,7 +93,6 @@ contract LaunchpadInvariants is Test {
             address(graduatorV2),
             address(feeHandler),
             address(feeSplitterImpl),
-            admin,
             1_000
         );
 
@@ -104,7 +103,6 @@ contract LaunchpadInvariants is Test {
             address(graduatorV4),
             address(feeHandler),
             address(feeSplitterImpl),
-            admin,
             1_000
         );
 
