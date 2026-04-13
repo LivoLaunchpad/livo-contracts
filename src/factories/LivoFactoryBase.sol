@@ -107,11 +107,12 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     function _buyOnBehalf(address token) internal {
-        uint256 tokensBought =
-            LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
+        uint256 tokensBought = LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
 
         // Floor division absorbs sub-token rounding from the bonding curve's ceiling math
-        require(tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxDeployerBuyBps, InvalidDeployerBuy());
+        require(
+            tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxDeployerBuyBps, InvalidDeployerBuy()
+        );
 
         IERC20(token).safeTransfer(msg.sender, tokensBought);
         emit DeployerBuy(token, msg.sender, msg.value, tokensBought);

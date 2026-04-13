@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv2Graduator, LaunchpadBaseTestsWithUniv4GraduatorTaxableToken}
-    from "test/launchpad/base.t.sol";
+import {
+    LaunchpadBaseTestsWithUniv2Graduator,
+    LaunchpadBaseTestsWithUniv4GraduatorTaxableToken
+} from "test/launchpad/base.t.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {TokenState} from "src/types/tokenData.sol";

@@ -30,11 +30,7 @@ contract TestLivoFactory is LivoFactoryBase {
         address graduator,
         address feeHandler,
         address feeSplitterImplementation
-    )
-        LivoFactoryBase(
-            launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation
-        )
-    {}
+    ) LivoFactoryBase(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {}
 }
 
 contract LaunchpadBaseTests is Test {
