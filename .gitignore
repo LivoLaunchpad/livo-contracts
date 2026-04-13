@@ -16,5 +16,6 @@ lcov.info
 tasks/
 
 docs/references/
+docs/frontend/
 
 .planning/

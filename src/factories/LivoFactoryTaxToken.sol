@@ -2,6 +2,9 @@
 pragma solidity 0.8.28;
 
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
@@ -16,9 +19,13 @@ import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
-contract LivoFactoryTaxToken is ILivoFactory {
+contract LivoFactoryTaxToken is ILivoFactory, Ownable2Step {
+    using SafeERC20 for IERC20;
+
     error InvalidTaxBps();
     error InvalidTaxDuration();
+
+    uint256 public constant BASIS_POINTS = 10_000;
 
     /// @notice max configurable tax (buy or sell)
     uint256 public constant MAX_TAX_BPS = 500;
@@ -39,6 +46,9 @@ contract LivoFactoryTaxToken is ILivoFactory {
     /// @notice Fee splitter implementation contract used as the clone source
     ILivoFeeSplitter public immutable FEE_SPLITTER_IMPLEMENTATION;
 
+    /// @notice Max percentage of total supply the deployer can buy on token creation (in basis points)
+    uint256 public maxDeployerBuyBps = 1_000; // 10%
+
     /// @notice Initializes the factory with its immutable dependencies
     constructor(
         address launchpad,
@@ -47,7 +57,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         address graduator,
         address feeHandler,
         address feeSplitterImplementation
-    ) {
+    ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         TOKEN_IMPLEMENTATION = ILivoTaxableTokenUniV4(tokenImplementation);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
@@ -67,11 +77,12 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint16 buyTaxBps,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
-    ) external returns (address token) {
+    ) external payable returns (address token) {
         require(feeReceiver != address(0), InvalidFeeReceiver());
         token = _createAndInitializeTaxToken(
             name, symbol, address(FEE_HANDLER), feeReceiver, salt, buyTaxBps, sellTaxBps, taxDurationSeconds
         );
+        if (msg.value > 0) _buyOnBehalf(token);
     }
 
     /// @notice Deploys a new taxable token clone with a fee splitter
@@ -84,7 +95,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint16 buyTaxBps,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
-    ) external returns (address token, address feeSplitter) {
+    ) external payable returns (address token, address feeSplitter) {
         feeSplitter = _deployFeeSplitter(salt);
         token = _createAndInitializeTaxToken(
             name, symbol, feeSplitter, feeSplitter, salt, buyTaxBps, sellTaxBps, taxDurationSeconds
@@ -94,9 +105,41 @@ contract LivoFactoryTaxToken is ILivoFactory {
         // (SharesUpdated) depend on the FeeSplitter entity existing.
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
         ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
+        if (msg.value > 0) _buyOnBehalf(token);
+    }
+
+    /// @notice Updates the max deployer buy percentage
+    /// @param newMaxDeployerBuyBps New max in basis points (e.g. 1000 = 10%)
+    function setMaxDeployerBuyBps(uint256 newMaxDeployerBuyBps) external onlyOwner {
+        require(newMaxDeployerBuyBps < BASIS_POINTS, "Exceeds max bps");
+        maxDeployerBuyBps = newMaxDeployerBuyBps;
+        emit MaxDeployerBuyBpsUpdated(newMaxDeployerBuyBps);
+    }
+
+    /// @notice Quotes the ETH needed (msg.value) for a deployer to receive exactly `tokenAmount` tokens on a new token
+    /// @param tokenAmount Amount of tokens the deployer wants to receive
+    /// @return totalEthNeeded The msg.value to pass to createToken/createTokenWithFeeSplit
+    function quoteDeployerBuy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
+        (uint256 ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
+
+        uint16 buyFeeBps = LAUNCHPAD.baseBuyFeeBps();
+        uint256 denom = BASIS_POINTS - buyFeeBps;
+        totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
     }
 
     /////////////////////////// INTERNAL FUNCTIONS /////////////////////////
+
+    function _buyOnBehalf(address token) internal {
+        uint256 tokensBought = LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
+
+        // Floor division absorbs sub-token rounding from the bonding curve's ceiling math
+        require(
+            tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxDeployerBuyBps, InvalidDeployerBuy()
+        );
+
+        IERC20(token).safeTransfer(msg.sender, tokensBought);
+        emit DeployerBuy(token, msg.sender, msg.value, tokensBought);
+    }
 
     function _deployFeeSplitter(bytes32 salt) internal returns (address feeSplitter) {
         // forge-lint: disable-next-line
