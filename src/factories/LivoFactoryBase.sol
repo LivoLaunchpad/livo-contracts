@@ -88,6 +88,7 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
     /// @notice Updates the max deployer buy percentage
     /// @param newMaxDeployerBuyBps New max in basis points (e.g. 1000 = 10%)
     function setMaxDeployerBuyBps(uint256 newMaxDeployerBuyBps) external onlyOwner {
+        require(newMaxDeployerBuyBps < BASIS_POINTS, "Exceeds max bps");
         maxDeployerBuyBps = newMaxDeployerBuyBps;
         emit MaxDeployerBuyBpsUpdated(newMaxDeployerBuyBps);
     }
