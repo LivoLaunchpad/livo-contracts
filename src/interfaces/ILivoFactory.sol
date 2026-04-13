@@ -30,4 +30,8 @@ interface ILivoFactory {
     error InvalidFeeReceiver();
     error InvalidTokenAddress();
     error InvalidDeployerBuy();
+
+    ////////////////// Views //////////////////////
+
+    function quoteDeployerBuy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded);
 }

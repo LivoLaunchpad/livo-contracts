@@ -134,7 +134,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
     /// @dev quoteDeployerBuy returns correct ETH that yields exactly tokenAmount
     function test_quoteDeployerBuy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        (uint256 totalEthNeeded,,) = factoryV2.quoteDeployerBuy(tokenAmount);
+        uint256 totalEthNeeded = factoryV2.quoteDeployerBuy(tokenAmount);
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
@@ -148,7 +148,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
     /// @dev quoteDeployerBuy at max allowed tokens does not revert on createToken
     function test_quoteDeployerBuy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxDeployerBuyBps() / 10_000;
-        (uint256 totalEthNeeded,,) = factoryV2.quoteDeployerBuy(maxTokens);
+        uint256 totalEthNeeded = factoryV2.quoteDeployerBuy(maxTokens);
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
@@ -220,7 +220,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     /// @dev quoteDeployerBuy returns correct ETH that yields exactly tokenAmount
     function test_quoteDeployerBuy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        (uint256 totalEthNeeded,,) = factoryTax.quoteDeployerBuy(tokenAmount);
+        uint256 totalEthNeeded = factoryTax.quoteDeployerBuy(tokenAmount);
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
@@ -235,7 +235,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     /// @dev quoteDeployerBuy at max allowed tokens does not revert on createToken
     function test_quoteDeployerBuy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxDeployerBuyBps() / 10_000;
-        (uint256 totalEthNeeded,,) = factoryTax.quoteDeployerBuy(maxTokens);
+        uint256 totalEthNeeded = factoryTax.quoteDeployerBuy(maxTokens);
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 

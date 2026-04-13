@@ -119,19 +119,12 @@ contract LivoFactoryTaxToken is ILivoFactory, Ownable2Step {
     /// @notice Quotes the ETH needed (msg.value) for a deployer to receive exactly `tokenAmount` tokens on a new token
     /// @param tokenAmount Amount of tokens the deployer wants to receive
     /// @return totalEthNeeded The msg.value to pass to createToken/createTokenWithFeeSplit
-    /// @return ethFee The fee portion taken by the launchpad
-    /// @return ethForReserves The portion that goes into the bonding curve reserves
-    function quoteDeployerBuy(uint256 tokenAmount)
-        external
-        view
-        returns (uint256 totalEthNeeded, uint256 ethFee, uint256 ethForReserves)
-    {
-        (ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
+    function quoteDeployerBuy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
+        (uint256 ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
 
         uint16 buyFeeBps = LAUNCHPAD.baseBuyFeeBps();
         uint256 denom = BASIS_POINTS - buyFeeBps;
         totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
-        ethFee = totalEthNeeded - ethForReserves;
     }
 
     /////////////////////////// INTERNAL FUNCTIONS /////////////////////////
