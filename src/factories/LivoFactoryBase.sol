@@ -96,14 +96,32 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
         emit MaxDeployerBuyBpsUpdated(newMaxDeployerBuyBps);
     }
 
+    /// @notice Quotes the ETH needed (msg.value) for a deployer to receive exactly `tokenAmount` tokens on a new token
+    /// @param tokenAmount Amount of tokens the deployer wants to receive
+    /// @return totalEthNeeded The msg.value to pass to createToken/createTokenWithFeeSplit
+    /// @return ethFee The fee portion taken by the launchpad
+    /// @return ethForReserves The portion that goes into the bonding curve reserves
+    function quoteDeployerBuy(uint256 tokenAmount)
+        external
+        view
+        returns (uint256 totalEthNeeded, uint256 ethFee, uint256 ethForReserves)
+    {
+        (ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
+
+        uint16 buyFeeBps = LAUNCHPAD.baseBuyFeeBps();
+        uint256 denom = BASIS_POINTS - buyFeeBps;
+        totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
+        ethFee = totalEthNeeded - ethForReserves;
+    }
+
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     function _buyOnBehalf(address token) internal {
         uint256 tokensBought =
             LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
 
-        uint256 maxTokens = ILivoToken(token).totalSupply() * maxDeployerBuyBps / BASIS_POINTS;
-        require(tokensBought <= maxTokens, InvalidDeployerBuy());
+        // Floor division absorbs sub-token rounding from the bonding curve's ceiling math
+        require(tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxDeployerBuyBps, InvalidDeployerBuy());
 
         IERC20(token).safeTransfer(msg.sender, tokensBought);
         emit DeployerBuy(token, msg.sender, msg.value, tokensBought);

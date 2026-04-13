@@ -128,6 +128,36 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         emit ILivoFactory.MaxDeployerBuyBpsUpdated(500);
         factoryV2.setMaxDeployerBuyBps(500);
     }
+
+    // ============ quoteDeployerBuy ============
+
+    /// @dev quoteDeployerBuy returns correct ETH that yields exactly tokenAmount
+    function test_quoteDeployerBuy_roundTrip() public {
+        uint256 tokenAmount = 50_000_000e18; // 5% of supply
+        (uint256 totalEthNeeded,,) = factoryV2.quoteDeployerBuy(tokenAmount);
+
+        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
+
+        vm.prank(creator);
+        address token = factoryV2.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt);
+
+        uint256 creatorBalance = LivoToken(token).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+    }
+
+    /// @dev quoteDeployerBuy at max allowed tokens does not revert on createToken
+    function test_quoteDeployerBuy_maxAllowedTokens_doesNotRevert() public {
+        uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxDeployerBuyBps() / 10_000;
+        (uint256 totalEthNeeded,,) = factoryV2.quoteDeployerBuy(maxTokens);
+
+        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
+
+        vm.prank(creator);
+        address token = factoryV2.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt);
+
+        uint256 creatorBalance = LivoToken(token).balanceOf(creator);
+        assertGe(creatorBalance, maxTokens);
+    }
 }
 
 contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
@@ -183,5 +213,37 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, creator));
         factoryTax.setMaxDeployerBuyBps(500);
+    }
+
+    // ============ quoteDeployerBuy ============
+
+    /// @dev quoteDeployerBuy returns correct ETH that yields exactly tokenAmount
+    function test_quoteDeployerBuy_roundTrip() public {
+        uint256 tokenAmount = 50_000_000e18; // 5% of supply
+        (uint256 totalEthNeeded,,) = factoryTax.quoteDeployerBuy(tokenAmount);
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token =
+            factoryTax.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+    }
+
+    /// @dev quoteDeployerBuy at max allowed tokens does not revert on createToken
+    function test_quoteDeployerBuy_maxAllowedTokens_doesNotRevert() public {
+        uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxDeployerBuyBps() / 10_000;
+        (uint256 totalEthNeeded,,) = factoryTax.quoteDeployerBuy(maxTokens);
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token =
+            factoryTax.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, maxTokens);
     }
 }
