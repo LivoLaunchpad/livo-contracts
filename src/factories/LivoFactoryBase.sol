@@ -35,7 +35,7 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
     ILivoFeeSplitter public immutable FEE_SPLITTER_IMPLEMENTATION;
 
     /// @notice Max percentage of total supply the deployer can buy on token creation (in basis points)
-    uint256 public maxDeployerBuyBps;
+    uint256 public maxDeployerBuyBps = 1_000; // 10%
 
     /// @notice Initializes the factory with its immutable dependencies
     constructor(
@@ -44,8 +44,7 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
         address bondingCurve,
         address graduator,
         address feeHandler,
-        address feeSplitterImplementation,
-        uint256 maxDeployerBuyBps_
+        address feeSplitterImplementation
     ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         TOKEN_IMPLEMENTATION = ILivoToken(tokenImplementation);
@@ -53,8 +52,6 @@ contract LivoFactoryBase is ILivoFactory, Ownable2Step {
         GRADUATOR = ILivoGraduator(graduator);
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
         FEE_SPLITTER_IMPLEMENTATION = ILivoFeeSplitter(feeSplitterImplementation);
-        maxDeployerBuyBps = maxDeployerBuyBps_;
-        emit MaxDeployerBuyBpsUpdated(maxDeployerBuyBps_);
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////

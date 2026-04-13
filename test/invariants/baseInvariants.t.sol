@@ -92,8 +92,7 @@ contract LaunchpadInvariants is Test {
             address(bondingCurve),
             address(graduatorV2),
             address(feeHandler),
-            address(feeSplitterImpl),
-            1_000
+            address(feeSplitterImpl)
         );
 
         factoryV4 = new LivoFactoryBase(
@@ -102,8 +101,7 @@ contract LaunchpadInvariants is Test {
             address(bondingCurve),
             address(graduatorV4),
             address(feeHandler),
-            address(feeSplitterImpl),
-            1_000
+            address(feeSplitterImpl)
         );
 
         launchpad.whitelistFactory(address(factoryV2));
