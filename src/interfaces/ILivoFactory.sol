@@ -19,10 +19,15 @@ interface ILivoFactory {
         address indexed token, address indexed feeSplitter, address[] recipients, uint256[] sharesBps
     );
 
+    event DeployerBuy(address indexed token, address indexed buyer, uint256 ethSpent, uint256 tokensBought);
+
+    event MaxDeployerBuyBpsUpdated(uint256 newMaxDeployerBuyBps);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();
     error InvalidTokenOwner();
     error InvalidFeeReceiver();
     error InvalidTokenAddress();
+    error InvalidDeployerBuy();
 }

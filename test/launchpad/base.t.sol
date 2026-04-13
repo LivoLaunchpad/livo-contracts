@@ -29,8 +29,14 @@ contract TestLivoFactory is LivoFactoryBase {
         address bondingCurve,
         address graduator,
         address feeHandler,
-        address feeSplitterImplementation
-    ) LivoFactoryBase(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {}
+        address feeSplitterImplementation,
+        address admin,
+        uint256 maxDeployerBuyBps_
+    )
+        LivoFactoryBase(
+            launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation, admin, maxDeployerBuyBps_
+        )
+    {}
 }
 
 contract LaunchpadBaseTests is Test {
@@ -154,7 +160,9 @@ contract LaunchpadBaseTests is Test {
             address(bondingCurve),
             address(graduatorV2),
             address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeSplitterImpl),
+            admin,
+            1_000 // 10% max deployer buy
         );
 
         factoryV4 = new TestLivoFactory(
@@ -163,7 +171,9 @@ contract LaunchpadBaseTests is Test {
             address(bondingCurve),
             address(graduatorV4),
             address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeSplitterImpl),
+            admin,
+            1_000 // 10% max deployer buy
         );
 
         factoryTax = new LivoFactoryTaxToken(
@@ -172,7 +182,9 @@ contract LaunchpadBaseTests is Test {
             address(bondingCurve),
             address(graduatorV4),
             address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeSplitterImpl),
+            admin,
+            1_000 // 10% max deployer buy
         );
 
         launchpad.whitelistFactory(address(factoryV2));

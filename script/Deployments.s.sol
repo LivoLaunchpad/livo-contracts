@@ -191,7 +191,9 @@ contract Deployments is Script {
             address(bondingCurve),
             address(graduatorV2),
             address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeSplitterImpl),
+            msg.sender,
+            1_000 // 10% max deployer buy
         );
         console.log("| LivoFactory (V2) | ", address(factoryV2));
         LivoFactoryBase factoryV4 = new LivoFactoryBase(
@@ -200,7 +202,9 @@ contract Deployments is Script {
             address(bondingCurve),
             address(graduatorV4),
             address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeSplitterImpl),
+            msg.sender,
+            1_000 // 10% max deployer buy
         );
         console.log("| LivoFactory (V4) | ", address(factoryV4));
 
@@ -210,7 +214,9 @@ contract Deployments is Script {
             address(bondingCurve),
             address(graduatorV4),
             address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeSplitterImpl),
+            msg.sender,
+            1_000 // 10% max deployer buy
         );
         console.log("| LivoFactoryTaxToken (V4) | ", address(factoryTax));
 
