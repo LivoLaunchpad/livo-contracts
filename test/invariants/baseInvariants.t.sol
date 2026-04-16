@@ -8,6 +8,7 @@ import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBond
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
@@ -22,7 +23,7 @@ contract LaunchpadInvariants is Test {
     ConstantProductBondingCurve public bondingCurve;
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
-    LivoFactoryBase public factoryV2;
+    LivoFactoryUniV2 public factoryV2;
     LivoFactoryBase public factoryV4;
     LivoFeeHandler public feeHandler;
 
@@ -86,13 +87,8 @@ contract LaunchpadInvariants is Test {
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
-        factoryV2 = new LivoFactoryBase(
-            address(launchpad),
-            address(tokenImplementation),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
+        factoryV2 = new LivoFactoryUniV2(
+            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV2)
         );
 
         factoryV4 = new LivoFactoryBase(

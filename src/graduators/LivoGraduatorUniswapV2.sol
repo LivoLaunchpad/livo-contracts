@@ -12,12 +12,8 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
-    /// @notice Graduation ETH fee split between creator and treasury
+    /// @notice Graduation ETH fee sent entirely to treasury
     uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
-
-    /// @notice ETH compensation paid to token creator at graduation
-    /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
 
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
@@ -156,17 +152,12 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         require(msg.value > GRADUATION_ETH_FEE, NotEnoughEthForGraduation());
 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
-        uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
-        // Deposit creator compensation through the token
-        emit CreatorGraduationFeeCollected(tokenAddress, CREATOR_GRADUATION_COMPENSATION);
-        ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
-
-        // Send treasury share directly to treasury
+        // Send entire graduation fee to treasury
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-        (bool success,) = treasury.call{value: treasuryShare}("");
+        (bool success,) = treasury.call{value: GRADUATION_ETH_FEE}("");
         require(success, EtherTransferFailed());
-        emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
+        emit TreasuryGraduationFeeCollected(tokenAddress, GRADUATION_ETH_FEE);
     }
 
     function _cleanup(address tokenAddress) internal {

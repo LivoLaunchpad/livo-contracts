@@ -9,6 +9,7 @@ import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol"
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
@@ -185,15 +186,9 @@ contract Deployments is Script {
         console.log("| LivoFeeSplitter (impl) | ", address(feeSplitterImpl));
 
         // 10. Deploy factories
-        LivoFactoryBase factoryV2 = new LivoFactoryBase(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-        console.log("| LivoFactory (V2) | ", address(factoryV2));
+        LivoFactoryUniV2 factoryV2 =
+            new LivoFactoryUniV2(address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2));
+        console.log("| LivoFactoryUniV2 (V2) | ", address(factoryV2));
         LivoFactoryBase factoryV4 = new LivoFactoryBase(
             address(launchpad),
             address(livoToken),

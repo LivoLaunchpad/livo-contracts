@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 
-contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
+contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv4Graduator {
     modifier proposedOwner(address currentOwner, address nextOwner) {
         vm.prank(currentOwner);
         ILivoToken(testToken).proposeNewOwner(nextOwner);
