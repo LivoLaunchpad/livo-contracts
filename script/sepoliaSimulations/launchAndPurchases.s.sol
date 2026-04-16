@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
@@ -16,7 +17,7 @@ contract BuySellSimulations is Script {
         address factoryTaxAddress = vm.envAddress("FACTORY_TAX");
 
         LivoLaunchpad launchpad = LivoLaunchpad(launchpadAddress);
-        LivoFactoryBase factoryV2 = LivoFactoryBase(factoryV2Address);
+        LivoFactoryUniV2 factoryV2 = LivoFactoryUniV2(factoryV2Address);
         LivoFactoryBase factoryV4 = LivoFactoryBase(factoryV4Address);
         LivoFactoryTaxToken factoryTax = LivoFactoryTaxToken(factoryTaxAddress);
 
