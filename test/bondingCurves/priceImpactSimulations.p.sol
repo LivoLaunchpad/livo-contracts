@@ -20,9 +20,7 @@ contract ConstantProductPriceImpactSimulations is Test {
         // bps: 100 = 1.00%. Print as "X.YZ%" with 2 decimals.
         uint256 whole = bps / 100;
         uint256 frac = bps % 100;
-        string memory fracStr = frac < 10
-            ? string.concat("0", vm.toString(frac))
-            : vm.toString(frac);
+        string memory fracStr = frac < 10 ? string.concat("0", vm.toString(frac)) : vm.toString(frac);
         return string.concat(vm.toString(whole), ".", fracStr, "%");
     }
 
