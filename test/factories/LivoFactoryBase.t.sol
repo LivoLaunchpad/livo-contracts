@@ -34,7 +34,7 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(token.totalSupply(), TOTAL_SUPPLY);
         assertEq(token.balanceOf(address(launchpad)), TOTAL_SUPPLY);
         assertEq(token.graduator(), address(graduatorV2));
-        assertEq(token.owner(), creator);
+        assertEq(token.owner(), address(0));
 
         TokenConfig memory config = launchpad.getTokenConfig(deployedToken);
         assertEq(address(config.bondingCurve), address(bondingCurve));

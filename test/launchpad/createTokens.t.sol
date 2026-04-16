@@ -7,7 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
@@ -29,7 +29,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         TokenConfig memory config = launchpad.getTokenConfig(deployedToken);
         assertEq(address(config.bondingCurve), address(bondingCurve));
-        assertEq(token.owner(), creator);
+        assertEq(token.owner(), address(0));
         assertApproxEqRel(config.bondingCurve.getGraduationConfig().ethGraduationThreshold, GRADUATION_THRESHOLD, 1e10);
 
         TokenState memory state = launchpad.getTokenState(deployedToken);
