@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv2Graduator, LaunchpadBaseTestsWithUniv4GraduatorTaxableToken} from "./base.t.sol";
+import {
+    LaunchpadBaseTestsWithUniv2Graduator,
+    LaunchpadBaseTestsWithUniv4Graduator,
+    LaunchpadBaseTestsWithUniv4GraduatorTaxableToken
+} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
@@ -141,6 +145,32 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
         factoryV2.createToken("TestToken", "TEST", address(0), "0x12");
+    }
+}
+
+contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
+    function test_createToken_v4_happyPath() public {
+        vm.prank(creator);
+        address deployedToken =
+            factoryV4.createToken("TestToken", "TEST", creator, _nextValidSalt(address(factoryV4), address(livoToken)));
+
+        assertTrue(deployedToken != address(0));
+
+        LivoToken token = LivoToken(deployedToken);
+        assertEq(token.name(), "TestToken");
+        assertEq(token.symbol(), "TEST");
+        assertEq(token.totalSupply(), TOTAL_SUPPLY);
+        assertEq(token.balanceOf(address(launchpad)), TOTAL_SUPPLY);
+        assertEq(token.graduator(), address(graduatorV4));
+        assertEq(token.owner(), creator);
+
+        TokenConfig memory config = launchpad.getTokenConfig(deployedToken);
+        assertEq(address(config.bondingCurve), address(bondingCurve));
+        assertApproxEqRel(config.bondingCurve.getGraduationConfig().ethGraduationThreshold, GRADUATION_THRESHOLD, 1e10);
+
+        TokenState memory state = launchpad.getTokenState(deployedToken);
+        assertEq(state.ethCollected, 0);
+        assertEq(state.graduated, false);
     }
 }
 
