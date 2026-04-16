@@ -16,12 +16,12 @@ import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 550, uint32(4 days));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 401, uint32(4 days));
     }
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(15 days));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 400, uint32(15 days));
     }
 
     function test_markGraduateOnlyGraduatorAllowed() public createDefaultTaxToken {

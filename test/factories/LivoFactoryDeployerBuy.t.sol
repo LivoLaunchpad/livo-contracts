@@ -152,7 +152,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         address token =
-            factoryTax.createToken{value: ethToSpend}("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+            factoryTax.createToken{value: ethToSpend}("TestToken", "TEST", creator, salt, 0, 400, uint32(14 days));
 
         uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
         assertGt(creatorBalance, 0);
@@ -165,7 +165,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        address token = factoryTax.createToken("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+        address token = factoryTax.createToken("TestToken", "TEST", creator, salt, 0, 400, uint32(14 days));
 
         assertEq(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), 0);
     }
@@ -178,7 +178,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidDeployerBuy.selector));
-        factoryTax.createToken{value: 1 ether}("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+        factoryTax.createToken{value: 1 ether}("TestToken", "TEST", creator, salt, 0, 400, uint32(14 days));
     }
 
     // ============ Admin: setMaxDeployerBuyBps ============
@@ -208,7 +208,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         address token =
-            factoryTax.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+            factoryTax.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt, 0, 400, uint32(14 days));
 
         uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
         assertGe(creatorBalance, tokenAmount);
@@ -223,7 +223,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         address token =
-            factoryTax.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt, 0, 500, uint32(14 days));
+            factoryTax.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt, 0, 400, uint32(14 days));
 
         uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
         assertGe(creatorBalance, maxTokens);
