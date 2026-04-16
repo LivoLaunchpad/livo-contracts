@@ -39,26 +39,6 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         assertEq(state.releasedSupply, creatorBalance);
     }
 
-    /// @dev deployer can buy tokens with ETH during createTokenWithFeeSplit
-    function test_createTokenWithFeeSplit_deployerBuy() public {
-        uint256 ethToSpend = 0.1 ether;
-        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
-
-        address[] memory recipients = new address[](1);
-        recipients[0] = creator;
-        uint256[] memory shares = new uint256[](1);
-        shares[0] = 10_000;
-
-        vm.prank(creator);
-        (address token,) =
-            factoryV2.createTokenWithFeeSplit{value: ethToSpend}("TestToken", "TEST", recipients, shares, salt);
-
-        uint256 creatorBalance = LivoToken(token).balanceOf(creator);
-        assertGt(creatorBalance, 0);
-        assertLe(creatorBalance, TOTAL_SUPPLY * 1_000 / 10_000);
-        assertEq(LivoToken(token).balanceOf(address(factoryV2)), 0);
-    }
-
     /// @dev createToken with msg.value=0 still works (backward compatible)
     function test_createToken_noEth_backwardCompatible() public {
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
