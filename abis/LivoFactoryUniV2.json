@@ -21,16 +21,6 @@
         "name": "graduator",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "feeHandler",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "feeSplitterImplementation",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -148,11 +138,6 @@
         "internalType": "string"
       },
       {
-        "name": "feeReceiver",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "salt",
         "type": "bytes32",
         "internalType": "bytes32"
@@ -161,50 +146,6 @@
     "outputs": [
       {
         "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "createTokenWithFeeSplit",
-    "inputs": [
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "symbol",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "recipients",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "sharesBps",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      },
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "feeSplitter",
         "type": "address",
         "internalType": "address"
       }

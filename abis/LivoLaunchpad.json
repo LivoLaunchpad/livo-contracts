@@ -6,6 +6,11 @@
         "name": "_treasury",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_owner",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
