@@ -35,13 +35,9 @@ contract TestLivoFactory is LivoFactoryBase {
 }
 
 contract TestLivoFactoryUniV2 is LivoFactoryUniV2 {
-    constructor(
-        address launchpad,
-        address tokenImplementation,
-        address bondingCurve,
-        address graduator,
-        address feeHandler
-    ) LivoFactoryUniV2(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler) {}
+    constructor(address launchpad, address tokenImplementation, address bondingCurve, address graduator)
+        LivoFactoryUniV2(launchpad, tokenImplementation, bondingCurve, graduator)
+    {}
 }
 
 contract LaunchpadBaseTests is Test {
@@ -160,11 +156,7 @@ contract LaunchpadBaseTests is Test {
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
         factoryV2 = new TestLivoFactoryUniV2(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler)
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2)
         );
 
         factoryV4 = new TestLivoFactory(
@@ -211,9 +203,8 @@ contract LaunchpadBaseTests is Test {
                 );
             }
         } else {
-            testToken = factoryV2.createToken(
-                "TestToken", "TEST", creator, _nextValidSalt(address(factoryV2), address(livoToken))
-            );
+            testToken =
+                factoryV2.createToken("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
         }
         _;
     }

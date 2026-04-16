@@ -23,7 +23,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        address token = factoryV2.createToken{value: ethToSpend}("TestToken", "TEST", creator, salt);
+        address token = factoryV2.createToken{value: ethToSpend}("TestToken", "TEST", salt);
 
         // deployer received tokens
         uint256 creatorBalance = LivoToken(token).balanceOf(creator);
@@ -44,7 +44,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        address token = factoryV2.createToken("TestToken", "TEST", creator, salt);
+        address token = factoryV2.createToken("TestToken", "TEST", salt);
 
         assertEq(LivoToken(token).balanceOf(creator), 0);
         assertEq(LivoToken(token).balanceOf(address(launchpad)), TOTAL_SUPPLY);
@@ -59,7 +59,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidDeployerBuy.selector));
-        factoryV2.createToken{value: 1 ether}("TestToken", "TEST", creator, salt);
+        factoryV2.createToken{value: 1 ether}("TestToken", "TEST", salt);
     }
 
     // ============ Events ============
@@ -72,7 +72,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         vm.prank(creator);
         vm.expectEmit(false, true, false, false);
         emit ILivoFactory.DeployerBuy(address(0), creator, 0, 0); // only check buyer indexed param
-        factoryV2.createToken{value: ethToSpend}("TestToken", "TEST", creator, salt);
+        factoryV2.createToken{value: ethToSpend}("TestToken", "TEST", salt);
     }
 
     // ============ Admin: setMaxDeployerBuyBps ============
@@ -100,7 +100,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidDeployerBuy.selector));
-        factoryV2.createToken{value: 0.01 ether}("TestToken", "TEST", creator, salt);
+        factoryV2.createToken{value: 0.01 ether}("TestToken", "TEST", salt);
     }
 
     /// @dev MaxDeployerBuyBpsUpdated event is emitted
@@ -121,7 +121,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        address token = factoryV2.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt);
+        address token = factoryV2.createToken{value: totalEthNeeded}("TestToken", "TEST", salt);
 
         uint256 creatorBalance = LivoToken(token).balanceOf(creator);
         assertGe(creatorBalance, tokenAmount);
@@ -135,7 +135,7 @@ contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        address token = factoryV2.createToken{value: totalEthNeeded}("TestToken", "TEST", creator, salt);
+        address token = factoryV2.createToken{value: totalEthNeeded}("TestToken", "TEST", salt);
 
         uint256 creatorBalance = LivoToken(token).balanceOf(creator);
         assertGe(creatorBalance, maxTokens);

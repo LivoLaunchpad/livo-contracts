@@ -58,7 +58,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     }
 
     /// @notice creator gets the CREATOR_GRADUATION_COMPENSATION at graduation
-    function test_creatorGetsGraduationCompensation() public createTestToken {
+    function test_creatorGetsGraduationCompensation() public virtual createTestToken {
         ILivoFeeHandler tokenFeeHandler = _tokenFeeHandler();
 
         address[] memory _tokens = new address[](1);
@@ -127,7 +127,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     }
 
     /// @notice Test that at graduation the team collects the graduation fee in eth (sent directly to treasury)
-    function test_teamCollectsGraduationFeeInEthAtGraduation() public createTestToken {
+    function test_teamCollectsGraduationFeeInEthAtGraduation() public virtual createTestToken {
         uint256 treasuryBalanceBefore = treasury.balance;
 
         // Calculate the ETH that will be spent to graduate (for trading fee calculation)
@@ -227,7 +227,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     }
 
     /// @notice Test that eth treasury balance change at graduation is the graduation fee or larger (including the trading fee)
-    function test_treasuryEthBalanceChangeAtGraduationAccountsForGraduationFee() public createTestToken {
+    function test_treasuryEthBalanceChangeAtGraduationAccountsForGraduationFee() public virtual createTestToken {
         vm.deal(buyer, 100 ether);
 
         uint256 treasuryEthBefore = treasury.balance;
@@ -323,8 +323,61 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
         super.setUp();
     }
 
-    function _tokenFeeHandler() internal view override returns (ILivoFeeHandler) {
-        return ILivoFeeHandler(ILivoToken(testToken).feeHandler());
+    /// @dev V2 tokens have no fee handler
+    function _tokenFeeHandler() internal pure override returns (ILivoFeeHandler) {
+        revert("V2 tokens have no fee handler");
+    }
+
+    /// @notice V2 tokens have no creator graduation compensation
+    function test_creatorGetsGraduationCompensation() public override createTestToken {
+        // V2 tokens have no fee handler and no creator compensation — nothing to assert
+    }
+
+    /// @notice V2: full graduation fee goes to treasury (no creator split)
+    function test_teamCollectsGraduationFeeInEthAtGraduation() public override createTestToken {
+        uint256 treasuryBalanceBefore = treasury.balance;
+
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        uint256 expectedTradingFee = (missingForGraduation * BASE_BUY_FEE_BPS) / 10000;
+
+        _graduateToken();
+
+        uint256 feeCollected = treasury.balance - treasuryBalanceBefore;
+        assertEq(
+            feeCollected,
+            GRADUATION_FEE + expectedTradingFee,
+            "Treasury should receive full graduation fee plus trading fees"
+        );
+    }
+
+    /// @notice V2: full graduation fee goes to treasury (no creator split)
+    function test_treasuryEthBalanceChangeAtGraduationAccountsForGraduationFee() public override createTestToken {
+        vm.deal(buyer, 100 ether);
+
+        uint256 treasuryEthBefore = treasury.balance;
+
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
+        uint256 expectedTradingFees = ((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
+        assertEq(treasury.balance - treasuryEthBefore, expectedTradingFees, "Treasury should collect expected fees");
+
+        uint256 treasuryBalanceBeforeGraduation = treasury.balance;
+
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+
+        uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
+        uint256 totalTreasuryChange = treasury.balance - treasuryBalanceBeforeGraduation;
+
+        assertEq(
+            totalTreasuryChange,
+            tradingFee + GRADUATION_FEE,
+            "Treasury should collect full graduation fee (plus trading fee)"
+        );
     }
 }
 
