@@ -1019,4 +1019,70 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 feesExclGraduation = creatorReceived - graduationDeposit;
         assertGt(feesExclGraduation, buyFees, "Total fees should exceed buy-only fees (sell fees also included)");
     }
+
+    /////////////////////////////////// CATEGORY 9: MAX TOTAL FEE CAP ///////////////////////////////////
+
+    /// @notice With max buy/sell tax (4%) + LP fee (1%), total fee on a buy should not exceed 5%
+    function test_maxTaxToken_buyTotalFeeDoesNotExceed5Percent() public {
+        // Create token with max buy and sell tax (4% each)
+        testToken = _createTaxToken(400, 400, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        uint256 creatorBefore = _pendingTaxes(testToken, creator);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryBefore;
+        uint256 totalFees = creatorDelta + treasuryDelta;
+
+        // Total fees = LP fee (1%) + buy tax (4%) = 5% of buyAmount
+        uint256 maxAllowedFees = (buyAmount * 500) / 10000; // 5%
+        assertLe(totalFees, maxAllowedFees + 1, "Total buy fees (LP + tax) must not exceed 5%");
+
+        // Verify they are approximately 5%
+        assertApproxEqRel(totalFees, maxAllowedFees, 0.0000015e18, "Total buy fees should be ~5%");
+    }
+
+    /// @notice With max sell tax (4%) + LP fee (1%), total fee on a sell should not exceed 5%
+    function test_maxTaxToken_sellTotalFeeDoesNotExceed5Percent() public {
+        // Create token with max buy and sell tax (4% each)
+        testToken = _createTaxToken(400, 400, DEFAULT_TAX_DURATION);
+
+        // Buy tokens on bonding curve first
+        vm.deal(buyer, 3 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+
+        _graduateToken();
+
+        uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
+        uint256 sellAmount = buyerTokenBalance / 2;
+
+        uint256 creatorBefore = _pendingTaxes(testToken, creator);
+        uint256 treasuryBefore = treasury.balance;
+        uint256 buyerEthBefore = buyer.balance;
+
+        _swapSell(buyer, sellAmount, 0, true);
+
+        uint256 buyerEthAfter = buyer.balance;
+        uint256 ethReceived = buyerEthAfter - buyerEthBefore;
+
+        uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryBefore;
+        uint256 totalFees = creatorDelta + treasuryDelta;
+
+        // gross = ethReceived + totalFees
+        uint256 grossAmount = ethReceived + totalFees;
+
+        // Total fees should be 5% of gross (LP 1% + sell tax 4%)
+        uint256 maxAllowedFees = (grossAmount * 500) / 10000;
+        assertLe(totalFees, maxAllowedFees + 1, "Total sell fees (LP + tax) must not exceed 5%");
+
+        // Verify they are approximately 5%
+        assertApproxEqRel(totalFees, maxAllowedFees, 0.00015e18, "Total sell fees should be ~5%");
+    }
 }
