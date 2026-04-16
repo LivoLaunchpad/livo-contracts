@@ -194,7 +194,7 @@ contract LaunchpadBaseTests is Test {
                     creator,
                     _nextValidSalt(address(factoryTax), address(livoTaxToken)),
                     0,
-                    500,
+                    400,
                     uint32(14 days)
                 );
             } else {
@@ -247,7 +247,7 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
 }
 
 contract LaunchpadBaseTestsWithUniv4GraduatorTaxableToken is LaunchpadBaseTests {
-    uint256 public SELL_TAX_BPS = 500; // 5% sell tax
+    uint256 public SELL_TAX_BPS = 400; // 4% sell tax
 
     function setUp() public virtual override {
         super.setUp();

@@ -15,7 +15,7 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
     error InvalidTaxDuration();
 
     /// @notice max configurable tax (buy or sell)
-    uint256 public constant MAX_TAX_BPS = 500;
+    uint256 public constant MAX_TAX_BPS = 400;
 
     /// @notice max configurable sell tax duration
     uint256 public constant MAX_SELL_TAX_DURATION_SECONDS = 14 days;

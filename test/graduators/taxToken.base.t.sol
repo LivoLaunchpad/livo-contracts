@@ -24,7 +24,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     LivoTaxableTokenUniV4 public taxTokenImpl;
 
     // Default tax configuration
-    uint16 public constant DEFAULT_SELL_TAX_BPS = 500; // 5%
+    uint16 public constant DEFAULT_SELL_TAX_BPS = 400; // 4%
     uint40 public constant DEFAULT_TAX_DURATION = 14 days;
 
     // WETH address for tax assertions
@@ -39,7 +39,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     }
 
     /// @notice Helper to create a tax token with custom configuration
-    /// @param sellTaxBps Sell tax rate in basis points (max 500)
+    /// @param sellTaxBps Sell tax rate in basis points (max 400)
     /// @param taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return tokenAddress The address of the created tax token
     function _createTaxToken(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds)
