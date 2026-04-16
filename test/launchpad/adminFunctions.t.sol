@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 
-contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
+contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
     address public nonOwner = makeAddr("nonOwner");
     address public newTreasury = makeAddr("newTreasury");
 
