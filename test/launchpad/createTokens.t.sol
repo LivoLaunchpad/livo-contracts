@@ -138,6 +138,13 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 }
 
 contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
+    /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
+    function test_createToken_v4_revertsOnZeroFeeReceiver() public {
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
+        factoryV4.createToken("TestToken", "TEST", address(0), "0x12");
+    }
+
     function test_createToken_v4_happyPath() public {
         vm.prank(creator);
         address deployedToken =
