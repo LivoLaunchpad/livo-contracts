@@ -14,11 +14,10 @@ contract LivoFactoryUniV2 is LivoFactoryAbstract {
         address tokenImplementation,
         address bondingCurve,
         address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
+        address feeHandler
     )
         LivoFactoryAbstract(
-            launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation
+            launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, address(0)
         )
     {}
 

@@ -191,8 +191,7 @@ contract Deployments is Script {
             address(livoToken),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
         console.log("| LivoFactoryUniV2 (V2) | ", address(factoryV2));
         LivoFactoryBase factoryV4 = new LivoFactoryBase(
