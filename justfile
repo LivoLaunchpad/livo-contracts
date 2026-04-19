@@ -50,6 +50,16 @@ error-inspection errorhex:
 taxtokenaddresses:
     sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
 
+# Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
+# Usage: just next-salt <factoryAddress>
+next-salt factory:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IMPL=$(cast call --rpc-url $SEPOLIA_RPC_URL {{factory}} "TOKEN_IMPLEMENTATION()(address)")
+    INIT_CODE="0x3d602d80600a3d3981f3363d3d373d3d3d363d73${IMPL:2}5af43d82803e903d91602b57fd5bf3"
+    cast create2 --ends-with 1110 --deployer {{factory}} --init-code "$INIT_CODE" \
+        | awk '/^Salt:/ {print $2}'
+
 ##################### Deployed addresses (sepolia) #######################
 launchpad := "0xd9f8bbe437a3423b725c6616C1B543775ecf1110"
 
@@ -57,9 +67,9 @@ bondingCurve := "0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5"
 graduatorV2 := "0x7131c8141cd356dF22a9d30B292DB3f64B281AA5"
 graduatorV4 := "0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d"
 
-factoryV2 := "0x4b092C01952d8e87bd0eAEdc28737d0154619e8C"
-factoryV4 := "0x64Dac1DcBbB9dE3c00446f4baE90df9cC899E003"
-factoryTaxToken := "0x5ba05f2326e73D46d66bf80aF43a768CEd2e4a5d"
+factoryV2 := "0xB9f6A65AcA320e9Bca352620C4c75040B92DaC10"
+factoryV4 := "0xE6A46F0c681F7F67b349C77Ff2329dB4F016691E"
+factoryTaxToken := "0x124972595Af23c2FbEE4b77a24ceF8d6af800016"
 hookAddress := "0x0591a87D3a56797812C4DA164C1B005c545400Cc"
 
 # ##################### Create tokens #######################
@@ -73,23 +83,39 @@ deploy-sepolia: taxtokenaddresses
     # Hook address is logged in deployment output (LivoSwapHook row)
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
-create-token-v2 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} "createToken(string,string,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 0x1230000000000000000000000000000000000000000000000000000000000000
+create-token-v2 tokenName value="0":
+    SALT=$(just next-salt {{factoryV2}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \
+            "createToken(string,string,bytes32)" \
+            {{tokenName}} {{uppercase(tokenName)}} "$SALT" --value {{value}}
 
-create-token-v4 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} "createToken(string,string,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 0x1230000000000000000000000000000000000000000000000000000000000001
+create-token-v4 tokenName value="0":
+    SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
+            "createToken(string,string,address,bytes32)" \
+            {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 "$SALT" --value {{value}}
 
-create-tax-token tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} "createToken(string,string,address,bytes32,uint16,uint16,uint32)" {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 0x1230000000000000000000000000000000000000000000000000000000000001 300 500 1209600
+create-tax-token tokenName value="0":
+    SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
+            "createToken(string,string,address,bytes32,uint16,uint16,uint32)" \
+            {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 "$SALT" 300 500 1209600 --value {{value}}
 
-create-token-v2-feesplit tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000000
+create-token-v4-feesplit tokenName value="0":
+    SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
+            "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32)" \
+            {{tokenName}} {{uppercase(tokenName)}} \
+            "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" \
+            "[3000,7000]" "$SALT" --value {{value}}
 
-create-token-v4-feesplit tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000001
-
-create-tax-token-feesplit tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32,uint16,uint16,uint32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000001 300 500 1209600
+create-tax-token-feesplit tokenName value="0":
+    SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
+            "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32,uint16,uint16,uint32)" \
+            {{tokenName}} {{uppercase(tokenName)}} \
+            "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" \
+            "[3000,7000]" "$SALT" 300 500 1209600 --value {{value}}
 
 ####################### Buys / sells #################################
 
