@@ -18,7 +18,7 @@ import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     using SafeERC20 for IERC20;
 
-    uint256 public constant BASIS_POINTS = 10_000;
+    uint256 internal constant BASIS_POINTS = 10_000;
 
     /// @notice Token implementation contract used as the clone source
     ILivoToken internal _tokenImplementation;
