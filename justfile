@@ -70,6 +70,7 @@ graduatorV4 := "0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d"
 factoryV2 := "0xB9f6A65AcA320e9Bca352620C4c75040B92DaC10"
 factoryV4 := "0xE6A46F0c681F7F67b349C77Ff2329dB4F016691E"
 factoryTaxToken := "0x124972595Af23c2FbEE4b77a24ceF8d6af800016"
+factoryExtendedTax := "0x2Ac66442930112836152D426d95634c274cF2aaf"
 hookAddress := "0x0591a87D3a56797812C4DA164C1B005c545400Cc"
 
 # ##################### Create tokens #######################
@@ -116,6 +117,21 @@ create-tax-token-feesplit tokenName value="0":
             {{tokenName}} {{uppercase(tokenName)}} \
             "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" \
             "[3000,7000]" "$SALT" 300 500 1209600 --value {{value}}
+
+# ExtendedTax factory: owner-only, 10% tax cap, no duration cap. Defaults shown: buy=800, sell=1000, duration=365 days.
+create-extended-tax-token tokenName value="0":
+    SALT=$(just next-salt {{factoryExtendedTax}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryExtendedTax}} \
+            "createToken(string,string,address,bytes32,uint16,uint16,uint32)" \
+            {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 "$SALT" 800 1000 31536000 --value {{value}}
+
+create-extended-tax-token-feesplit tokenName value="0":
+    SALT=$(just next-salt {{factoryExtendedTax}}) && echo "Using salt: $SALT" && \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryExtendedTax}} \
+            "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32,uint16,uint16,uint32)" \
+            {{tokenName}} {{uppercase(tokenName)}} \
+            "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" \
+            "[3000,7000]" "$SALT" 800 1000 31536000 --value {{value}}
 
 ####################### Buys / sells #################################
 

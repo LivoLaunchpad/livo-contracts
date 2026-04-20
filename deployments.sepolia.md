@@ -16,6 +16,7 @@
 | LivoFactory (V2)            | 0xB9f6A65AcA320e9Bca352620C4c75040B92DaC10 |
 | LivoFactory (V4)            | 0xE6A46F0c681F7F67b349C77Ff2329dB4F016691E |
 | LivoFactoryTaxToken (V4)    | 0x124972595Af23c2FbEE4b77a24ceF8d6af800016 |
+| LivoFactoryExtendedTax (V4) | 0x2Ac66442930112836152D426d95634c274cF2aaf |
 
 ## Accounts
 
