@@ -32,12 +32,10 @@ contract LivoFactoryUniV2 is LivoFactoryAbstract {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _createAndInitializeToken(
-        string calldata name,
-        string calldata symbol,
-        address feeReceiver,
-        bytes32 salt
-    ) internal returns (address token) {
+    function _createAndInitializeToken(string calldata name, string calldata symbol, address feeReceiver, bytes32 salt)
+        internal
+        returns (address token)
+    {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
 
