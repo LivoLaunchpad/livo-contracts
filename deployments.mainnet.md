@@ -16,13 +16,15 @@
 | LivoFactory (V2)            | 0x2f5ECd7095B7943b4B331BA037BfFCd70282C1a8 |
 | LivoFactory (V4)            | 0xfd68Ca33f04f6604Dad8F99F8fB31A354434a2e5 |
 | LivoFactoryTaxToken (V4)    | 0xa13cd72870f73c76f0E2a9f97600663fA3913Cb6 |
+| LivoFactoryExtendedTax (V4) | 0xe926Eb8F6ba997E5b45247eCE800c0A27E539e57 |
 
 ## Accounts
 
-| **Name**      | **Address**                                  |
-| ------------- | -------------------------------------------- |
-| Livo Deployer | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
-| Livo Treasury | `0x2F56CB340FeA590a2A801081118bF3143309329D` |
+| **Name**            | **Address**                                  |
+| ------------------- | -------------------------------------------- |
+| Livo Deployer       | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
+| Livo Treasury       | `0x2F56CB340FeA590a2A801081118bF3143309329D` |
+| Livo Token Deployer | `0x566CB296539672bB2419F403d292544E9Abf7815` |
 
 ## Integrations
 

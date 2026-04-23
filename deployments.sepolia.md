@@ -20,9 +20,10 @@
 
 ## Accounts
 
-| **Name**      | **Address**                                  |
-| ------------- | -------------------------------------------- |
-| Livo Deployer | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
+| **Name**            | **Address**                                  |
+| ------------------- | -------------------------------------------- |
+| Livo Dev            | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
+| Livo Token Deployer | `0x566CB296539672bB2419F403d292544E9Abf7815` |
 
 ## Integrations
 
