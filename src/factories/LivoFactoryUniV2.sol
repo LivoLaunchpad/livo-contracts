@@ -9,25 +9,30 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Factory for deploying standard Livo tokens on Uniswap V2 with ownership renounced at creation
 contract LivoFactoryUniV2 is LivoFactoryAbstract {
-    constructor(address launchpad, address tokenImplementation, address bondingCurve, address graduator)
-        LivoFactoryAbstract(launchpad, tokenImplementation, bondingCurve, graduator, address(0), address(0))
-    {}
+    constructor(
+        address launchpad,
+        address tokenImplementation,
+        address bondingCurve,
+        address graduator,
+        address feeHandler
+    ) LivoFactoryAbstract(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, address(0)) {}
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
     /// @notice Deploys a new token clone with ownership renounced, initializes it, and registers it in the launchpad
+    /// @dev `feeReceiver` defaults to `msg.sender` — the deployer collects post-graduation fees
     function createToken(string calldata name, string calldata symbol, bytes32 salt)
         external
         payable
         returns (address token)
     {
-        token = _createAndInitializeToken(name, symbol, salt);
+        token = _createAndInitializeToken(name, symbol, msg.sender, salt);
         if (msg.value > 0) _buyOnBehalf(token);
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _createAndInitializeToken(string calldata name, string calldata symbol, bytes32 salt)
+    function _createAndInitializeToken(string calldata name, string calldata symbol, address feeReceiver, bytes32 salt)
         internal
         returns (address token)
     {
@@ -42,7 +47,7 @@ contract LivoFactoryUniV2 is LivoFactoryAbstract {
         // creates the TokenData entity from this event, and events emitted during initialize()
         // (PairInitialized, PoolIdRegistered, etc.) depend on TokenData existing.
         emit TokenCreated(
-            token, name, symbol, address(0), address(LAUNCHPAD), address(GRADUATOR), address(0), address(0)
+            token, name, symbol, address(0), address(LAUNCHPAD), address(GRADUATOR), address(FEE_HANDLER), feeReceiver
         );
 
         LivoToken(token)
@@ -53,8 +58,8 @@ contract LivoFactoryUniV2 is LivoFactoryAbstract {
                     tokenOwner: address(0),
                     graduator: address(GRADUATOR),
                     launchpad: address(LAUNCHPAD),
-                    feeHandler: address(0),
-                    feeReceiver: address(0)
+                    feeHandler: address(FEE_HANDLER),
+                    feeReceiver: feeReceiver
                 })
             );
 
