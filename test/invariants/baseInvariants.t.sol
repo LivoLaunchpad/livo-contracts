@@ -88,7 +88,11 @@ contract LaunchpadInvariants is Test {
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
         factoryV2 = new LivoFactoryUniV2(
-            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV2)
+            address(launchpad),
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV2),
+            address(feeHandler)
         );
 
         factoryV4 = new LivoFactoryBase(
