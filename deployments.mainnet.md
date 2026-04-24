@@ -13,7 +13,7 @@
 | LivoGraduatorUniswapV2      | 0x46aF9F05825459d149ed036Bb6461E1FE8fA25D8 |
 | LivoGraduatorUniswapV4      | 0xCF6910d89d052F025ed402638e4Ae78ecDCdDfA5 |
 | LivoFeeSplitter (impl)      | 0x80d97b49169067f339934C39F3ae76C50ED046a6 |
-| LivoFactory (V2)            | 0x4e576075EA5a1acf162449af9A248c18A33D6631 |
+| LivoFactory (V2)            | 0x749cf5c70baAA1BCC2ACCF467F98A08a93eFb498 |
 | LivoFactory (V4)            | 0xfd68Ca33f04f6604Dad8F99F8fB31A354434a2e5 |
 | LivoFactoryTaxToken (V4)    | 0xa13cd72870f73c76f0E2a9f97600663fA3913Cb6 |
 | LivoFactoryExtendedTax (V4) | 0xe926Eb8F6ba997E5b45247eCE800c0A27E539e57 |
