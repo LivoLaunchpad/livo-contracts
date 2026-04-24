@@ -7,7 +7,6 @@ assignees: JacoboLansac
 
 ---
 
-cat .github/ISSUE_TEMPLATE/token-launch.yml
 name: Token launch request
 description: Request deployment of a custom token through Livo
 title: "[Launch] SYMBOL — Token Name"
