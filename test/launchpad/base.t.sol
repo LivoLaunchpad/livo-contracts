@@ -9,6 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoFactoryTaxToken as _LFTT} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFactoryExtendedTax as _LFET} from "src/factories/LivoFactoryExtendedTax.sol";
 import {LivoFactoryTaxTokenSniperProtected as _LFTTS} from "src/factories/LivoFactoryTaxTokenSniperProtected.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoFactorySniperProtected} from "src/factories/LivoFactorySniperProtected.sol";
 import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
@@ -165,31 +166,31 @@ contract LaunchpadBaseTests is Test {
         arr[0] = ILivoFactory.SupplyShare({account: account, shares: 10_000});
     }
 
-    /// @dev Build a `LivoFactoryTaxToken.TaxCfg` calldata-compatible struct for passing to `factoryTax.createToken`.
+    /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`.
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
-        returns (_LFTT.TaxCfg memory)
+        returns (TaxConfigInit memory)
     {
-        return _LFTT.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
     }
 
-    /// @dev Build a `LivoFactoryExtendedTax.TaxCfg` struct.
+    /// @dev Alias of `_taxCfg` — retained for call-site readability with `LivoFactoryExtendedTax`.
     function _taxCfgExt(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
-        returns (_LFET.TaxCfg memory)
+        returns (TaxConfigInit memory)
     {
-        return _LFET.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
     }
 
-    /// @dev Build a `LivoFactoryTaxTokenSniperProtected.TaxCfg` struct (same fields as the non-sniper one).
+    /// @dev Alias of `_taxCfg` — retained for call-site readability with `LivoFactoryTaxTokenSniperProtected`.
     function _taxCfgSniper(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
-        returns (_LFTTS.TaxCfg memory)
+        returns (TaxConfigInit memory)
     {
-        return _LFTTS.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
     }
 
     /// @dev Build a default `AntiSniperConfigs` (3% / 3% / 3h, empty whitelist).

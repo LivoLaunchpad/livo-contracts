@@ -9,6 +9,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 
@@ -431,9 +432,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 feeHandler: feeHandler,
                 feeReceiver: feeReceiver
             }),
-            100, // buyTaxBps
-            100, // sellTaxBps
-            uint40(1 days),
+            TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
         );
     }
@@ -461,9 +460,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     feeHandler: feeHandler,
                     feeReceiver: feeReceiver
                 }),
-                100,
-                100,
-                uint40(1 days),
+                TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
                     maxWalletBps: maxWalletBps,

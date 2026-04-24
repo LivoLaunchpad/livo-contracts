@@ -7,6 +7,7 @@ import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenU
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Factory for deploying sniper-protected taxable Livo tokens with Uniswap V4 hook
@@ -14,12 +15,6 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
     error InvalidTaxBps();
     error InvalidTaxDuration();
-
-    struct TaxCfg {
-        uint16 buyTaxBps;
-        uint16 sellTaxBps;
-        uint32 taxDurationSeconds;
-    }
 
     /// @notice max configurable tax (buy or sell)
     uint256 public constant MAX_TAX_BPS = 400;
@@ -51,7 +46,7 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
-        TaxCfg calldata taxCfg,
+        TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token, address feeSplitter) {
         _validateNameSymbol(name, symbol);
@@ -82,7 +77,7 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
 
     /////////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _validateTaxCfg(TaxCfg calldata taxCfg) internal pure {
+    function _validateTaxCfg(TaxConfigInit calldata taxCfg) internal pure {
         require(taxCfg.buyTaxBps <= MAX_TAX_BPS && taxCfg.sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
         require(taxCfg.taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
     }
@@ -98,7 +93,7 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
         string calldata symbol,
         address feeHandler_,
         address feeReceiver,
-        TaxCfg calldata taxCfg,
+        TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal {
         LivoTaxableTokenUniV4SniperProtected(payable(token))
@@ -112,9 +107,7 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
                     feeHandler: feeHandler_,
                     feeReceiver: feeReceiver
                 }),
-                taxCfg.buyTaxBps,
-                taxCfg.sellTaxBps,
-                uint40(taxCfg.taxDurationSeconds),
+                taxCfg,
                 antiSniperCfg
             );
     }

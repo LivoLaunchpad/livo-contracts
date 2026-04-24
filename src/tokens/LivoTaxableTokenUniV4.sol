@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {ILivoTaxableTokenUniV4, TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -66,28 +66,23 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param params Shared token initialization parameters
-    /// @param buyTaxBps_ Buy tax rate in basis points
-    /// @param sellTaxBps_ Sell tax rate in basis points
-    /// @param taxDurationSeconds_ Duration in seconds after graduation during which taxes apply
-    function initialize(
-        ILivoToken.InitializeParams memory params,
-        uint16 buyTaxBps_,
-        uint16 sellTaxBps_,
-        uint40 taxDurationSeconds_
-    ) external virtual initializer {
-        _initializeLivoTaxableTokenUniV4(params, buyTaxBps_, sellTaxBps_, taxDurationSeconds_);
+    /// @param taxCfg Tax configuration (buy/sell bps and post-graduation tax duration)
+    function initialize(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+        external
+        virtual
+        initializer
+    {
+        _initializeLivoTaxableTokenUniV4(params, taxCfg);
     }
 
     /// @dev Internal initializer body; callable from child `initializer`-gated functions.
-    function _initializeLivoTaxableTokenUniV4(
-        ILivoToken.InitializeParams memory params,
-        uint16 buyTaxBps_,
-        uint16 sellTaxBps_,
-        uint40 taxDurationSeconds_
-    ) internal onlyInitializing {
+    function _initializeLivoTaxableTokenUniV4(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+        internal
+        onlyInitializing
+    {
         _initializeLivoToken(params);
         require(pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
-        _initializeTaxConfig(buyTaxBps_, sellTaxBps_, taxDurationSeconds_);
+        _initializeTaxConfig(taxCfg);
     }
 
     /// @notice Marks the token as graduated and records the timestamp
@@ -131,13 +126,13 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     /// @notice Internal helper to store tax configuration
     /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
+    function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
         // there is no restrictions here anymore regarding sell tax an tax duration. Restrictions are enforced in the factory
-        emit LivoTaxableTokenInitialized(_buyTaxBps, _sellTaxBps, _taxDurationSeconds);
+        emit LivoTaxableTokenInitialized(cfg.buyTaxBps, cfg.sellTaxBps, cfg.taxDurationSeconds);
 
         // Store tax configuration
-        buyTaxBps = _buyTaxBps;
-        sellTaxBps = _sellTaxBps;
-        taxDurationSeconds = _taxDurationSeconds;
+        buyTaxBps = cfg.buyTaxBps;
+        sellTaxBps = cfg.sellTaxBps;
+        taxDurationSeconds = uint40(cfg.taxDurationSeconds);
     }
 }

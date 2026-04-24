@@ -6,6 +6,7 @@ import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
 
 contract BuySellSimulations is Script {
@@ -31,8 +32,8 @@ contract BuySellSimulations is Script {
 
         (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares);
         (address TOKEN2,) = factoryV4.createToken("projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares);
-        LivoFactoryTaxToken.TaxCfg memory taxCfg =
-            LivoFactoryTaxToken.TaxCfg({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
+        TaxConfigInit memory taxCfg =
+            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
         (address TOKEN3,) =
             factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, taxCfg);
 

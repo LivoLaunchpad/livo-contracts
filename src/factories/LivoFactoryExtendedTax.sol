@@ -6,6 +6,7 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Factory for deploying taxable Livo tokens with Uniswap V4 hook integration,
@@ -13,12 +14,6 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         may deploy tokens.
 contract LivoFactoryExtendedTax is LivoFactoryAbstract {
     error InvalidTaxBps();
-
-    struct TaxCfg {
-        uint16 buyTaxBps;
-        uint16 sellTaxBps;
-        uint32 taxDurationSeconds;
-    }
 
     /// @notice max configurable tax (buy or sell) — 10%
     uint256 public constant MAX_TAX_BPS = 1_000;
@@ -47,7 +42,7 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
-        TaxCfg calldata taxCfg
+        TaxConfigInit calldata taxCfg
     ) external payable onlyOwner returns (address token, address feeSplitter) {
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
@@ -65,7 +60,7 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
         address feeHandler_,
         address feeReceiver,
         bytes32 salt,
-        TaxCfg calldata taxCfg
+        TaxConfigInit calldata taxCfg
     ) internal returns (address token) {
         _validateNameSymbol(name, symbol);
 
@@ -90,9 +85,7 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
                     feeHandler: feeHandler_,
                     feeReceiver: feeReceiver
                 }),
-                taxCfg.buyTaxBps,
-                taxCfg.sellTaxBps,
-                uint40(taxCfg.taxDurationSeconds)
+                taxCfg
             );
         // this will emit another event (from the launchpad)
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
