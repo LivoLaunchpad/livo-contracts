@@ -37,7 +37,9 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, creator));
-        factoryExtended.createToken("TestToken", "TEST", creator, salt, 100, 100, uint32(30 days));
+        factoryExtended.createToken(
+            "TestToken", "TEST", salt, _fs(creator), _noSs(), _taxCfgExt(100, 100, uint32(30 days))
+        );
     }
 
     /// @dev when the owner calls createToken with valid params, it succeeds
@@ -45,7 +47,9 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         bytes32 salt = _nextValidSalt(address(factoryExtended), address(livoTaxToken));
 
         vm.prank(admin);
-        address token = factoryExtended.createToken("TestToken", "TEST", admin, salt, 1000, 1000, uint32(365 days));
+        (address token,) = factoryExtended.createToken(
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(1000, 1000, uint32(365 days))
+        );
 
         assertTrue(token != address(0));
     }
@@ -58,7 +62,9 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
 
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryExtendedTax.InvalidTaxBps.selector));
-        factoryExtended.createToken("TestToken", "TEST", admin, salt, 0, 1001, uint32(14 days));
+        factoryExtended.createToken(
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(0, 1001, uint32(14 days))
+        );
     }
 
     /// @dev when sellTaxBps equals MAX_TAX_BPS (1000 = 10%), createToken succeeds
@@ -66,7 +72,9 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         bytes32 salt = _nextValidSalt(address(factoryExtended), address(livoTaxToken));
 
         vm.prank(admin);
-        address token = factoryExtended.createToken("TestToken", "TEST", admin, salt, 1000, 1000, uint32(14 days));
+        (address token,) = factoryExtended.createToken(
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(1000, 1000, uint32(14 days))
+        );
 
         assertTrue(token != address(0));
         assertEq(LivoTaxableTokenUniV4(payable(token)).buyTaxBps(), 1000);
@@ -82,7 +90,9 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         uint32 longDuration = type(uint32).max;
 
         vm.prank(admin);
-        address token = factoryExtended.createToken("TestToken", "TEST", admin, salt, 100, 100, longDuration);
+        (address token,) = factoryExtended.createToken(
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(100, 100, longDuration)
+        );
 
         assertTrue(token != address(0));
         assertEq(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds(), uint40(longDuration));

@@ -6,6 +6,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {TokenState} from "src/types/tokenData.sol";
@@ -114,14 +115,17 @@ contract InvariantsHelperLaunchpad is Test {
 
     function createToken(uint256 seed) public passTime(seed) choseActor(seed) {
         address token;
+        ILivoFactory.SupplyShare[] memory noSs = new ILivoFactory.SupplyShare[](0);
+        ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
+        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000});
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), address(factoryV2.TOKEN_IMPLEMENTATION()));
             vm.prank(currentActor);
-            token = factoryV2.createToken("TestToken", "TEST", salt);
+            (token,) = factoryV2.createToken("TestToken", "TEST", salt, creatorFs, noSs);
         } else {
             bytes32 salt = _nextValidSalt(address(factoryV4), address(factoryV4.TOKEN_IMPLEMENTATION()));
             vm.prank(currentActor);
-            token = factoryV4.createToken("TestToken", "TEST", currentActor, salt);
+            (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs);
         }
         _tokens.add(token);
     }

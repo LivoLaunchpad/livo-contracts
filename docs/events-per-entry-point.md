@@ -13,7 +13,7 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 1. [createToken — `LivoFactoryUniV2` (V2 graduator, LivoToken)](#1-createtoken--livofactoryuniv2-v2-graduator-livotoken)
 2. [createToken — `LivoFactoryBase` (V4 graduator, LivoToken)](#2-createtoken--livofactorybase-v4-graduator-livotoken)
 3. [createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax`](#3-createtoken--livofactorytaxtoken--livofactoryextendedtax-v4-graduator-livotaxabletokenuniv4)
-4. [createTokenWithFeeSplit — any V4 factory](#4-createtokenwithfeesplit--any-v4-factory)
+4. [createToken with a fee splitter — any factory](#4-createtoken-with-a-fee-splitter--any-factory)
 5. [buyTokensWithExactEth (pre-graduation)](#5-buytokenswithexacteth--pre-graduation)
 6. [buyTokensWithExactEth that triggers V2 graduation](#6-buytokenswithexacteth-that-triggers-v2-graduation)
 7. [buyTokensWithExactEth that triggers V4 graduation](#7-buytokenswithexacteth-that-triggers-v4-graduation)
@@ -43,13 +43,13 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 
 ## 1. createToken — `LivoFactoryUniV2` (V2 graduator, `LivoToken`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares)` (payable).
 
-If `msg.value == 0` — pure deploy. If `msg.value > 0` — also performs a deployer buy on the bonding curve for the sender.
+Same dispatch shape as every other factory: `feeReceivers.length == 1` → direct receiver, `>= 2` → splitter clone is deployed; `msg.value > 0` triggers a deployer buy distributed across `supplyShares`. The one V2-specific behaviour is `tokenOwner = address(0)` (ownership renounced at creation), which makes the fee receiver permanent — there is no `setFeeReceiver` path later.
 
-### 1a. Without deployer buy (`msg.value == 0`)
+### 1a. Single fee receiver, no deployer buy (`msg.value == 0`, `feeReceivers.length == 1`)
 
-1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner=address(0), launchpad, graduator, feeHandler, feeReceiver=msg.sender`) — emitted by the factory *before* `initialize()` so indexers see the entity first.
+1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner=address(0), launchpad, graduator, feeHandler=LivoFeeHandler, feeReceiver=feeReceivers[0].account`) — emitted by the factory *before* `initialize()` so indexers see the entity first.
 2. **`UniswapV2Factory.PairCreated`** (external) — pair for `<token, WETH>` created by graduator's `initialize()`.
 3. **`LivoGraduator.PairInitialized`** (`token, pair`) — graduator records the pair.
 4. **`ERC20.Transfer`** (from `0x0` to `LivoLaunchpad`, `value = 1e27`) — initial `1_000_000_000 * 1e18` mint to the launchpad.
@@ -58,14 +58,22 @@ If `msg.value == 0` — pure deploy. If `msg.value > 0` — also performs a depl
 
 Test: `test/launchpad/createTokens.t.sol::testDeployLivoToken_happyPath`.
 
-### 1b. With deployer buy (`msg.value > 0`)
+### 1b. Multiple fee receivers (`feeReceivers.length >= 2`)
 
-All of 1a, then:
+All of 1a (with `feeHandler` = `feeReceiver` = the splitter clone in the `TokenCreated` event), then append the splitter tail from §4:
 
-7. **`ERC20.Transfer`** (from `LivoLaunchpad` to `factory`, `value = tokensBought`) — launchpad transfers bought tokens to the factory.
-8. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer=factory, ethAmount, tokenAmount, ethFee`).
-9. **`ERC20.Transfer`** (from `factory` to `msg.sender`, `value = tokensBought`) — factory forwards the bought tokens to the caller.
-10. **`LivoFactory.DeployerBuy`** (`token, buyer=msg.sender, ethSpent, tokensBought`).
+7. **`LivoFactory.FeeSplitterCreated`** (`token, feeSplitter, recipients, sharesBps`) — emitted *before* the splitter's `initialize()`.
+8. **`LivoFeeSplitter.SharesUpdated`** (`recipients, sharesBps`).
+9. **`Initializable.Initialized`** (splitter clone, `version=1`).
+
+### 1c. With deployer buy (`msg.value > 0`)
+
+Append after the above (after 1a's step 6, or after 1b's step 9 when a splitter is present):
+
+- **`ERC20.Transfer`** (from `LivoLaunchpad` to `factory`, `value = tokensBought`).
+- **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer=factory, ethAmount, tokenAmount, ethFee`).
+- One **`ERC20.Transfer`** per entry in `supplyShares` (from `factory` to `supplyShares[i].account`, `value = shareAmount`).
+- **`LivoFactory.BuyOnDeploy`** (`token, buyer=msg.sender, ethSpent, tokensBought, recipients, amounts`).
 
 Note: the treasury also receives the buy fee via a bare `.call{value}` — no event from that transfer.
 
@@ -121,11 +129,9 @@ Tests:
 
 ---
 
-## 4. createTokenWithFeeSplit — any V4 factory
+## 4. createToken with a fee splitter — any factory
 
-Signature: `createTokenWithFeeSplit(string name, string symbol, address[] recipients, uint256[] sharesBps, bytes32 salt, ...)` on `LivoFactoryBase`, `LivoFactoryTaxToken`, and `LivoFactoryExtendedTax`.
-
-Differs from the plain `createToken` flow in that the fee receiver is a freshly deployed `LivoFeeSplitter` clone. The factory emits `FeeSplitterCreated` *before* the splitter's `initialize()`, so the event ordering is specifically:
+Triggered when `feeReceivers.length >= 2` is passed to `createToken` on any of `LivoFactoryUniV2`, `LivoFactoryBase`, `LivoFactoryTaxToken`, or `LivoFactoryExtendedTax`. A `LivoFeeSplitter` clone is deployed and used as both `feeHandler` and `feeReceiver` on the token. The factory emits `FeeSplitterCreated` *before* the splitter's `initialize()`, so the event ordering is specifically:
 
 1. **`LivoFactory.TokenCreated`**.
 2. **`PoolManager.Initialize`** (external V4).

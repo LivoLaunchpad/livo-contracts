@@ -5,6 +5,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
 
 contract BuySellSimulations is Script {
@@ -24,9 +25,16 @@ contract BuySellSimulations is Script {
         vm.startBroadcast();
         bytes32 salt = bytes32(uint256(0x123));
 
-        address TOKEN1 = factoryV2.createToken("MEMEV2", "MAMIV2", salt);
-        address TOKEN2 = factoryV4.createToken("projecTV4", "PROJECTV4", LIVODEV, salt);
-        address TOKEN3 = factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", LIVODEV, salt, 0, 500, uint32(14 days));
+        ILivoFactory.FeeShare[] memory devFeeShare = new ILivoFactory.FeeShare[](1);
+        devFeeShare[0] = ILivoFactory.FeeShare({account: LIVODEV, shares: 10_000});
+        ILivoFactory.SupplyShare[] memory noSupplyShares = new ILivoFactory.SupplyShare[](0);
+
+        (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares);
+        (address TOKEN2,) = factoryV4.createToken("projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares);
+        LivoFactoryTaxToken.TaxCfg memory taxCfg =
+            LivoFactoryTaxToken.TaxCfg({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
+        (address TOKEN3,) =
+            factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, taxCfg);
 
         uint256 deadline = block.timestamp + 300 days;
 
