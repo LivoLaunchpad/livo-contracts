@@ -19,15 +19,27 @@ contract LivoFactoryUniV2 is LivoFactoryAbstract {
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
-    /// @notice Deploys a new token clone with ownership renounced, initializes it, and registers it in the launchpad
-    /// @dev `feeReceiver` defaults to `msg.sender` — the deployer collects post-graduation fees
-    function createToken(string calldata name, string calldata symbol, bytes32 salt)
-        external
-        payable
-        returns (address token)
-    {
-        token = _createAndInitializeToken(name, symbol, msg.sender, salt);
-        if (msg.value > 0) _buyOnBehalf(token);
+    /// @notice Deploys a new token clone with ownership renounced and registers it in the launchpad.
+    ///         UniV2 tokens have no fee receiver (ownership renounced) so `feeReceivers` must be empty.
+    ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
+    /// @dev `feeReceivers` is accepted to keep the signature aligned with other factories, but must be empty.
+    /// @dev Return value `feeSplitter` is always `address(0)` for UniV2; kept for signature parity.
+    function createToken(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        FeeShare[] calldata feeReceivers,
+        SupplyShare[] calldata supplyShares
+    ) external payable returns (address token, address feeSplitter) {
+        require(feeReceivers.length == 0, InvalidFeeReceiver());
+        if (msg.value > 0) _validateSupplyShares(supplyShares);
+        else require(supplyShares.length == 0, InvalidSupplyShares());
+
+        token = _createAndInitializeToken(name, symbol, salt);
+
+        if (msg.value > 0) _buyAndDistribute(token, supplyShares);
+
+        feeSplitter = address(0);
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////

@@ -33,8 +33,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @notice Fee splitter implementation contract used as the clone source
     ILivoFeeSplitter public immutable FEE_SPLITTER_IMPLEMENTATION;
 
-    /// @notice Max percentage of total supply the deployer can buy on token creation (in basis points)
-    uint256 public maxDeployerBuyBps = 1_000; // 10%
+    /// @notice Max percentage of total supply that can be purchased on token creation (applies to the aggregate, not per recipient), in basis points
+    uint256 public maxBuyOnDeployBps = 1_000; // 10%
 
     /// @notice Initializes the factory with its immutable dependencies
     constructor(
@@ -68,18 +68,18 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         emit TokenImplementationUpdated(newTokenImplementation);
     }
 
-    /// @notice Updates the max deployer buy percentage
-    /// @param newMaxDeployerBuyBps New max in basis points (e.g. 1000 = 10%)
-    function setMaxDeployerBuyBps(uint256 newMaxDeployerBuyBps) external onlyOwner {
-        require(newMaxDeployerBuyBps < BASIS_POINTS, "Exceeds max bps");
-        maxDeployerBuyBps = newMaxDeployerBuyBps;
-        emit MaxDeployerBuyBpsUpdated(newMaxDeployerBuyBps);
+    /// @notice Updates the max aggregate buy-on-deploy percentage
+    /// @param newMaxBuyOnDeployBps New max in basis points (e.g. 1000 = 10%)
+    function setMaxBuyOnDeployBps(uint256 newMaxBuyOnDeployBps) external onlyOwner {
+        require(newMaxBuyOnDeployBps < BASIS_POINTS, "Exceeds max bps");
+        maxBuyOnDeployBps = newMaxBuyOnDeployBps;
+        emit MaxBuyOnDeployBpsUpdated(newMaxBuyOnDeployBps);
     }
 
-    /// @notice Quotes the ETH needed (msg.value) for a deployer to receive exactly `tokenAmount` tokens on a new token
-    /// @param tokenAmount Amount of tokens the deployer wants to receive
-    /// @return totalEthNeeded The msg.value to pass to createToken/createTokenWithFeeSplit
-    function quoteDeployerBuy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
+    /// @notice Quotes the ETH needed (msg.value) to receive exactly `tokenAmount` tokens on a new token
+    /// @param tokenAmount Amount of tokens to receive
+    /// @return totalEthNeeded The msg.value to pass to createToken
+    function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
         (uint256 ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
 
         uint16 buyFeeBps = LAUNCHPAD.baseBuyFeeBps();
@@ -89,16 +89,107 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _buyOnBehalf(address token) internal {
+    /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0, sum == 10 000.
+    function _validateFeeShares(FeeShare[] calldata feeReceivers) internal pure {
+        uint256 len = feeReceivers.length;
+        require(len > 0, InvalidFeeReceiver());
+
+        uint256 total;
+        for (uint256 i = 0; i < len; i++) {
+            require(feeReceivers[i].account != address(0), InvalidFeeReceiver());
+            require(feeReceivers[i].shares > 0, InvalidShares());
+            for (uint256 j = i + 1; j < len; j++) {
+                require(feeReceivers[i].account != feeReceivers[j].account, InvalidFeeReceiver());
+            }
+            total += feeReceivers[i].shares;
+        }
+        require(total == BASIS_POINTS, InvalidShares());
+    }
+
+    /// @dev Validates a SupplyShare array: non-empty, no zero accounts, no duplicates, every share > 0, sum == 10 000.
+    function _validateSupplyShares(SupplyShare[] calldata supplyShares) internal pure {
+        uint256 len = supplyShares.length;
+        require(len > 0, InvalidSupplyShares());
+
+        uint256 total;
+        for (uint256 i = 0; i < len; i++) {
+            require(supplyShares[i].account != address(0), InvalidSupplyShares());
+            require(supplyShares[i].shares > 0, InvalidShares());
+            for (uint256 j = i + 1; j < len; j++) {
+                require(supplyShares[i].account != supplyShares[j].account, InvalidSupplyShares());
+            }
+            total += supplyShares[i].shares;
+        }
+        require(total == BASIS_POINTS, InvalidShares());
+    }
+
+    /// @dev Resolves the (feeHandler, feeReceiver, feeSplitter) tuple for the given feeReceivers.
+    ///      - len == 0 → (address(0), address(0), address(0)) — used only by UniV2
+    ///      - len == 1 → (FEE_HANDLER, feeReceivers[0].account, address(0)) — no splitter deployed
+    ///      - len >= 2 → (splitter, splitter, splitter) — splitter is deployed here but not yet initialized
+    function _resolveFeeRouting(FeeShare[] calldata feeReceivers, bytes32 salt)
+        internal
+        returns (address feeHandler_, address feeReceiver_, address feeSplitter)
+    {
+        uint256 len = feeReceivers.length;
+        if (len == 0) {
+            return (address(0), address(0), address(0));
+        }
+        if (len == 1) {
+            return (address(FEE_HANDLER), feeReceivers[0].account, address(0));
+        }
+        feeSplitter = _deployFeeSplitter(salt);
+        return (feeSplitter, feeSplitter, feeSplitter);
+    }
+
+    /// @dev Initializes a freshly-deployed FeeSplitter for `token`. Emits `FeeSplitterCreated` BEFORE
+    ///      `initialize()` so the indexer creates the splitter entity before `SharesUpdated` fires.
+    function _initFeeSplitter(address feeSplitter, address token, FeeShare[] calldata feeReceivers) internal {
+        uint256 len = feeReceivers.length;
+        address[] memory recipients = new address[](len);
+        uint256[] memory sharesBps = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            recipients[i] = feeReceivers[i].account;
+            sharesBps[i] = feeReceivers[i].shares;
+        }
+
+        // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
+        // creates the FeeSplitter entity from this event, and events emitted during initialize()
+        // (SharesUpdated) depend on the FeeSplitter entity existing.
+        emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
+        ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
+    }
+
+    /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
+    ///      The cap is enforced on the aggregate `tokensBought`, not per recipient. Rounding dust
+    ///      goes to the last recipient so no tokens remain in the factory.
+    function _buyAndDistribute(address token, SupplyShare[] calldata supplyShares) internal {
         uint256 tokensBought = LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
 
         // Floor division absorbs sub-token rounding from the bonding curve's ceiling math
         require(
-            tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxDeployerBuyBps, InvalidDeployerBuy()
+            tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxBuyOnDeployBps, InvalidBuyOnDeploy()
         );
 
-        IERC20(token).safeTransfer(msg.sender, tokensBought);
-        emit DeployerBuy(token, msg.sender, msg.value, tokensBought);
+        uint256 len = supplyShares.length;
+        address[] memory recipients = new address[](len);
+        uint256[] memory amounts = new uint256[](len);
+
+        uint256 distributed;
+        for (uint256 i = 0; i < len - 1; i++) {
+            uint256 amount = tokensBought * supplyShares[i].shares / BASIS_POINTS;
+            recipients[i] = supplyShares[i].account;
+            amounts[i] = amount;
+            distributed += amount;
+            IERC20(token).safeTransfer(supplyShares[i].account, amount);
+        }
+        // last recipient absorbs rounding dust
+        uint256 lastAmount = tokensBought - distributed;
+        recipients[len - 1] = supplyShares[len - 1].account;
+        amounts[len - 1] = lastAmount;
+        IERC20(token).safeTransfer(supplyShares[len - 1].account, lastAmount);
+
+        emit BuyOnDeploy(token, msg.sender, msg.value, tokensBought, recipients, amounts);
     }
 
     function _deployFeeSplitter(bytes32 salt) internal returns (address feeSplitter) {

@@ -54,7 +54,10 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         returns (address)
     {
         vm.prank(creator);
-        return factoryV4.createToken(name, symbol, creator, _nextValidSalt(address(factoryV4), address(livoToken)));
+        (address token,) = factoryV4.createToken(
+            name, symbol, _nextValidSalt(address(factoryV4), address(livoToken)), _fs(creator), _noSs()
+        );
+        return token;
     }
 
     modifier createAndGraduateToken() virtual {
@@ -1243,14 +1246,11 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         returns (address)
     {
         vm.prank(creator);
-        return factoryTax.createToken(
-            name,
+        (address token,) = factoryTax.createToken(name,
             symbol,
-            creator,
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-            0,
-            DEFAULT_SELL_TAX_BPS,
-            uint32(DEFAULT_TAX_DURATION)
-        );
+            _fs(creator),
+            _noSs(), _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)));
+        return token;
     }
 }

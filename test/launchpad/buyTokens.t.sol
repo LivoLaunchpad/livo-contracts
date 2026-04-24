@@ -292,12 +292,17 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         TokenState memory stateAfterMultiple = launchpad.getTokenState(testToken);
 
         // Reset state by creating a new token for the second scenario
+        address testToken2;
         vm.prank(creator);
-        address testToken2 = address(graduator) == address(graduatorV2)
-            ? factoryV2.createToken("Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(livoToken)))
-            : factoryV4.createToken(
-                "Test Token 2", "TT2", creator, _nextValidSalt(address(factoryV4), address(livoToken))
+        if (address(graduator) == address(graduatorV2)) {
+            (testToken2,) = factoryV2.createToken(
+                "Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
             );
+        } else {
+            (testToken2,) = factoryV4.createToken(
+                "Test Token 2", "TT2", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(creator), _noSs()
+            );
+        }
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");

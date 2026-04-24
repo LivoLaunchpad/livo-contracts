@@ -36,15 +36,12 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         returns (address)
     {
         vm.prank(creator);
-        return factoryTax.createToken(
-            name,
+        (address token,) = factoryTax.createToken(name,
             symbol,
-            creator,
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-            0,
-            DEFAULT_SELL_TAX_BPS,
-            uint32(DEFAULT_TAX_DURATION)
-        );
+            _fs(creator),
+            _noSs(), _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)));
+        return token;
     }
 
     /// @notice Verify that sell tax math is correct: tax/gross == taxBps

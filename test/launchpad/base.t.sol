@@ -5,6 +5,9 @@ import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LivoFactoryTaxToken as _LFTT} from "src/factories/LivoFactoryTaxToken.sol";
+import {LivoFactoryExtendedTax as _LFET} from "src/factories/LivoFactoryExtendedTax.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -126,6 +129,46 @@ contract LaunchpadBaseTests is Test {
         }
     }
 
+    /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees.
+    function _fs(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
+        arr = new ILivoFactory.FeeShare[](1);
+        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000});
+    }
+
+    /// @dev Build an empty FeeShare[] (only valid for UniV2 factory).
+    function _noFs() internal pure returns (ILivoFactory.FeeShare[] memory arr) {
+        return new ILivoFactory.FeeShare[](0);
+    }
+
+    /// @dev Build an empty SupplyShare[] (valid when msg.value == 0).
+    function _noSs() internal pure returns (ILivoFactory.SupplyShare[] memory arr) {
+        return new ILivoFactory.SupplyShare[](0);
+    }
+
+    /// @dev Build a single-entry SupplyShare[] with `account` receiving 100% of the bought supply.
+    function _ss(address account) internal pure returns (ILivoFactory.SupplyShare[] memory arr) {
+        arr = new ILivoFactory.SupplyShare[](1);
+        arr[0] = ILivoFactory.SupplyShare({account: account, shares: 10_000});
+    }
+
+    /// @dev Build a `LivoFactoryTaxToken.TaxCfg` calldata-compatible struct for passing to `factoryTax.createToken`.
+    function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
+        internal
+        pure
+        returns (_LFTT.TaxCfg memory)
+    {
+        return _LFTT.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+    }
+
+    /// @dev Build a `LivoFactoryExtendedTax.TaxCfg` struct.
+    function _taxCfgExt(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
+        internal
+        pure
+        returns (_LFET.TaxCfg memory)
+    {
+        return _LFET.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+    }
+
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
@@ -192,23 +235,21 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                testToken = factoryTax.createToken(
-                    "TestToken",
+                (testToken,) = factoryTax.createToken("TestToken",
                     "TEST",
-                    creator,
                     _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-                    0,
-                    400,
-                    uint32(14 days)
+                    _fs(creator),
+                    _noSs(), _taxCfg(0, 400, uint32(14 days))
                 );
             } else {
-                testToken = factoryV4.createToken(
-                    "TestToken", "TEST", creator, _nextValidSalt(address(factoryV4), address(livoToken))
+                (testToken,) = factoryV4.createToken(
+                    "TestToken", "TEST", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(creator), _noSs()
                 );
             }
         } else {
-            testToken =
-                factoryV2.createToken("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+            (testToken,) = factoryV2.createToken(
+                "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+            );
         }
         _;
     }

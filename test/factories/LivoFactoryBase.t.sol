@@ -17,8 +17,9 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     modifier withCreatedToken() {
         vm.prank(creator);
-        deployedToken =
-            factoryV2.createToken("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (deployedToken,) = factoryV2.createToken(
+            "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
         _;
     }
 
@@ -51,21 +52,21 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_createToken_revertsOnEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("", "TEST", "0x12");
+        factoryV2.createToken("", "TEST", "0x12", _noFs(), _noSs());
     }
 
     /// @dev when symbol is empty, then createToken reverts with InvalidNameOrSymbol
     function test_createToken_revertsOnEmptySymbol() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("TestToken", "", "0x0");
+        factoryV2.createToken("TestToken", "", "0x0", _noFs(), _noSs());
     }
 
     /// @dev when symbol exceeds 32 bytes, then createToken reverts with InvalidNameOrSymbol
     function test_createToken_revertsOnTooLongSymbol() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("TestToken", "TESTTESTTESTTESTTESTTESTTESTESESD", "0x12");
+        factoryV2.createToken("TestToken", "TESTTESTTESTTESTTESTTESTTESTESESD", "0x12", _noFs(), _noSs());
     }
 
     /// @dev when implementation is initialized directly, then it reverts with InvalidInitialization
@@ -85,17 +86,27 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         );
     }
 
+    /// @dev UniV2 factory requires feeReceivers to be empty
+    function test_createToken_UniV2_revertsOnNonEmptyFeeReceivers() public {
+        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
+        factoryV2.createToken("TestToken", "TEST", salt, _fs(creator), _noSs());
+    }
+
     // ============ Clone Uniqueness ============
 
     /// @dev when two tokens share the same symbol, then both are created with different addresses
     function test_createToken_assertDuplicateSymbolsYieldDifferentAddresses() public {
         vm.prank(creator);
-        address token1 =
-            factoryV2.createToken("TestToken1", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (address token1,) = factoryV2.createToken(
+            "TestToken1", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
 
         vm.prank(creator);
-        address token2 =
-            factoryV2.createToken("TestToken2", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (address token2,) = factoryV2.createToken(
+            "TestToken2", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
 
         assertTrue(token1 != token2);
         assertEq(LivoToken(token1).symbol(), "TEST");
@@ -107,12 +118,14 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev when tokens are created with different symbols, then both succeed with correct metadata
     function test_createToken_assertDifferentSymbolsBothSucceed() public {
         vm.prank(creator);
-        address token1 =
-            factoryV2.createToken("TestToken1", "TEST1", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (address token1,) = factoryV2.createToken(
+            "TestToken1", "TEST1", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
 
         vm.prank(creator);
-        address token2 =
-            factoryV2.createToken("TestToken2", "TEST2", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (address token2,) = factoryV2.createToken(
+            "TestToken2", "TEST2", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
 
         assertTrue(token1 != token2);
         assertEq(LivoToken(token1).symbol(), "TEST1");
@@ -140,7 +153,7 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         }
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenAddress.selector));
-        factoryV2.createToken("TestToken", "TEST", badSalt);
+        factoryV2.createToken("TestToken", "TEST", badSalt, _noFs(), _noSs());
     }
 }
 
@@ -160,8 +173,9 @@ contract LivoFactoryBaseWhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertTrue(launchpad.whitelistedFactories(address(factoryV2)));
 
         vm.prank(creator);
-        address token =
-            factoryV2.createToken("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (address token,) = factoryV2.createToken(
+            "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
         assertTrue(token != address(0));
     }
 
@@ -171,7 +185,9 @@ contract LivoFactoryBaseWhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
-        factoryV2.createToken("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+        factoryV2.createToken(
+            "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
     }
 
     /// @dev when factory is blacklisted then re-whitelisted, then createToken succeeds again
@@ -180,8 +196,9 @@ contract LivoFactoryBaseWhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.whitelistFactory(address(factoryV2));
 
         vm.prank(creator);
-        address token =
-            factoryV2.createToken("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)));
+        (address token,) = factoryV2.createToken(
+            "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+        );
         assertTrue(token != address(0));
     }
 

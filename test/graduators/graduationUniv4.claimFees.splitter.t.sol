@@ -7,11 +7,12 @@ import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-/// @notice Base for fee-splitter V4 tests — creates tokens via `createTokenWithFeeSplit()`
-///         and overrides claim/claimable helpers to go through the splitter
+/// @notice Base for fee-splitter V4 tests — creates tokens with a multi-recipient `feeReceivers`
+///         (triggering splitter deployment) and overrides claim/claimable helpers to go through the splitter.
 abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
     address public splitterAddress;
 
@@ -27,16 +28,10 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
         shareholder2 = makeAddr("shareholder2");
     }
 
-    function _recipients() internal view returns (address[] memory r) {
-        r = new address[](2);
-        r[0] = shareholder1;
-        r[1] = shareholder2;
-    }
-
-    function _sharesBps() internal pure returns (uint256[] memory s) {
-        s = new uint256[](2);
-        s[0] = SHARE_1;
-        s[1] = SHARE_2;
+    function _feeShares() internal view returns (ILivoFactory.FeeShare[] memory arr) {
+        arr = new ILivoFactory.FeeShare[](2);
+        arr[0] = ILivoFactory.FeeShare({account: shareholder1, shares: SHARE_1});
+        arr[1] = ILivoFactory.FeeShare({account: shareholder2, shares: SHARE_2});
     }
 
     function _createTokenForCreator(string memory name, string memory symbol, bytes32)
@@ -46,8 +41,8 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
         returns (address)
     {
         vm.prank(creator);
-        (address token, address splitter) = factoryV4.createTokenWithFeeSplit(
-            name, symbol, _recipients(), _sharesBps(), _nextValidSalt(address(factoryV4), address(livoToken))
+        (address token, address splitter) = factoryV4.createToken(
+            name, symbol, _nextValidSalt(address(factoryV4), address(livoToken)), _feeShares(), _noSs()
         );
         splitterAddress = splitter;
         return token;
@@ -181,16 +176,11 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
         returns (address)
     {
         vm.prank(creator);
-        (address token, address splitter) = factoryTax.createTokenWithFeeSplit(
-            name,
+        (address token, address splitter) = factoryTax.createToken(name,
             symbol,
-            _recipients(),
-            _sharesBps(),
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-            0,
-            DEFAULT_SELL_TAX_BPS,
-            uint32(DEFAULT_TAX_DURATION)
-        );
+            _feeShares(),
+            _noSs(), _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)));
         splitterAddress = splitter;
         return token;
     }
