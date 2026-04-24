@@ -23,6 +23,7 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 11. [V4 post-graduation sell](#11-v4-post-graduation-sell)
 12. [`LivoFeeHandler.claim`](#12-livofeehandlerclaimaddress-tokens)
 13. [`LivoFeeSplitter.claim`](#13-livofeesplitterclaimaddress-tokens)
+14. [Sniper-protected factory variants](#14-sniper-protected-factory-variants-createtoken)
 
 ---
 
@@ -325,6 +326,65 @@ Event #3 uses the same event name as the fee handler's (intentionally, for index
 If `msg.sender` is not a recipient, or has already claimed since the last share change, the function returns without emitting #3. If no new ETH has arrived, #1 and #2 are both absent.
 
 Test: `test/feeSplitters/LivoFeeSplitter.t.sol::test_claim_assertEmitsEvents` (isolated, with a mock token) and the end-to-end `test/graduators/graduationUniv4.claimFees.splitter.t.sol::test_shareholdersCanClaimLpFees` (two `CreatorClaimed` emissions, one per shareholder).
+
+---
+
+## 14. Sniper-protected factory variants (`createToken`)
+
+The sniper-protected factories emit the exact same sequence as their non-protected twins (§1, §2, §3) **plus one extra event** — `SniperProtectionInitialized` — fired from the token's initializer after the mint (§14.1) or after `LivoTaxableTokenInitialized` (§14.3). Everything else (splitter tail from §4, deployer-buy tail from §1c, post-event ordering of `TokenLaunched`) is unchanged.
+
+### 14.1. `LivoFactorySniperProtected.createToken` (V4 graduator, `LivoTokenSniperProtected`)
+
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, AntiSniperConfigs antiSniperCfg)` (payable).
+
+Same event sequence as §2a, with `SniperProtectionInitialized` inserted between the mint and OZ `Initialized`:
+
+1. **`LivoFactory.TokenCreated`**.
+2. **`PoolManager.Initialize`** (external V4).
+3. **`LivoGraduator.PairInitialized`**.
+4. **`LivoGraduator.PoolIdRegistered`**.
+5. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+6. **`SniperProtection.SniperProtectionInitialized`** (`maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist`) — NEW.
+7. **`Initializable.Initialized`** (`version=1`).
+8. **`LivoLaunchpad.TokenLaunched`**.
+
+With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
+
+Test: `test/factories/LivoFactorySniperProtected.t.sol::test_createToken_happyPath`.
+
+### 14.2. `LivoFactoryUniV2SniperProtected.createToken` (V2 graduator, `LivoTokenSniperProtected`)
+
+Signature identical to §14.1. Uses the V2 graduator (ownership renounced at creation, `tokenOwner = address(0)` in `TokenCreated`). Event sequence mirrors §1a plus `SniperProtectionInitialized`:
+
+1. **`LivoFactory.TokenCreated`** (`tokenOwner = address(0)`).
+2. **`UniswapV2Factory.PairCreated`** (external).
+3. **`LivoGraduator.PairInitialized`**.
+4. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+5. **`SniperProtection.SniperProtectionInitialized`** — NEW.
+6. **`Initializable.Initialized`** (`version=1`).
+7. **`LivoLaunchpad.TokenLaunched`**.
+
+Test: `test/factories/LivoFactoryUniV2SniperProtected.t.sol::test_createToken_happyPath_ownerIsZero`.
+
+### 14.3. `LivoFactoryTaxTokenSniperProtected.createToken` (V4 graduator, `LivoTaxableTokenUniV4SniperProtected`)
+
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, TaxCfg taxCfg, AntiSniperConfigs antiSniperCfg)` (payable).
+
+Same sequence as §3 plus `SniperProtectionInitialized` after `LivoTaxableTokenInitialized`:
+
+1. **`LivoFactory.TokenCreated`**.
+2. **`PoolManager.Initialize`** (external V4).
+3. **`LivoGraduator.PairInitialized`**.
+4. **`LivoGraduator.PoolIdRegistered`**.
+5. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+6. **`LivoTaxableTokenUniV4.LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds`).
+7. **`SniperProtection.SniperProtectionInitialized`** — NEW.
+8. **`Initializable.Initialized`** (`version=1`).
+9. **`LivoLaunchpad.TokenLaunched`**.
+
+With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
+
+Test: `test/factories/LivoFactoryTaxTokenSniperProtected.t.sol::test_createToken_happyPath`.
 
 ---
 

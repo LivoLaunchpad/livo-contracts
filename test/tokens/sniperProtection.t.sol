@@ -9,7 +9,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
-import {SniperProtection} from "src/tokens/SniperProtection.sol";
+import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 
 /// @dev Minimal graduator mock — returns a caller-chosen `pair` address from `initialize()`
@@ -28,14 +28,10 @@ contract MockGraduator is ILivoGraduator {
     function graduateToken(address, uint256) external payable {}
 }
 
-/// @dev Minimal launchpad stub exposing `whitelistedFactories` — the only method the token
-///      queries from the sniper-protection check.
+/// @dev Minimal launchpad stub. The sniper-protection check no longer queries this contract, but
+///      a standalone address is still used as the "launchpad" from the token's perspective.
 contract MockLaunchpad {
-    mapping(address => bool) public whitelistedFactories;
-
-    function setWhitelistedFactory(address factory, bool value) external {
-        whitelistedFactories[factory] = value;
-    }
+    function launchToken(address, address) external {}
 }
 
 /// @dev Shared test base for both sniper-protected variants. Subclasses wire in the concrete
@@ -49,6 +45,8 @@ abstract contract SniperProtectionBaseTest is Test {
     address internal seller = makeAddr("seller");
     address internal factory = makeAddr("factory");
     address internal deployer = makeAddr("deployer");
+    address internal whitelisted1 = makeAddr("whitelisted1");
+    address internal whitelisted2 = makeAddr("whitelisted2");
 
     MockLaunchpad internal launchpadMock;
     MockGraduator internal graduator;
@@ -56,11 +54,31 @@ abstract contract SniperProtectionBaseTest is Test {
     address internal launchpad; // cached address(launchpadMock) for terse assertions
 
     uint256 internal constant TOTAL_SUPPLY = 1_000_000_000e18;
-    uint256 internal constant MAX_BUY_PER_TX = 30_000_000e18; // 3% — SniperProtection.SNIPER_MAX_BUY_PER_TX
-    uint256 internal constant MAX_WALLET = 30_000_000e18; // 3% — SniperProtection.SNIPER_MAX_WALLET
-    uint40 internal constant WINDOW = 3 hours;
+
+    // Default AntiSniperConfigs values used by subclass setUp(). Match the old hardcoded behavior
+    // so tests that don't care about configurability continue to make sense (3% / 3% / 3h).
+    uint16 internal constant DEFAULT_MAX_BUY_BPS = 300;
+    uint16 internal constant DEFAULT_MAX_WALLET_BPS = 300;
+    uint40 internal constant DEFAULT_WINDOW = 3 hours;
+
+    uint256 internal constant MAX_BUY_PER_TX = 30_000_000e18; // 3% of 1B
+    uint256 internal constant MAX_WALLET = 30_000_000e18; // 3% of 1B
 
     function _token() internal view virtual returns (LivoToken);
+
+    /// @dev Passed to the token's initializer by subclass setUp(). Single hook so individual tests
+    ///      can override by re-deploying before their own setUp.
+    function _defaultCfg() internal view returns (AntiSniperConfigs memory cfg) {
+        address[] memory wl = new address[](2);
+        wl[0] = whitelisted1;
+        wl[1] = whitelisted2;
+        cfg = AntiSniperConfigs({
+            maxBuyPerTxBps: DEFAULT_MAX_BUY_BPS,
+            maxWalletBps: DEFAULT_MAX_WALLET_BPS,
+            protectionWindowSeconds: DEFAULT_WINDOW,
+            whitelist: wl
+        });
+    }
 
     /// @dev Called via prank(launchpad) to simulate a curve buy.
     function _curveBuy(address to, uint256 amount) internal {
@@ -77,7 +95,6 @@ abstract contract SniperProtectionBaseTest is Test {
     /// -------------------- TESTS --------------------
 
     function test_initialMintNotBlocked() public view {
-        // Setup completed in subclass setUp(); reaching this point proves initialize() succeeded.
         assertEq(_token().balanceOf(launchpad), TOTAL_SUPPLY);
     }
 
@@ -87,8 +104,27 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(ts, uint40(block.timestamp));
     }
 
+    function test_configsStored() public view {
+        SniperProtection sp = SniperProtection(address(_token()));
+        assertEq(sp.maxBuyPerTxBps(), DEFAULT_MAX_BUY_BPS);
+        assertEq(sp.maxWalletBps(), DEFAULT_MAX_WALLET_BPS);
+        assertEq(uint256(sp.protectionWindowSeconds()), DEFAULT_WINDOW);
+    }
+
+    function test_whitelistRecorded() public view {
+        SniperProtection sp = SniperProtection(address(_token()));
+        assertTrue(sp.sniperBypass(whitelisted1));
+        assertTrue(sp.sniperBypass(whitelisted2));
+        assertFalse(sp.sniperBypass(buyer));
+    }
+
+    function test_factoryRecorded() public view {
+        // `factory` was captured as msg.sender during initialize — the test contract itself.
+        assertEq(_token().factory(), address(this));
+    }
+
     function test_maxBuyPerTx_boundary() public {
-        _curveBuy(buyer, MAX_BUY_PER_TX); // exactly at the cap — ok
+        _curveBuy(buyer, MAX_BUY_PER_TX);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX);
     }
 
@@ -99,7 +135,6 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_maxWallet_boundary() public {
-        // Two buys that land exactly on the wallet cap.
         _curveBuy(buyer, MAX_BUY_PER_TX);
         _curveBuy(buyer, MAX_WALLET - MAX_BUY_PER_TX);
         assertEq(_token().balanceOf(buyer), MAX_WALLET);
@@ -114,40 +149,32 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_sellsUnaffected() public {
-        // Seed the seller with tokens first (within caps), then sell a large chunk back.
         _curveBuy(seller, MAX_BUY_PER_TX);
-
-        // A sell moves tokens FROM user TO launchpad — `from != launchpad`, so the check no-ops.
         _curveSell(seller, MAX_BUY_PER_TX);
         assertEq(_token().balanceOf(seller), 0);
     }
 
     function test_windowExpiry_capsLift() public {
         uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
-        vm.warp(launchTs + WINDOW + 1);
+        vm.warp(launchTs + DEFAULT_WINDOW + 1);
 
-        // Full cap + 1 should now succeed.
         _curveBuy(buyer, MAX_BUY_PER_TX + 1);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1);
 
-        // Wallet cap also lifted: second buy far above max-wallet succeeds.
         _curveBuy(buyer, MAX_WALLET * 2);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1 + MAX_WALLET * 2);
     }
 
     function test_postGraduationBypass_withinWindow() public {
-        // Still inside the 3h window, but graduated — caps must not apply.
         vm.warp(block.timestamp + 30 minutes);
         vm.prank(address(graduator));
         _token().markGraduated();
 
-        // After graduation, `to == pair` no longer reverts, and the sniper branch short-circuits on `graduated`.
         _curveBuy(buyer, MAX_BUY_PER_TX + 1);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1);
     }
 
     function test_walletToWalletUnaffected_postGraduation() public {
-        // Seed buyer within caps, graduate, then do a large wallet-to-wallet transfer.
         _curveBuy(buyer, MAX_BUY_PER_TX);
 
         vm.prank(address(graduator));
@@ -165,41 +192,157 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(buyer2), MAX_WALLET);
     }
 
-    /// Deployer-buy path: launchpad → whitelisted factory → deployer. The launchpad → factory
-    /// hop carries the full deployer-buy amount (up to the factory's `maxDeployerBuyBps`, 10%),
-    /// which is far above the 3% sniper cap. Both the max-per-tx and max-wallet checks must be
-    /// skipped when the recipient is a whitelisted factory.
-    function test_deployerBuyViaWhitelistedFactory_bypassesCaps() public {
-        uint256 deployerBuyAmount = TOTAL_SUPPLY / 10; // 10% — well above MAX_BUY_PER_TX and MAX_WALLET
+    /// Deployer-buy path: launchpad → factory → supplyShares. The launchpad → factory hop moves
+    /// up to 10% of supply (factory's `maxBuyOnDeployBps`), which is far above the 3% cap. The
+    /// recipient-is-factory exemption lets this pass.
+    function test_deployerBuyViaDeployingFactory_bypassesCaps() public {
+        uint256 deployerBuyAmount = TOTAL_SUPPLY / 10; // 10%
 
-        // Simulate the launchpad's internal transfer into the factory during `_buyOnBehalf`.
+        // The token captured `factory = msg.sender` at init, which is this test contract.
+        address deployingFactory = _token().factory();
+
         vm.prank(launchpad);
-        _token().transfer(factory, deployerBuyAmount);
-        assertEq(_token().balanceOf(factory), deployerBuyAmount);
+        _token().transfer(deployingFactory, deployerBuyAmount);
+        assertEq(_token().balanceOf(deployingFactory), deployerBuyAmount);
 
-        // And the factory's follow-up transfer to the deployer (from != launchpad, so sniper
-        // check is inactive regardless of whitelist status).
-        vm.prank(factory);
+        // Factory → deployer (from != launchpad): sniper check is inactive regardless.
+        vm.prank(deployingFactory);
         _token().transfer(deployer, deployerBuyAmount);
         assertEq(_token().balanceOf(deployer), deployerBuyAmount);
     }
 
-    /// Non-whitelisted recipients are still capped — ensures the exemption is scoped to the
-    /// launchpad's own factory set and not open to arbitrary contract recipients.
+    /// Non-factory, non-whitelisted recipients are still capped — ensures the bypass is scoped.
     function test_nonWhitelistedRecipient_stillCapped() public {
         address otherContract = makeAddr("otherContract");
-        assertFalse(launchpadMock.whitelistedFactories(otherContract));
 
         vm.prank(launchpad);
         vm.expectRevert(SniperProtection.MaxBuyPerTxExceeded.selector);
         _token().transfer(otherContract, MAX_BUY_PER_TX + 1);
     }
 
-    function test_constantsMatchSpec() public view {
-        SniperProtection sp = SniperProtection(address(_token()));
-        assertEq(sp.SNIPER_MAX_BUY_PER_TX(), 30_000_000e18);
-        assertEq(sp.SNIPER_MAX_WALLET(), 30_000_000e18);
-        assertEq(uint256(sp.SNIPER_PROTECTION_WINDOW()), 3 hours);
+    function test_devWhitelistBypassesMaxBuyPerTx() public {
+        _curveBuy(whitelisted1, MAX_BUY_PER_TX * 5);
+        assertEq(_token().balanceOf(whitelisted1), MAX_BUY_PER_TX * 5);
+    }
+
+    function test_devWhitelistBypassesMaxWallet() public {
+        _curveBuy(whitelisted1, MAX_WALLET);
+        _curveBuy(whitelisted1, MAX_WALLET * 3);
+        assertEq(_token().balanceOf(whitelisted1), MAX_WALLET * 4);
+    }
+
+    function test_devWhitelist_onlyAppliesToWhitelistedAddresses() public {
+        _curveBuy(whitelisted2, MAX_BUY_PER_TX * 4);
+        assertEq(_token().balanceOf(whitelisted2), MAX_BUY_PER_TX * 4);
+
+        vm.prank(launchpad);
+        vm.expectRevert(SniperProtection.MaxBuyPerTxExceeded.selector);
+        _token().transfer(buyer, MAX_BUY_PER_TX + 1);
+    }
+
+    function test_customConfigsEnforced() public {
+        // Deploy a second token with tight configs: 1% / 3% / 10 min. Wallet cap is a 3x multiple
+        // of the per-tx cap so we can fill a wallet with exactly 3 back-to-back max-per-tx buys.
+        uint16 tightBuyBps = 100; // 1% → 10_000_000e18
+        uint16 tightWalletBps = 300; // 3% → 30_000_000e18
+        uint40 shortWindow = 10 minutes;
+
+        LivoToken t = _deployCustom(tightBuyBps, tightWalletBps, shortWindow, new address[](0));
+
+        uint256 tightMaxBuy = (TOTAL_SUPPLY * tightBuyBps) / 10_000;
+        uint256 tightMaxWallet = (TOTAL_SUPPLY * tightWalletBps) / 10_000;
+
+        // Boundary passes.
+        vm.prank(launchpad);
+        t.transfer(buyer, tightMaxBuy);
+        assertEq(t.balanceOf(buyer), tightMaxBuy);
+
+        // One wei over the tx cap reverts.
+        vm.prank(launchpad);
+        vm.expectRevert(SniperProtection.MaxBuyPerTxExceeded.selector);
+        t.transfer(buyer2, tightMaxBuy + 1);
+
+        // Fill the wallet to the cap with additional max-per-tx buys.
+        vm.prank(launchpad);
+        t.transfer(buyer, tightMaxBuy);
+        vm.prank(launchpad);
+        t.transfer(buyer, tightMaxBuy);
+        assertEq(t.balanceOf(buyer), tightMaxWallet);
+
+        // One more wei reverts on MaxWallet.
+        vm.prank(launchpad);
+        vm.expectRevert(SniperProtection.MaxWalletExceeded.selector);
+        t.transfer(buyer, 1);
+
+        // Window expires after 10 minutes; caps lift. Send well above the former per-tx cap.
+        vm.warp(block.timestamp + shortWindow + 1);
+        vm.prank(launchpad);
+        t.transfer(buyer2, tightMaxBuy * 10);
+        assertEq(t.balanceOf(buyer2), tightMaxBuy * 10);
+    }
+
+    function test_emitsSniperProtectionInitialized() public {
+        address[] memory wl = new address[](1);
+        wl[0] = whitelisted1;
+
+        vm.expectEmit(true, true, true, true);
+        emit SniperProtection.SniperProtectionInitialized(123, 234, 1 hours, wl);
+        _deployCustom(123, 234, 1 hours, wl);
+    }
+
+    function test_revertsMaxBuyPerTxBpsTooLow() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.MaxBuyPerTxBpsTooLow.selector);
+        _initClone(clone, 9, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, new address[](0));
+    }
+
+    function test_revertsMaxBuyPerTxBpsTooHigh() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.MaxBuyPerTxBpsTooHigh.selector);
+        _initClone(clone, 301, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, new address[](0));
+    }
+
+    function test_revertsMaxWalletBpsTooLow() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.MaxWalletBpsTooLow.selector);
+        _initClone(clone, DEFAULT_MAX_BUY_BPS, 9, DEFAULT_WINDOW, new address[](0));
+    }
+
+    function test_revertsMaxWalletBpsTooHigh() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.MaxWalletBpsTooHigh.selector);
+        _initClone(clone, DEFAULT_MAX_BUY_BPS, 301, DEFAULT_WINDOW, new address[](0));
+    }
+
+    function test_revertsProtectionWindowTooShort() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.ProtectionWindowTooShort.selector);
+        _initClone(clone, DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, 59 seconds, new address[](0));
+    }
+
+    function test_revertsProtectionWindowTooLong() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.ProtectionWindowTooLong.selector);
+        _initClone(clone, DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, 1 days + 1, new address[](0));
+    }
+
+    /// @dev Deploy a fresh clone (pre-init). Split from `_initClone` so revert tests can
+    ///      wrap only the init call with `expectRevert` (the CREATE opcode otherwise confuses it).
+    function _cloneImpl() internal virtual returns (address);
+
+    /// @dev Initialize a clone with the given configs.
+    function _initClone(address clone, uint16 maxBuyBps, uint16 maxWalletBps, uint40 window, address[] memory whitelist)
+        internal
+        virtual;
+
+    /// @dev Convenience: clone + init in one step, returning the typed token.
+    function _deployCustom(uint16 maxBuyBps, uint16 maxWalletBps, uint40 window, address[] memory whitelist)
+        internal
+        returns (LivoToken)
+    {
+        address clone = _cloneImpl();
+        _initClone(clone, maxBuyBps, maxWalletBps, window, whitelist);
+        return LivoToken(payable(clone));
     }
 }
 
@@ -207,14 +350,14 @@ abstract contract SniperProtectionBaseTest is Test {
 
 contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
     LivoTokenSniperProtected internal token;
+    LivoTokenSniperProtected internal impl;
 
     function setUp() public {
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
-        launchpadMock.setWhitelistedFactory(factory, true);
 
         graduator = new MockGraduator(makeAddr("pair"));
-        LivoTokenSniperProtected impl = new LivoTokenSniperProtected();
+        impl = new LivoTokenSniperProtected();
         token = LivoTokenSniperProtected(Clones.clone(address(impl)));
         token.initialize(
             ILivoToken.InitializeParams({
@@ -225,12 +368,41 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 launchpad: launchpad,
                 feeHandler: feeHandler,
                 feeReceiver: feeReceiver
-            })
+            }),
+            _defaultCfg()
         );
     }
 
     function _token() internal view override returns (LivoToken) {
         return LivoToken(address(token));
+    }
+
+    function _cloneImpl() internal override returns (address) {
+        return Clones.clone(address(impl));
+    }
+
+    function _initClone(address clone, uint16 maxBuyBps, uint16 maxWalletBps, uint40 window, address[] memory whitelist)
+        internal
+        override
+    {
+        LivoTokenSniperProtected(clone)
+            .initialize(
+                ILivoToken.InitializeParams({
+                    name: "CustomSniper",
+                    symbol: "CSNP",
+                    tokenOwner: tokenOwner,
+                    graduator: address(graduator),
+                    launchpad: launchpad,
+                    feeHandler: feeHandler,
+                    feeReceiver: feeReceiver
+                }),
+                AntiSniperConfigs({
+                    maxBuyPerTxBps: maxBuyBps,
+                    maxWalletBps: maxWalletBps,
+                    protectionWindowSeconds: window,
+                    whitelist: whitelist
+                })
+            );
     }
 }
 
@@ -238,18 +410,16 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
 
 contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
     LivoTaxableTokenUniV4SniperProtected internal token;
+    LivoTaxableTokenUniV4SniperProtected internal impl;
 
     function setUp() public {
-        // LivoTaxableTokenUniV4 constructor enforces mainnet chain id.
         vm.chainId(DeploymentAddressesMainnet.BLOCKCHAIN_ID);
 
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
-        launchpadMock.setWhitelistedFactory(factory, true);
 
-        // The taxable token requires pair == UNIV4_POOL_MANAGER.
         graduator = new MockGraduator(DeploymentAddressesMainnet.UNIV4_POOL_MANAGER);
-        LivoTaxableTokenUniV4SniperProtected impl = new LivoTaxableTokenUniV4SniperProtected();
+        impl = new LivoTaxableTokenUniV4SniperProtected();
         token = LivoTaxableTokenUniV4SniperProtected(payable(Clones.clone(address(impl))));
         token.initialize(
             ILivoToken.InitializeParams({
@@ -263,11 +433,43 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
             }),
             100, // buyTaxBps
             100, // sellTaxBps
-            uint40(1 days)
+            uint40(1 days),
+            _defaultCfg()
         );
     }
 
     function _token() internal view override returns (LivoToken) {
         return LivoToken(payable(address(token)));
+    }
+
+    function _cloneImpl() internal override returns (address) {
+        return Clones.clone(address(impl));
+    }
+
+    function _initClone(address clone, uint16 maxBuyBps, uint16 maxWalletBps, uint40 window, address[] memory whitelist)
+        internal
+        override
+    {
+        LivoTaxableTokenUniV4SniperProtected(payable(clone))
+            .initialize(
+                ILivoToken.InitializeParams({
+                    name: "CustomSniperTax",
+                    symbol: "CSNT",
+                    tokenOwner: tokenOwner,
+                    graduator: address(graduator),
+                    launchpad: launchpad,
+                    feeHandler: feeHandler,
+                    feeReceiver: feeReceiver
+                }),
+                100,
+                100,
+                uint40(1 days),
+                AntiSniperConfigs({
+                    maxBuyPerTxBps: maxBuyBps,
+                    maxWalletBps: maxWalletBps,
+                    protectionWindowSeconds: window,
+                    whitelist: whitelist
+                })
+            );
     }
 }

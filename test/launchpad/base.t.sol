@@ -8,6 +8,12 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoFactoryTaxToken as _LFTT} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFactoryExtendedTax as _LFET} from "src/factories/LivoFactoryExtendedTax.sol";
+import {LivoFactoryTaxTokenSniperProtected as _LFTTS} from "src/factories/LivoFactoryTaxTokenSniperProtected.sol";
+import {LivoFactorySniperProtected} from "src/factories/LivoFactorySniperProtected.sol";
+import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
+import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
+import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -65,6 +71,11 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactoryUniV2 public factoryV2;
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
+    LivoFactorySniperProtected public factorySniper;
+    LivoFactoryUniV2SniperProtected public factoryV2Sniper;
+    _LFTTS public factoryTaxSniper;
+    LivoTokenSniperProtected public livoTokenSniper;
+    LivoTaxableTokenUniV4SniperProtected public livoTaxTokenSniper;
     LivoFeeHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
@@ -172,6 +183,33 @@ contract LaunchpadBaseTests is Test {
         return _LFET.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
     }
 
+    /// @dev Build a `LivoFactoryTaxTokenSniperProtected.TaxCfg` struct (same fields as the non-sniper one).
+    function _taxCfgSniper(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
+        internal
+        pure
+        returns (_LFTTS.TaxCfg memory)
+    {
+        return _LFTTS.TaxCfg({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+    }
+
+    /// @dev Build a default `AntiSniperConfigs` (3% / 3% / 3h, empty whitelist).
+    function _defaultAntiSniperCfg() internal pure returns (AntiSniperConfigs memory) {
+        return AntiSniperConfigs({
+            maxBuyPerTxBps: 300, maxWalletBps: 300, protectionWindowSeconds: 3 hours, whitelist: new address[](0)
+        });
+    }
+
+    /// @dev Build a custom `AntiSniperConfigs`.
+    function _antiSniperCfg(uint16 maxBuyBps, uint16 maxWalletBps, uint40 window, address[] memory whitelist)
+        internal
+        pure
+        returns (AntiSniperConfigs memory)
+    {
+        return AntiSniperConfigs({
+            maxBuyPerTxBps: maxBuyBps, maxWalletBps: maxWalletBps, protectionWindowSeconds: window, whitelist: whitelist
+        });
+    }
+
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
@@ -232,9 +270,42 @@ contract LaunchpadBaseTests is Test {
             address(feeSplitterImpl)
         );
 
+        livoTokenSniper = new LivoTokenSniperProtected();
+        livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
+
+        factorySniper = new LivoFactorySniperProtected(
+            address(launchpad),
+            address(livoTokenSniper),
+            address(bondingCurve),
+            address(graduatorV4),
+            address(feeHandler),
+            address(feeSplitterImpl)
+        );
+
+        factoryV2Sniper = new LivoFactoryUniV2SniperProtected(
+            address(launchpad),
+            address(livoTokenSniper),
+            address(bondingCurve),
+            address(graduatorV2),
+            address(feeHandler),
+            address(feeSplitterImpl)
+        );
+
+        factoryTaxSniper = new _LFTTS(
+            address(launchpad),
+            address(livoTaxTokenSniper),
+            address(bondingCurve),
+            address(graduatorV4),
+            address(feeHandler),
+            address(feeSplitterImpl)
+        );
+
         launchpad.whitelistFactory(address(factoryV2));
         launchpad.whitelistFactory(address(factoryV4));
         launchpad.whitelistFactory(address(factoryTax));
+        launchpad.whitelistFactory(address(factorySniper));
+        launchpad.whitelistFactory(address(factoryV2Sniper));
+        launchpad.whitelistFactory(address(factoryTaxSniper));
 
         vm.stopPrank();
     }
