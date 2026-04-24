@@ -43,8 +43,11 @@ contract TestLivoFactoryUniV2 is LivoFactoryUniV2 {
         address tokenImplementation,
         address bondingCurve,
         address graduator,
-        address feeHandler
-    ) LivoFactoryUniV2(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler) {}
+        address feeHandler,
+        address feeSplitterImplementation
+    )
+        LivoFactoryUniV2(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation)
+    {}
 }
 
 contract LaunchpadBaseTests is Test {
@@ -203,7 +206,12 @@ contract LaunchpadBaseTests is Test {
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
         factoryV2 = new TestLivoFactoryUniV2(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
+            address(launchpad),
+            address(livoToken),
+            address(bondingCurve),
+            address(graduatorV2),
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
 
         factoryV4 = new TestLivoFactory(
@@ -235,11 +243,13 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                (testToken,) = factoryTax.createToken("TestToken",
+                (testToken,) = factoryTax.createToken(
+                    "TestToken",
                     "TEST",
                     _nextValidSalt(address(factoryTax), address(livoTaxToken)),
                     _fs(creator),
-                    _noSs(), _taxCfg(0, 400, uint32(14 days))
+                    _noSs(),
+                    _taxCfg(0, 400, uint32(14 days))
                 );
             } else {
                 (testToken,) = factoryV4.createToken(
@@ -248,7 +258,7 @@ contract LaunchpadBaseTests is Test {
             }
         } else {
             (testToken,) = factoryV2.createToken(
-                "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+                "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _fs(creator), _noSs()
             );
         }
         _;

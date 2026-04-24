@@ -16,6 +16,14 @@ interface ILivoFactory {
         uint256 shares;
     }
 
+    /// @notice Resolved fee routing returned from `_validateInputsAndResolveFees`. Bundling the three
+    ///         addresses into a memory struct keeps `createToken` bodies within the EVM stack limit.
+    struct FeeRouting {
+        address feeHandler;
+        address feeReceiver;
+        address feeSplitter;
+    }
+
     ////////////////// Events //////////////////////
 
     event TokenCreated(

@@ -49,21 +49,12 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
         SupplyShare[] calldata supplyShares,
         TaxCfg calldata taxCfg
     ) external payable onlyOwner returns (address token, address feeSplitter) {
-        _validateFeeShares(feeReceivers);
-        if (msg.value > 0) _validateSupplyShares(supplyShares);
-        else require(supplyShares.length == 0, InvalidSupplyShares());
+        FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        if (feeReceivers.length == 1) {
-            token = _createAndInitializeTaxToken(
-                name, symbol, address(FEE_HANDLER), feeReceivers[0].account, salt, taxCfg
-            );
-        } else {
-            feeSplitter = _deployFeeSplitter(salt);
-            token = _createAndInitializeTaxToken(name, symbol, feeSplitter, feeSplitter, salt, taxCfg);
-            _initFeeSplitter(feeSplitter, token, feeReceivers);
-        }
+        token = _createAndInitializeTaxToken(name, symbol, routing.feeHandler, routing.feeReceiver, salt, taxCfg);
 
-        if (msg.value > 0) _buyAndDistribute(token, supplyShares);
+        _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
+        feeSplitter = routing.feeSplitter;
     }
 
     /////////////////////////// INTERNAL FUNCTIONS /////////////////////////
@@ -76,8 +67,7 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
         bytes32 salt,
         TaxCfg calldata taxCfg
     ) internal returns (address token) {
-        require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
-        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
+        _validateNameSymbol(name, symbol);
 
         require(taxCfg.buyTaxBps <= MAX_TAX_BPS && taxCfg.sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
 

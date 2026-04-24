@@ -296,7 +296,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV2)) {
             (testToken2,) = factoryV2.createToken(
-                "Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(livoToken)), _noFs(), _noSs()
+                "Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(livoToken)), _fs(creator), _noSs()
             );
         } else {
             (testToken2,) = factoryV4.createToken(

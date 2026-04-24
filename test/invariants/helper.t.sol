@@ -115,15 +115,14 @@ contract InvariantsHelperLaunchpad is Test {
 
     function createToken(uint256 seed) public passTime(seed) choseActor(seed) {
         address token;
-        ILivoFactory.FeeShare[] memory noFs = new ILivoFactory.FeeShare[](0);
         ILivoFactory.SupplyShare[] memory noSs = new ILivoFactory.SupplyShare[](0);
+        ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
+        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000});
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), address(factoryV2.TOKEN_IMPLEMENTATION()));
             vm.prank(currentActor);
-            (token,) = factoryV2.createToken("TestToken", "TEST", salt, noFs, noSs);
+            (token,) = factoryV2.createToken("TestToken", "TEST", salt, creatorFs, noSs);
         } else {
-            ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
-            creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000});
             bytes32 salt = _nextValidSalt(address(factoryV4), address(factoryV4.TOKEN_IMPLEMENTATION()));
             vm.prank(currentActor);
             (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs);

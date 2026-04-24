@@ -187,7 +187,12 @@ contract Deployments is Script {
 
         // 10. Deploy factories
         LivoFactoryUniV2 factoryV2 = new LivoFactoryUniV2(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
+            address(launchpad),
+            address(livoToken),
+            address(bondingCurve),
+            address(graduatorV2),
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
         console.log("| LivoFactoryUniV2 (V2) | ", address(factoryV2));
         LivoFactoryBase factoryV4 = new LivoFactoryBase(

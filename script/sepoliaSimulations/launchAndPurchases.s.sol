@@ -25,18 +25,16 @@ contract BuySellSimulations is Script {
         vm.startBroadcast();
         bytes32 salt = bytes32(uint256(0x123));
 
-        ILivoFactory.FeeShare[] memory noFeeShares = new ILivoFactory.FeeShare[](0);
         ILivoFactory.FeeShare[] memory devFeeShare = new ILivoFactory.FeeShare[](1);
         devFeeShare[0] = ILivoFactory.FeeShare({account: LIVODEV, shares: 10_000});
         ILivoFactory.SupplyShare[] memory noSupplyShares = new ILivoFactory.SupplyShare[](0);
 
-        (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, noFeeShares, noSupplyShares);
+        (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares);
         (address TOKEN2,) = factoryV4.createToken("projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares);
         LivoFactoryTaxToken.TaxCfg memory taxCfg =
             LivoFactoryTaxToken.TaxCfg({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
-        (address TOKEN3,) = factoryTax.createToken(
-            "projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, taxCfg
-        );
+        (address TOKEN3,) =
+            factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, taxCfg);
 
         uint256 deadline = block.timestamp + 300 days;
 

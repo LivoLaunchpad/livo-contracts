@@ -6,6 +6,8 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
+import {LivoToken} from "src/tokens/LivoToken.sol";
+
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
@@ -124,17 +126,16 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     }
 
     /// @dev Resolves the (feeHandler, feeReceiver, feeSplitter) tuple for the given feeReceivers.
-    ///      - len == 0 → (address(0), address(0), address(0)) — used only by UniV2
     ///      - len == 1 → (FEE_HANDLER, feeReceivers[0].account, address(0)) — no splitter deployed
     ///      - len >= 2 → (splitter, splitter, splitter) — splitter is deployed here but not yet initialized
+    ///      Empty arrays are never accepted; belt-and-braces check since `_validateFeeShares` also
+    ///      rejects empty, but this keeps `_resolveFeeRouting` safe if called without validation.
     function _resolveFeeRouting(FeeShare[] calldata feeReceivers, bytes32 salt)
         internal
         returns (address feeHandler_, address feeReceiver_, address feeSplitter)
     {
         uint256 len = feeReceivers.length;
-        if (len == 0) {
-            return (address(0), address(0), address(0));
-        }
+        require(len > 0, InvalidFeeReceiver());
         if (len == 1) {
             return (address(FEE_HANDLER), feeReceivers[0].account, address(0));
         }
@@ -196,5 +197,80 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         // forge-lint: disable-next-line
         bytes32 splitterSalt = keccak256(abi.encodePacked(salt, "feeSplitter"));
         feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
+    }
+
+    /// @dev Shared preamble for every factory's `createToken`: validates fee shares, conditionally
+    ///      validates supply shares (requires empty when msg.value == 0), and resolves fee routing.
+    ///      `feeSplitter` is cloned here without emitting — `FeeSplitterCreated` is emitted later
+    ///      by `_finalizeCreateToken` so the indexer sees `TokenCreated` first.
+    ///      Returns a `FeeRouting` memory struct (1 stack slot) to keep caller stacks shallow.
+    function _validateInputsAndResolveFees(
+        FeeShare[] calldata feeReceivers,
+        SupplyShare[] calldata supplyShares,
+        bytes32 salt
+    ) internal returns (FeeRouting memory routing) {
+        _validateFeeShares(feeReceivers);
+        if (msg.value > 0) _validateSupplyShares(supplyShares);
+        else require(supplyShares.length == 0, InvalidSupplyShares());
+
+        (routing.feeHandler, routing.feeReceiver, routing.feeSplitter) = _resolveFeeRouting(feeReceivers, salt);
+    }
+
+    /// @dev Shared postamble: initializes the splitter (if any) and performs the deployer buy (if any).
+    ///      Event order: `FeeSplitterCreated` fires strictly after `TokenLaunched`, and the deployer
+    ///      buy events fire last.
+    function _finalizeCreateToken(
+        address token,
+        address feeSplitter,
+        FeeShare[] calldata feeReceivers,
+        SupplyShare[] calldata supplyShares
+    ) internal {
+        if (feeSplitter != address(0)) {
+            _initFeeSplitter(feeSplitter, token, feeReceivers);
+        }
+        if (msg.value > 0) _buyAndDistribute(token, supplyShares);
+    }
+
+    /// @dev Shared name/symbol validation. Duplicated in every token-init path.
+    function _validateNameSymbol(string calldata name, string calldata symbol) internal pure {
+        require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
+        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
+    }
+
+    /// @dev Deploys and initializes a non-tax `LivoToken` clone. Shared by `LivoFactoryBase`
+    ///      (passes `msg.sender` as `tokenOwner`) and `LivoFactoryUniV2` (passes `address(0)`).
+    ///      `TokenCreated` must be emitted BEFORE `initialize()` because the indexer creates the
+    ///      TokenData entity from that event; events emitted inside `initialize()` depend on it.
+    function _createAndInitializeToken(
+        string calldata name,
+        string calldata symbol,
+        address feeHandler_,
+        address feeReceiver,
+        bytes32 salt,
+        address tokenOwner
+    ) internal returns (address token) {
+        _validateNameSymbol(name, symbol);
+
+        token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
+
+        emit TokenCreated(
+            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
+        );
+
+        LivoToken(token)
+            .initialize(
+                ILivoToken.InitializeParams({
+                    name: name,
+                    symbol: symbol,
+                    tokenOwner: tokenOwner,
+                    graduator: address(GRADUATOR),
+                    launchpad: address(LAUNCHPAD),
+                    feeHandler: feeHandler_,
+                    feeReceiver: feeReceiver
+                })
+            );
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
     }
 }

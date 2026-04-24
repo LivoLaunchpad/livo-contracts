@@ -17,11 +17,14 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
 
     modifier withTaxTokenCreated(uint16 sellTaxBps, uint32 taxDuration) {
         vm.prank(creator);
-        (deployedToken,) = factoryTax.createToken("TestToken",
+        (deployedToken,) = factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, sellTaxBps, taxDuration));
+            _noSs(),
+            _taxCfg(0, sellTaxBps, taxDuration)
+        );
         _;
     }
 
@@ -115,11 +118,14 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         emit LivoTaxableTokenUniV4.LivoTaxableTokenInitialized(0, 400, 14 days);
 
         vm.prank(creator);
-        factoryTax.createToken("TestToken",
+        factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            _noSs(),
+            _taxCfg(0, 400, uint32(14 days))
+        );
     }
 
     /// @dev when tax token is created, then launchpad does not emit the old TokenCreated event
@@ -127,11 +133,14 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         vm.recordLogs();
 
         vm.prank(creator);
-        factoryTax.createToken("TestToken",
+        factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            _noSs(),
+            _taxCfg(0, 400, uint32(14 days))
+        );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertTrue(logs.length > 0);
@@ -159,11 +168,14 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
         assertTrue(launchpad.whitelistedFactories(address(factoryTax)));
 
         vm.prank(creator);
-        (address token,) = factoryTax.createToken("TestToken",
+        (address token,) = factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            _noSs(),
+            _taxCfg(0, 400, uint32(14 days))
+        );
         assertTrue(token != address(0));
     }
 
@@ -173,11 +185,14 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
-        factoryTax.createToken("TestToken",
+        factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            _noSs(),
+            _taxCfg(0, 400, uint32(14 days))
+        );
     }
 
     /// @dev when factory is whitelisted then blacklisted, then createToken reverts with UnauthorizedFactory
@@ -189,11 +204,14 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
-        factoryTax.createToken("TestToken",
+        factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            _noSs(),
+            _taxCfg(0, 400, uint32(14 days))
+        );
     }
 
     /// @dev when factory is blacklisted then re-whitelisted, then createToken succeeds again
@@ -202,11 +220,14 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
         launchpad.whitelistFactory(address(factoryTax));
 
         vm.prank(creator);
-        (address token,) = factoryTax.createToken("TestToken",
+        (address token,) = factoryTax.createToken(
+            "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            _noSs(),
+            _taxCfg(0, 400, uint32(14 days))
+        );
         assertTrue(token != address(0));
     }
 

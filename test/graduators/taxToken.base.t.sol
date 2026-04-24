@@ -47,11 +47,14 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         returns (address tokenAddress)
     {
         vm.prank(creator);
-        (tokenAddress,) = factoryTax.createToken("TaxToken",
+        (tokenAddress,) = factoryTax.createToken(
+            "TaxToken",
             "TAX",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
-            _noSs(), _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds)));
+            _noSs(),
+            _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds))
+        );
     }
 
     /// @notice Helper to get pool key with tax hook

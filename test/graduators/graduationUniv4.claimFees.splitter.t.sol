@@ -176,11 +176,14 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
         returns (address)
     {
         vm.prank(creator);
-        (address token, address splitter) = factoryTax.createToken(name,
+        (address token, address splitter) = factoryTax.createToken(
+            name,
             symbol,
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _feeShares(),
-            _noSs(), _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)));
+            _noSs(),
+            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
+        );
         splitterAddress = splitter;
         return token;
     }
