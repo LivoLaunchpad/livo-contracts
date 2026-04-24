@@ -74,26 +74,20 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         uint16 buyTaxBps_,
         uint16 sellTaxBps_,
         uint40 taxDurationSeconds_
-    ) external initializer {
-        require(params.graduator != address(0), InvalidGraduator());
+    ) external virtual initializer {
+        _initializeLivoTaxableTokenUniV4(params, buyTaxBps_, sellTaxBps_, taxDurationSeconds_);
+    }
 
-        // storage variables inherited from LivoToken
-        _tokenName = params.name;
-        _tokenSymbol = params.symbol;
-        graduator = params.graduator;
-        pair = ILivoGraduator(params.graduator).initialize(address(this));
+    /// @dev Internal initializer body; callable from child `initializer`-gated functions.
+    function _initializeLivoTaxableTokenUniV4(
+        ILivoToken.InitializeParams memory params,
+        uint16 buyTaxBps_,
+        uint16 sellTaxBps_,
+        uint40 taxDurationSeconds_
+    ) internal onlyInitializing {
+        _initializeLivoToken(params);
         require(pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
-        owner = params.tokenOwner;
-        feeHandler = params.feeHandler;
-        feeReceiver = params.feeReceiver;
-
-        // Validate and store tax configuration
         _initializeTaxConfig(buyTaxBps_, sellTaxBps_, taxDurationSeconds_);
-
-        // all is minted back to the launchpad
-        _mint(params.launchpad, TOTAL_SUPPLY);
-
-        launchpad = LivoLaunchpad(params.launchpad);
     }
 
     /// @notice Marks the token as graduated and records the timestamp
