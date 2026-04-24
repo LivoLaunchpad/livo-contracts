@@ -10,10 +10,10 @@
 | LivoLaunchpad               | 0xd9f8bbe437a3423b725c6616C1B543775ecf1110 |
 | LivoFeeHandler              | 0xc18030d76573784fff4E6365309E1acD967506ff |
 | LivoSwapHook                | 0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc |
-| LivoGraduatorUniswapV2      | 0xd1B50918Aa2e34b89A89B23C84d2377F1622d0f6 |
+| LivoGraduatorUniswapV2      | 0x46aF9F05825459d149ed036Bb6461E1FE8fA25D8 |
 | LivoGraduatorUniswapV4      | 0xCF6910d89d052F025ed402638e4Ae78ecDCdDfA5 |
 | LivoFeeSplitter (impl)      | 0x80d97b49169067f339934C39F3ae76C50ED046a6 |
-| LivoFactory (V2)            | 0x76f404dDcbc6E3ff466F983121CC2b0D8a63F4cb |
+| LivoFactory (V2)            | 0x4e576075EA5a1acf162449af9A248c18A33D6631 |
 | LivoFactory (V4)            | 0xfd68Ca33f04f6604Dad8F99F8fB31A354434a2e5 |
 | LivoFactoryTaxToken (V4)    | 0xa13cd72870f73c76f0E2a9f97600663fA3913Cb6 |
 | LivoFactoryExtendedTax (V4) | 0xe926Eb8F6ba997E5b45247eCE800c0A27E539e57 |
