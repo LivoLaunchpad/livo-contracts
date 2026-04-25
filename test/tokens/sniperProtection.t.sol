@@ -119,11 +119,6 @@ abstract contract SniperProtectionBaseTest is Test {
         assertFalse(sp.sniperBypass(buyer));
     }
 
-    function test_factoryRecorded() public view {
-        // `factory` was captured as msg.sender during initialize — the test contract itself.
-        assertEq(_token().factory(), address(this));
-    }
-
     function test_maxBuyPerTx_boundary() public {
         _curveBuy(buyer, MAX_BUY_PER_TX);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX);
@@ -153,6 +148,20 @@ abstract contract SniperProtectionBaseTest is Test {
         _curveBuy(seller, MAX_BUY_PER_TX);
         _curveSell(seller, MAX_BUY_PER_TX);
         assertEq(_token().balanceOf(seller), 0);
+    }
+
+    /// Wallet-to-wallet transfers within the protection window must be uncapped: the check only
+    /// gates `from == launchpad`. Receiver may end up holding more than `maxWallet`, and the
+    /// transfer amount may exceed `maxBuyPerTx`.
+    function test_walletToWalletUnaffected_withinWindow() public {
+        _curveBuy(buyer, MAX_BUY_PER_TX);
+        _curveBuy(seller, MAX_BUY_PER_TX);
+
+        assertLt(block.timestamp, SniperProtection(address(_token())).launchTimestamp() + DEFAULT_WINDOW);
+
+        vm.prank(buyer);
+        _token().transfer(seller, MAX_BUY_PER_TX);
+        assertEq(_token().balanceOf(seller), MAX_BUY_PER_TX * 2);
     }
 
     function test_windowExpiry_capsLift() public {
@@ -199,8 +208,9 @@ abstract contract SniperProtectionBaseTest is Test {
     function test_deployerBuyViaDeployingFactory_bypassesCaps() public {
         uint256 deployerBuyAmount = TOTAL_SUPPLY / 10; // 10%
 
-        // The token captured `factory = msg.sender` at init, which is this test contract.
-        address deployingFactory = _token().factory();
+        // The token captured `factory = msg.sender` at init — the test contract itself, since
+        // this base setUp() calls `initialize()` directly on the clone.
+        address deployingFactory = address(this);
 
         vm.prank(launchpad);
         _token().transfer(deployingFactory, deployerBuyAmount);

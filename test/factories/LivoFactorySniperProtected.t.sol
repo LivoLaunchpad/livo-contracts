@@ -20,7 +20,6 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
         assertEq(t.name(), "TestToken");
         assertEq(t.symbol(), "TEST");
         assertEq(t.owner(), creator);
-        assertEq(t.factory(), address(factorySniper));
         assertEq(t.launchTimestamp(), uint40(block.timestamp));
         assertEq(t.maxBuyPerTxBps(), 300);
         assertEq(t.maxWalletBps(), 300);
@@ -120,6 +119,5 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
         // Creator received all bought tokens (single SupplyShare entry at 10_000 bps).
         assertGt(t.balanceOf(creator), 0);
-        assertEq(t.factory(), address(factorySniper));
     }
 }

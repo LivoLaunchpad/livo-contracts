@@ -28,7 +28,6 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
         assertEq(t.name(), "TestToken");
         assertEq(t.symbol(), "TEST");
         assertEq(t.owner(), creator);
-        assertEq(t.factory(), address(factoryTaxSniper));
         assertEq(t.buyTaxBps(), 100);
         assertEq(t.sellTaxBps(), 200);
         assertEq(uint256(t.taxDurationSeconds()), 1 days);
@@ -125,6 +124,5 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
 
         LivoTaxableTokenUniV4SniperProtected t = LivoTaxableTokenUniV4SniperProtected(payable(token));
         assertGt(t.balanceOf(creator), 0);
-        assertEq(t.factory(), address(factoryTaxSniper));
     }
 }

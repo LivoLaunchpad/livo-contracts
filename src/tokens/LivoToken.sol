@@ -39,10 +39,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Address that receives fees within the fee handler
     address public feeReceiver;
 
-    /// @notice Factory that deployed this token (captured as `msg.sender` at `initialize()`).
-    /// @dev Read by the sniper-protection check to exempt the deployer-buy path without an external call.
-    address public factory;
-
     /// @notice Token name
     string internal _tokenName;
 
@@ -82,11 +78,11 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
         feeReceiver = params.feeReceiver;
-        factory = msg.sender;
         pair = ILivoGraduator(params.graduator).initialize(address(this));
 
-        // Assigned before _mint so any _update() override that reads `launchpad` during the mint
-        // sees its real value (e.g. sniper-protection variants).
+        // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
+        // reads it sees the real value. The mint itself is not gated by the sniper-protection check
+        // (it has `from == address(0)`, which the check explicitly bypasses).
         launchpad = LivoLaunchpad(params.launchpad);
 
         _mint(params.launchpad, TOTAL_SUPPLY);

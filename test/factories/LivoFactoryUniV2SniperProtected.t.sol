@@ -21,7 +21,6 @@ contract LivoFactoryUniV2SniperProtectedTest is LaunchpadBaseTestsWithUniv2Gradu
         assertEq(t.symbol(), "TEST");
         assertEq(t.owner(), address(0));
         assertEq(t.feeReceiver(), creator);
-        assertEq(t.factory(), address(factoryV2Sniper));
         assertEq(t.maxBuyPerTxBps(), 300);
     }
 

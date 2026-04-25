@@ -51,6 +51,10 @@ abstract contract SniperProtection {
     /// @notice Anchor for the protection window. Set once by `_initializeSniperProtection`.
     uint40 public launchTimestamp;
 
+    /// @notice Factory that deployed this token (captured as `msg.sender` at `_initializeSniperProtection`).
+    /// @dev Used to exempt the deployer-buy path's launchpad → factory hop from the caps.
+    address internal factory;
+
     /// @notice Dev-supplied addresses that bypass the caps during the protection window.
     mapping(address account => bool isWhitelisted) public sniperBypass;
 
@@ -81,6 +85,7 @@ abstract contract SniperProtection {
         maxWalletBps = cfg.maxWalletBps;
         protectionWindowSeconds = cfg.protectionWindowSeconds;
         launchTimestamp = uint40(block.timestamp);
+        factory = msg.sender;
 
         uint256 n = cfg.whitelist.length;
         for (uint256 i; i < n; ++i) {
@@ -119,11 +124,11 @@ abstract contract SniperProtection {
             if (to == factoryAddr) return;
             if (sniperBypass[to]) return;
 
-            uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
-            require(toBalance + amount <= maxWallet, MaxWalletExceeded());
-
             uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
             require(amount <= maxTx, MaxBuyPerTxExceeded());
+
+            uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
+            require(toBalance + amount <= maxWallet, MaxWalletExceeded());
         }
     }
 }
