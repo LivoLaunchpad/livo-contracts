@@ -172,6 +172,33 @@
             "internalType": "uint256"
           }
         ]
+      },
+      {
+        "name": "antiSniperCfg",
+        "type": "tuple",
+        "internalType": "struct AntiSniperConfigs",
+        "components": [
+          {
+            "name": "maxBuyPerTxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "maxWalletBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "protectionWindowSeconds",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "whitelist",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
       }
     ],
     "outputs": [

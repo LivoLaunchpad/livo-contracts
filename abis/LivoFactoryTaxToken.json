@@ -37,19 +37,6 @@
   },
   {
     "type": "function",
-    "name": "BASIS_POINTS",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "BONDING_CURVE",
     "inputs": [],
     "outputs": [
@@ -174,83 +161,65 @@
         "internalType": "string"
       },
       {
-        "name": "feeReceiver",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "salt",
         "type": "bytes32",
         "internalType": "bytes32"
       },
       {
-        "name": "buyTaxBps",
-        "type": "uint16",
-        "internalType": "uint16"
+        "name": "feeReceivers",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.FeeShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
       },
       {
-        "name": "sellTaxBps",
-        "type": "uint16",
-        "internalType": "uint16"
+        "name": "supplyShares",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.SupplyShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
       },
       {
-        "name": "taxDurationSeconds",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "createTokenWithFeeSplit",
-    "inputs": [
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "symbol",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "recipients",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "sharesBps",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      },
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "buyTaxBps",
-        "type": "uint16",
-        "internalType": "uint16"
-      },
-      {
-        "name": "sellTaxBps",
-        "type": "uint16",
-        "internalType": "uint16"
-      },
-      {
-        "name": "taxDurationSeconds",
-        "type": "uint32",
-        "internalType": "uint32"
+        "name": "taxCfg",
+        "type": "tuple",
+        "internalType": "struct TaxConfigInit",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
       }
     ],
     "outputs": [
@@ -269,7 +238,7 @@
   },
   {
     "type": "function",
-    "name": "maxDeployerBuyBps",
+    "name": "maxBuyOnDeployBps",
     "inputs": [],
     "outputs": [
       {
@@ -308,7 +277,7 @@
   },
   {
     "type": "function",
-    "name": "quoteDeployerBuy",
+    "name": "quoteBuyOnDeploy",
     "inputs": [
       {
         "name": "tokenAmount",
@@ -334,10 +303,10 @@
   },
   {
     "type": "function",
-    "name": "setMaxDeployerBuyBps",
+    "name": "setMaxBuyOnDeployBps",
     "inputs": [
       {
-        "name": "newMaxDeployerBuyBps",
+        "name": "newMaxBuyOnDeployBps",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -373,7 +342,7 @@
   },
   {
     "type": "event",
-    "name": "DeployerBuy",
+    "name": "BuyOnDeploy",
     "inputs": [
       {
         "name": "token",
@@ -398,6 +367,18 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "recipients",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
+      },
+      {
+        "name": "amounts",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
       }
     ],
     "anonymous": false
@@ -435,10 +416,10 @@
   },
   {
     "type": "event",
-    "name": "MaxDeployerBuyBpsUpdated",
+    "name": "MaxBuyOnDeployBpsUpdated",
     "inputs": [
       {
-        "name": "newMaxDeployerBuyBps",
+        "name": "newMaxBuyOnDeployBps",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -575,7 +556,7 @@
   },
   {
     "type": "error",
-    "name": "InvalidDeployerBuy",
+    "name": "InvalidBuyOnDeploy",
     "inputs": []
   },
   {
@@ -586,6 +567,16 @@
   {
     "type": "error",
     "name": "InvalidNameOrSymbol",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidShares",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidSupplyShares",
     "inputs": []
   },
   {
