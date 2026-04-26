@@ -71,6 +71,7 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
 
         // minimal proxy pattern to deploy a new LivoToken instance
         token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(

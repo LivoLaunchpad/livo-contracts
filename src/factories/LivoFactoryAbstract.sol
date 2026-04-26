@@ -58,6 +58,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
     /// @notice Returns the token implementation contract used as the clone source
+    // forge-lint: disable-next-line(mixed-case-function)
     function TOKEN_IMPLEMENTATION() public view returns (ILivoToken) {
         return _tokenImplementation;
     }
@@ -252,6 +253,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         _validateNameSymbol(name, symbol);
 
         token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(

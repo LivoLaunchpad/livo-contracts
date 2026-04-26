@@ -63,6 +63,7 @@ contract LivoFactorySniperProtected is LivoFactoryAbstract {
         _validateNameSymbol(name, symbol);
 
         token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(

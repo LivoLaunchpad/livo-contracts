@@ -84,6 +84,7 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
 
     function _deployClone(bytes32 salt) internal returns (address token) {
         token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
     }
 
