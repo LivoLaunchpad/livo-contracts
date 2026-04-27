@@ -2,21 +2,25 @@
 
 ## Livo
 
-| Contract Name               | Address                                    |
-| --------------------------- | ------------------------------------------ |
-| LivoToken                   | 0xDF1F1EfFb7733fA17090aFE2A86034CED186DeEa |
-| LivoTaxableTokenUniV4       | 0x167a40f0C706381D5Ead24802c49cfD408B75aDd |
-| ConstantProductBondingCurve | 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5 |
-| LivoLaunchpad               | 0xd9f8bbe437a3423b725c6616C1B543775ecf1110 |
-| LivoFeeHandler              | 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF |
-| LivoSwapHook                | 0x0591a87D3a56797812C4DA164C1B005c545400Cc |
-| LivoGraduatorUniswapV2      | 0x7131c8141cd356dF22a9d30B292DB3f64B281AA5 |
-| LivoGraduatorUniswapV4      | 0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d |
-| LivoFeeSplitter (impl)      | 0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7 |
-| LivoFactory (V2)            | 0x2E8325243b87fB78711092D13538cB4CDbf3d098 |
-| LivoFactory (V4)            | 0xE6A46F0c681F7F67b349C77Ff2329dB4F016691E |
-| LivoFactoryTaxToken (V4)    | 0x124972595Af23c2FbEE4b77a24ceF8d6af800016 |
-| LivoFactoryExtendedTax (V4) | 0x2Ac66442930112836152D426d95634c274cF2aaf |
+| Contract Name                        | Address                                    |
+| ------------------------------------ | ------------------------------------------ |
+| LivoLaunchpad                        | 0xd9f8bbe437a3423b725c6616C1B543775ecf1110 |
+| ConstantProductBondingCurve          | 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5 |
+| LivoFeeHandler                       | 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF |
+| LivoSwapHook                         | 0x0591a87D3a56797812C4DA164C1B005c545400Cc |
+| LivoGraduatorUniswapV2               | 0x7131c8141cd356dF22a9d30B292DB3f64B281AA5 |
+| LivoGraduatorUniswapV4               | 0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d |
+| LivoFeeSplitter (impl)               | 0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7 |
+| LivoToken                            | 0x506ee549C9587FA8979FC4B864dF7D55101eF8d7 |
+| LivoTaxableTokenUniV4                | 0xEB86230e271ad0C3be657A1838E16F4648957EeA |
+| LivoTokenSniperProtected             | 0x3FB53a3696e1BA716b9ACDcE5F2C122Be553Ca73 |
+| LivoTaxableTokenUniV4SniperProtected | 0x0e4Cf3aD85Edcb73E725F2f052eD08563Eec79aC |
+| LivoFactoryUniV2                     | 0xD7aD2ccaF5801f744B387d516023415424fEd50b |
+| LivoFactoryBase (V4)                 | 0xaAbBc4e6B981c5bdd742A3B08F1EA57511148298 |
+| LivoFactoryTaxToken (V4)             | 0xa8Df177bFa3bBf69FbD52AdBb4ED0c4e21c88722 |
+| LivoFactoryUniV2SniperProtected      | 0x523297eF11a281B68C82058e5732a12895E99c2E |
+| LivoFactorySniperProtected (V4)      | 0x75090F4011D3d8E82ecf52af9A6538d7D3544512 |
+| LivoFactoryTaxTokenSniperProtected   | 0xe95EF8910d96127E3B77F2d7afc8E947a348A01F |
 
 ## Accounts
 

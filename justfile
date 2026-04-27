@@ -105,6 +105,14 @@ deploy-sepolia: taxtokenaddresses
     # Hook address is logged in deployment output (LivoSwapHook row)
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
+# Re-deploys the four token implementations and all six factories (V2/V4/TaxToken + sniper-protected
+# variants) against the existing Livo core, then whitelists them on the launchpad.
+deploy-sepolia-factories: taxtokenaddresses
+    forge script DeploymentsFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+
+deploy-mainnet-factories:
+    forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
+
 create-token-v2 tokenName value="0":
     SALT=$(just next-salt {{factoryV2}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \
