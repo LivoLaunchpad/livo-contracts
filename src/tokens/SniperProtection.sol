@@ -102,11 +102,16 @@ abstract contract SniperProtection {
     /// @param amount Transfer amount.
     /// @param launchpadAddr Address of the launchpad (the bonding-curve counterparty).
     /// @param factoryAddr Address of the factory that deployed this token (deployer-buy recipient).
+    /// @param graduatorAddr Address of the graduator (graduation-reserve recipient).
     /// @param graduated True if the token has already graduated.
     /// @param toBalance Recipient's balance BEFORE this transfer is applied (`balanceOf(to)`).
     /// @dev The factory recipient is exempt so the deployer-buy path (launchpad → factory →
     ///      supplyShares, atomically in `createToken`) can move up to the factory's own
     ///      deployer-buy cap without tripping the anti-sniper limits.
+    /// @dev The graduator recipient is exempt for the same reason: graduation moves the entire
+    ///      graduation reserve (~80% of supply) from the launchpad to the graduator in a single
+    ///      hop before `markGraduated()` flips the gate, so without this exemption a graduation
+    ///      triggered inside the protection window would always revert with `MaxBuyPerTxExceeded`.
     /// @dev The sniper protection limits ignore the launchpad fees for simplicity
     function _checkSniperProtection(
         address from,
@@ -114,6 +119,7 @@ abstract contract SniperProtection {
         uint256 amount,
         address launchpadAddr,
         address factoryAddr,
+        address graduatorAddr,
         bool graduated,
         uint256 toBalance
     ) internal view {
@@ -122,6 +128,7 @@ abstract contract SniperProtection {
                 && block.timestamp < launchTimestamp + protectionWindowSeconds
         ) {
             if (to == factoryAddr) return;
+            if (to == graduatorAddr) return;
             if (sniperBypass[to]) return;
 
             uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
