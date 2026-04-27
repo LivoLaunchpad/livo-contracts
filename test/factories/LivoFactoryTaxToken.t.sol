@@ -23,6 +23,7 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, sellTaxBps, taxDuration)
         );
         _;
@@ -34,14 +35,18 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
     function test_createToken_revertsOnSellTaxAboveMax() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
-        factoryTax.createToken("TestToken", "TEST", "0x12", _fs(creator), _noSs(), _taxCfg(0, 401, uint32(14 days)));
+        factoryTax.createToken(
+            "TestToken", "TEST", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(14 days))
+        );
     }
 
     /// @dev when taxDurationSeconds exceeds MAX_SELL_TAX_DURATION_SECONDS, then createToken reverts with InvalidTaxDuration
     function test_createToken_revertsOnTaxDurationAboveMax() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
-        factoryTax.createToken("TestToken", "TEST", "0x12", _fs(creator), _noSs(), _taxCfg(0, 400, uint32(14 days + 1)));
+        factoryTax.createToken(
+            "TestToken", "TEST", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days + 1))
+        );
     }
 
     /// @dev when sellTaxBps equals MAX_TAX_BPS, then createToken succeeds
@@ -59,20 +64,50 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         assertTrue(deployedToken != address(0));
     }
 
+    /// @dev when renounceOwnership=true, tax token's owner is address(0)
+    function test_createToken_renounceOwnership_setsOwnerToZero() public {
+        vm.prank(creator);
+        (address token,) = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _fs(creator),
+            _noSs(),
+            true,
+            _taxCfg(0, 400, uint32(14 days))
+        );
+        assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), address(0));
+    }
+
+    /// @dev when renounceOwnership=false, tax token's owner is msg.sender
+    function test_createToken_keepOwnership_setsOwnerToCaller() public {
+        vm.prank(creator);
+        (address token,) = factoryTax.createToken(
+            "TestToken",
+            "TEST",
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfg(0, 400, uint32(14 days))
+        );
+        assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), creator);
+    }
+
     // ============ Input Validation ============
 
     /// @dev when name is empty, then createToken reverts with InvalidNameOrSymbol
     function test_createToken_revertsOnEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryTax.createToken("", "TEST", "0x12", _fs(creator), _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        factoryTax.createToken("", "TEST", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days)));
     }
 
     /// @dev when symbol is empty, then createToken reverts with InvalidNameOrSymbol
     function test_createToken_revertsOnEmptySymbol() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryTax.createToken("TestToken", "", "0x0", _fs(creator), _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        factoryTax.createToken("TestToken", "", "0x0", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days)));
     }
 
     /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
@@ -82,14 +117,14 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
-        factoryTax.createToken("TestToken", "TEST", "0x12", zeroFs, _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        factoryTax.createToken("TestToken", "TEST", "0x12", zeroFs, _noSs(), false, _taxCfg(0, 400, uint32(14 days)));
     }
 
     /// @dev when feeReceivers array is empty, then createToken reverts with InvalidFeeReceiver
     function test_createToken_revertsOnEmptyFeeReceivers() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
-        factoryTax.createToken("TestToken", "TEST", "0x12", _noFs(), _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        factoryTax.createToken("TestToken", "TEST", "0x12", _noFs(), _noSs(), false, _taxCfg(0, 400, uint32(14 days)));
     }
 
     // ============ Vanity Address Validation ============
@@ -107,7 +142,9 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         }
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenAddress.selector));
-        factoryTax.createToken("TestToken", "TEST", badSalt, _fs(creator), _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        factoryTax.createToken(
+            "TestToken", "TEST", badSalt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days))
+        );
     }
 
     // ============ Events ============
@@ -124,6 +161,7 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, 400, uint32(14 days))
         );
     }
@@ -139,6 +177,7 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, 400, uint32(14 days))
         );
 
@@ -174,6 +213,7 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, 400, uint32(14 days))
         );
         assertTrue(token != address(0));
@@ -191,6 +231,7 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, 400, uint32(14 days))
         );
     }
@@ -210,6 +251,7 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, 400, uint32(14 days))
         );
     }
@@ -226,6 +268,7 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, 400, uint32(14 days))
         );
         assertTrue(token != address(0));

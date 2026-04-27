@@ -9,7 +9,7 @@ Summary of all function signature and functionality changes that affect frontend
 - **Removed**: `LivoLaunchpad.createToken()` no longer exists on the launchpad.
 - **New**: Token creation is now handled by factory contracts. Each factory may have different input arguments. There is no need to pass graduator, token implementation, bonding curve, etc. — they are hardcoded in each factory.
 
-### `LivoFactoryBase` (for UniV2 and UniV4 tokens)
+### `LivoFactoryUniV4` (for UniV2 and UniV4 tokens)
 
 ```solidity
 // Single fee receiver

@@ -65,21 +65,27 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Initializes the token clone with its parameters
     /// @param params Shared token initialization parameters
     function initialize(ILivoToken.InitializeParams memory params) external virtual initializer {
+        _initializeLivoToken(params);
+    }
+
+    /// @dev Internal initializer body; callable from child `initializer`-gated functions.
+    function _initializeLivoToken(ILivoToken.InitializeParams memory params) internal onlyInitializing {
         require(params.graduator != address(0), InvalidGraduator());
 
         _tokenName = params.name;
         _tokenSymbol = params.symbol;
         graduator = params.graduator;
         owner = params.tokenOwner;
-        pair = ILivoGraduator(params.graduator).initialize(address(this));
         feeHandler = params.feeHandler;
         feeReceiver = params.feeReceiver;
+        pair = ILivoGraduator(params.graduator).initialize(address(this));
 
-        // all is minted back to the launchpad
-        // question should the launchpad check it owns the full supply? or should we leave that open?
-        _mint(params.launchpad, TOTAL_SUPPLY);
-
+        // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
+        // reads it sees the real value. The mint itself is not gated by the sniper-protection check
+        // (it has `from == address(0)`, which the check explicitly bypasses).
         launchpad = LivoLaunchpad(params.launchpad);
+
+        _mint(params.launchpad, TOTAL_SUPPLY);
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -163,6 +169,11 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+
+    /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
+    function maxTokenPurchase(address) external view virtual returns (uint256) {
+        return type(uint256).max;
+    }
 
     /// @dev ERC20 interface compliance
     function name() public view override returns (string memory) {

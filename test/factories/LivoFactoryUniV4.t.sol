@@ -10,7 +10,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
-contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
+contract LivoFactoryUniV4DeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     address public deployedToken;
 
     // ============ Modifiers ============
@@ -166,7 +166,7 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 }
 
-contract LivoFactoryBaseWhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
+contract LivoFactoryUniV4WhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
     // ============ Modifiers ============
 
     modifier withBlacklistedFactory() {

@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Factory for deploying standard (non-taxable) Livo tokens
-contract LivoFactoryBase is LivoFactoryAbstract {
+contract LivoFactoryUniV4 is LivoFactoryAbstract {
     constructor(
         address launchpad,
         address tokenImplementation,
@@ -30,11 +30,14 @@ contract LivoFactoryBase is LivoFactoryAbstract {
         string calldata symbol,
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
-        SupplyShare[] calldata supplyShares
+        SupplyShare[] calldata supplyShares,
+        bool renounceOwnership
     ) external payable returns (address token, address feeSplitter) {
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        token = _createAndInitializeToken(name, symbol, routing.feeHandler, routing.feeReceiver, salt, msg.sender);
+        token = _createAndInitializeToken(
+            name, symbol, routing.feeHandler, routing.feeReceiver, salt, renounceOwnership ? address(0) : msg.sender
+        );
 
         _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;

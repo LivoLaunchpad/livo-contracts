@@ -11,7 +11,7 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 ## Table of contents
 
 1. [createToken — `LivoFactoryUniV2` (V2 graduator, LivoToken)](#1-createtoken--livofactoryuniv2-v2-graduator-livotoken)
-2. [createToken — `LivoFactoryBase` (V4 graduator, LivoToken)](#2-createtoken--livofactorybase-v4-graduator-livotoken)
+2. [createToken — `LivoFactoryUniV4` (V4 graduator, LivoToken)](#2-createtoken--livofactoryuniv4-v4-graduator-livotoken)
 3. [createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax`](#3-createtoken--livofactorytaxtoken--livofactoryextendedtax-v4-graduator-livotaxabletokenuniv4)
 4. [createToken with a fee splitter — any factory](#4-createtoken-with-a-fee-splitter--any-factory)
 5. [buyTokensWithExactEth (pre-graduation)](#5-buytokenswithexacteth--pre-graduation)
@@ -23,6 +23,7 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 11. [V4 post-graduation sell](#11-v4-post-graduation-sell)
 12. [`LivoFeeHandler.claim`](#12-livofeehandlerclaimaddress-tokens)
 13. [`LivoFeeSplitter.claim`](#13-livofeesplitterclaimaddress-tokens)
+14. [Sniper-protected factory variants](#14-sniper-protected-factory-variants-createtoken)
 
 ---
 
@@ -77,19 +78,19 @@ Append after the above (after 1a's step 6, or after 1b's step 9 when a splitter 
 
 Note: the treasury also receives the buy fee via a bare `.call{value}` — no event from that transfer.
 
-Test: `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryBaseDeployerBuyTest::test_createToken_deployerBuy`.
+Test: `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryUniV4DeployerBuyTest::test_createToken_deployerBuy`.
 
 ---
 
-## 2. createToken — `LivoFactoryBase` (V4 graduator, `LivoToken`)
+## 2. createToken — `LivoFactoryUniV4` (V4 graduator, `LivoToken`)
 
-Signature: `createToken(string name, string symbol, address feeReceiver, bytes32 salt)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership)` (payable).
 
-Differs from §1 by using the Uniswap V4 graduator: no V2 pair is created, instead a V4 pool is initialized.
+Differs from §1 by using the Uniswap V4 graduator: no V2 pair is created, instead a V4 pool is initialized. `tokenOwner` in the `TokenCreated` event below is `msg.sender` when `renounceOwnership == false` and `address(0)` when `renounceOwnership == true`.
 
 ### 2a. Without deployer buy
 
-1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner=msg.sender, launchpad, graduator, feeHandler, feeReceiver`).
+1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad, graduator, feeHandler, feeReceiver`).
 2. **`PoolManager.Initialize`** (external V4: `id, currency0=0x0, currency1=token, fee=0, tickSpacing=200, hooks=LivoSwapHook, sqrtPriceX96, tick`) — V4 pool initialized at graduation price by graduator.
 3. **`LivoGraduator.PairInitialized`** (`token, pair=PoolManager`).
 4. **`LivoGraduator.PoolIdRegistered`** (`token, poolId`) — V4-specific, maps token → `PoolId`.
@@ -107,7 +108,7 @@ Same as 2a plus the deployer-buy tail (same 4 events as §1b: `Transfer`, `LivoT
 
 ## 3. createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax` (V4 graduator, `LivoTaxableTokenUniV4`)
 
-Signature: `createToken(string name, string symbol, address feeReceiver, bytes32 salt, uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg)` (payable). `renounceOwnership` follows the same convention as §2: `address(0)` when `true`, `msg.sender` when `false`.
 
 Differs from §2 only by adding one extra event from the taxable-token initializer. `LivoFactoryExtendedTax` is owner-gated and lifts caps but emits the same events in the same order.
 
@@ -131,7 +132,7 @@ Tests:
 
 ## 4. createToken with a fee splitter — any factory
 
-Triggered when `feeReceivers.length >= 2` is passed to `createToken` on any of `LivoFactoryUniV2`, `LivoFactoryBase`, `LivoFactoryTaxToken`, or `LivoFactoryExtendedTax`. A `LivoFeeSplitter` clone is deployed and used as both `feeHandler` and `feeReceiver` on the token. The factory emits `FeeSplitterCreated` *before* the splitter's `initialize()`, so the event ordering is specifically:
+Triggered when `feeReceivers.length >= 2` is passed to `createToken` on any of `LivoFactoryUniV2`, `LivoFactoryUniV4`, `LivoFactoryTaxToken`, or `LivoFactoryExtendedTax`. A `LivoFeeSplitter` clone is deployed and used as both `feeHandler` and `feeReceiver` on the token. The factory emits `FeeSplitterCreated` *before* the splitter's `initialize()`, so the event ordering is specifically:
 
 1. **`LivoFactory.TokenCreated`**.
 2. **`PoolManager.Initialize`** (external V4).
@@ -325,6 +326,65 @@ Event #3 uses the same event name as the fee handler's (intentionally, for index
 If `msg.sender` is not a recipient, or has already claimed since the last share change, the function returns without emitting #3. If no new ETH has arrived, #1 and #2 are both absent.
 
 Test: `test/feeSplitters/LivoFeeSplitter.t.sol::test_claim_assertEmitsEvents` (isolated, with a mock token) and the end-to-end `test/graduators/graduationUniv4.claimFees.splitter.t.sol::test_shareholdersCanClaimLpFees` (two `CreatorClaimed` emissions, one per shareholder).
+
+---
+
+## 14. Sniper-protected factory variants (`createToken`)
+
+The sniper-protected factories emit the exact same sequence as their non-protected twins (§1, §2, §3) **plus one extra event** — `SniperProtectionInitialized` — fired from the token's initializer after the mint (§14.1) or after `LivoTaxableTokenInitialized` (§14.3). Everything else (splitter tail from §4, deployer-buy tail from §1c, post-event ordering of `TokenLaunched`) is unchanged.
+
+### 14.1. `LivoFactorySniperProtected.createToken` (V4 graduator, `LivoTokenSniperProtected`)
+
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention: `address(0)` when `true`, `msg.sender` when `false`.
+
+Same event sequence as §2a, with `SniperProtectionInitialized` inserted between the mint and OZ `Initialized`:
+
+1. **`LivoFactory.TokenCreated`**.
+2. **`PoolManager.Initialize`** (external V4).
+3. **`LivoGraduator.PairInitialized`**.
+4. **`LivoGraduator.PoolIdRegistered`**.
+5. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+6. **`SniperProtection.SniperProtectionInitialized`** (`maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist`) — NEW.
+7. **`Initializable.Initialized`** (`version=1`).
+8. **`LivoLaunchpad.TokenLaunched`**.
+
+With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
+
+Test: `test/factories/LivoFactorySniperProtected.t.sol::test_createToken_happyPath`.
+
+### 14.2. `LivoFactoryUniV2SniperProtected.createToken` (V2 graduator, `LivoTokenSniperProtected`)
+
+Signature identical to §14.1. Uses the V2 graduator (ownership renounced at creation, `tokenOwner = address(0)` in `TokenCreated`). Event sequence mirrors §1a plus `SniperProtectionInitialized`:
+
+1. **`LivoFactory.TokenCreated`** (`tokenOwner = address(0)`).
+2. **`UniswapV2Factory.PairCreated`** (external).
+3. **`LivoGraduator.PairInitialized`**.
+4. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+5. **`SniperProtection.SniperProtectionInitialized`** — NEW.
+6. **`Initializable.Initialized`** (`version=1`).
+7. **`LivoLaunchpad.TokenLaunched`**.
+
+Test: `test/factories/LivoFactoryUniV2SniperProtected.t.sol::test_createToken_happyPath_ownerIsZero`.
+
+### 14.3. `LivoFactoryTaxTokenSniperProtected.createToken` (V4 graduator, `LivoTaxableTokenUniV4SniperProtected`)
+
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention.
+
+Same sequence as §3 plus `SniperProtectionInitialized` after `LivoTaxableTokenInitialized`:
+
+1. **`LivoFactory.TokenCreated`**.
+2. **`PoolManager.Initialize`** (external V4).
+3. **`LivoGraduator.PairInitialized`**.
+4. **`LivoGraduator.PoolIdRegistered`**.
+5. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+6. **`LivoTaxableTokenUniV4.LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds`).
+7. **`SniperProtection.SniperProtectionInitialized`** — NEW.
+8. **`Initializable.Initialized`** (`version=1`).
+9. **`LivoLaunchpad.TokenLaunched`**.
+
+With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
+
+Test: `test/factories/LivoFactoryTaxTokenSniperProtected.t.sol::test_createToken_happyPath`.
 
 ---
 
