@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Factory for deploying standard (non-taxable) Livo tokens
-contract LivoFactoryBase is LivoFactoryAbstract {
+contract LivoFactoryUniV4 is LivoFactoryAbstract {
     constructor(
         address launchpad,
         address tokenImplementation,

@@ -10,7 +10,7 @@ import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol"
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
 import {LivoFactorySniperProtected} from "src/factories/LivoFactorySniperProtected.sol";
@@ -102,10 +102,10 @@ contract DeploymentsFactories is Script {
         );
         console.log("| LivoFactoryUniV2 | ", address(factoryV2));
 
-        LivoFactoryBase factoryV4 = new LivoFactoryBase(
+        LivoFactoryUniV4 factoryV4 = new LivoFactoryUniV4(
             c.launchpad, address(livoToken), c.bondingCurve, c.graduatorV4, c.feeHandler, c.feeSplitterImpl
         );
-        console.log("| LivoFactoryBase (V4) | ", address(factoryV4));
+        console.log("| LivoFactoryUniV4 (V4) | ", address(factoryV4));
 
         LivoFactoryTaxToken factoryTax = new LivoFactoryTaxToken(
             c.launchpad, address(livoTaxableToken), c.bondingCurve, c.graduatorV4, c.feeHandler, c.feeSplitterImpl

@@ -14,7 +14,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract LivoFactoryBaseDeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator {
+contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator {
     // ============ Happy Path ============
 
     /// @dev deployer buy with a single supply recipient defaults the bought supply to that recipient

@@ -26,14 +26,14 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 
-contract TestLivoFactory is LivoFactoryBase {
+contract TestLivoFactory is LivoFactoryUniV4 {
     constructor(
         address launchpad,
         address tokenImplementation,
@@ -41,7 +41,9 @@ contract TestLivoFactory is LivoFactoryBase {
         address graduator,
         address feeHandler,
         address feeSplitterImplementation
-    ) LivoFactoryBase(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {}
+    )
+        LivoFactoryUniV4(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation)
+    {}
 }
 
 contract TestLivoFactoryUniV2 is LivoFactoryUniV2 {

@@ -11,7 +11,7 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 ## Table of contents
 
 1. [createToken — `LivoFactoryUniV2` (V2 graduator, LivoToken)](#1-createtoken--livofactoryuniv2-v2-graduator-livotoken)
-2. [createToken — `LivoFactoryBase` (V4 graduator, LivoToken)](#2-createtoken--livofactorybase-v4-graduator-livotoken)
+2. [createToken — `LivoFactoryUniV4` (V4 graduator, LivoToken)](#2-createtoken--livofactoryuniv4-v4-graduator-livotoken)
 3. [createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax`](#3-createtoken--livofactorytaxtoken--livofactoryextendedtax-v4-graduator-livotaxabletokenuniv4)
 4. [createToken with a fee splitter — any factory](#4-createtoken-with-a-fee-splitter--any-factory)
 5. [buyTokensWithExactEth (pre-graduation)](#5-buytokenswithexacteth--pre-graduation)
@@ -78,11 +78,11 @@ Append after the above (after 1a's step 6, or after 1b's step 9 when a splitter 
 
 Note: the treasury also receives the buy fee via a bare `.call{value}` — no event from that transfer.
 
-Test: `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryBaseDeployerBuyTest::test_createToken_deployerBuy`.
+Test: `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryUniV4DeployerBuyTest::test_createToken_deployerBuy`.
 
 ---
 
-## 2. createToken — `LivoFactoryBase` (V4 graduator, `LivoToken`)
+## 2. createToken — `LivoFactoryUniV4` (V4 graduator, `LivoToken`)
 
 Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership)` (payable).
 
@@ -132,7 +132,7 @@ Tests:
 
 ## 4. createToken with a fee splitter — any factory
 
-Triggered when `feeReceivers.length >= 2` is passed to `createToken` on any of `LivoFactoryUniV2`, `LivoFactoryBase`, `LivoFactoryTaxToken`, or `LivoFactoryExtendedTax`. A `LivoFeeSplitter` clone is deployed and used as both `feeHandler` and `feeReceiver` on the token. The factory emits `FeeSplitterCreated` *before* the splitter's `initialize()`, so the event ordering is specifically:
+Triggered when `feeReceivers.length >= 2` is passed to `createToken` on any of `LivoFactoryUniV2`, `LivoFactoryUniV4`, `LivoFactoryTaxToken`, or `LivoFactoryExtendedTax`. A `LivoFeeSplitter` clone is deployed and used as both `feeHandler` and `feeReceiver` on the token. The factory emits `FeeSplitterCreated` *before* the splitter's `initialize()`, so the event ordering is specifically:
 
 1. **`LivoFactory.TokenCreated`**.
 2. **`PoolManager.Initialize`** (external V4).

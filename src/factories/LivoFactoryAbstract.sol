@@ -238,7 +238,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
     }
 
-    /// @dev Deploys and initializes a non-tax `LivoToken` clone. Shared by `LivoFactoryBase`
+    /// @dev Deploys and initializes a non-tax `LivoToken` clone. Shared by `LivoFactoryUniV4`
     ///      (passes `msg.sender` as `tokenOwner`) and `LivoFactoryUniV2` (passes `address(0)`).
     ///      `TokenCreated` must be emitted BEFORE `initialize()` because the indexer creates the
     ///      TokenData entity from that event; events emitted inside `initialize()` depend on it.

@@ -62,7 +62,7 @@ For `LivoFactoryTaxToken (V4)` at `0x5ba05f2326e73D46d66bf80aF43a768CEd2e4a5d`, 
 
 ## The Constraint
 
-Both `LivoFactoryBase` and `LivoFactoryTaxToken` enforce:
+Both `LivoFactoryUniV4` and `LivoFactoryTaxToken` enforce:
 
 ```solidity
 require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
@@ -138,6 +138,6 @@ function findValidSalt(): { salt: string; tokenAddress: string } {
 ## Important Notes
 
 - **`INITCODE_HASH` is constant** for a given factory — compute it once at startup, not per call.
-- **Different factories have different `TOKEN_IMPLEMENTATION` addresses**, so the initcode hash differs between `LivoFactoryBase` and `LivoFactoryTaxToken`. Make sure you use the right implementation address for the factory you're calling.
+- **Different factories have different `TOKEN_IMPLEMENTATION` addresses**, so the initcode hash differs between `LivoFactoryUniV4` and `LivoFactoryTaxToken`. Make sure you use the right implementation address for the factory you're calling.
 - **Salt uniqueness**: each salt can only be used once per factory. If a salt has already been used (token deployed), `create2` will revert. If you need to handle retries, start iterating from a random offset.
 - **On-chain verification**: you can call `Clones.predictDeterministicAddress(implementation, salt, factory)` via a static call to double-check your off-chain computation before submitting.
