@@ -64,6 +64,7 @@ abstract contract SniperProtection {
     error MaxBuyPerTxBpsTooHigh();
     error MaxWalletBpsTooLow();
     error MaxWalletBpsTooHigh();
+    error MaxBuyPerTxBpsExceedsMaxWalletBps();
     error ProtectionWindowTooShort();
     error ProtectionWindowTooLong();
 
@@ -78,6 +79,7 @@ abstract contract SniperProtection {
         require(cfg.maxBuyPerTxBps <= ANTI_SNIPER_MAX_BPS, MaxBuyPerTxBpsTooHigh());
         require(cfg.maxWalletBps >= ANTI_SNIPER_MIN_BPS, MaxWalletBpsTooLow());
         require(cfg.maxWalletBps <= ANTI_SNIPER_MAX_BPS, MaxWalletBpsTooHigh());
+        require(cfg.maxBuyPerTxBps <= cfg.maxWalletBps, MaxBuyPerTxBpsExceedsMaxWalletBps());
         require(cfg.protectionWindowSeconds >= ANTI_SNIPER_MIN_WINDOW, ProtectionWindowTooShort());
         require(cfg.protectionWindowSeconds <= ANTI_SNIPER_MAX_WINDOW, ProtectionWindowTooLong());
 

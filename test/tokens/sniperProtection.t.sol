@@ -325,6 +325,12 @@ abstract contract SniperProtectionBaseTest is Test {
         _initClone(clone, DEFAULT_MAX_BUY_BPS, 301, DEFAULT_WINDOW, new address[](0));
     }
 
+    function test_revertsMaxBuyPerTxBpsExceedsMaxWalletBps() public {
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.MaxBuyPerTxBpsExceedsMaxWalletBps.selector);
+        _initClone(clone, 200, 100, DEFAULT_WINDOW, new address[](0));
+    }
+
     function test_revertsProtectionWindowTooShort() public {
         address clone = _cloneImpl();
         vm.expectRevert(SniperProtection.ProtectionWindowTooShort.selector);
