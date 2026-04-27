@@ -74,6 +74,7 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactoryUniV2 public factoryV2;
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
+    _LFET public factoryExtendedTax;
     LivoFactorySniperProtected public factorySniper;
     LivoFactoryUniV2SniperProtected public factoryV2Sniper;
     _LFTTS public factoryTaxSniper;
@@ -273,6 +274,15 @@ contract LaunchpadBaseTests is Test {
             address(feeSplitterImpl)
         );
 
+        factoryExtendedTax = new _LFET(
+            address(launchpad),
+            address(livoTaxToken),
+            address(bondingCurve),
+            address(graduatorV4),
+            address(feeHandler),
+            address(feeSplitterImpl)
+        );
+
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
 
@@ -306,6 +316,7 @@ contract LaunchpadBaseTests is Test {
         launchpad.whitelistFactory(address(factoryV2));
         launchpad.whitelistFactory(address(factoryV4));
         launchpad.whitelistFactory(address(factoryTax));
+        launchpad.whitelistFactory(address(factoryExtendedTax));
         launchpad.whitelistFactory(address(factorySniper));
         launchpad.whitelistFactory(address(factoryV2Sniper));
         launchpad.whitelistFactory(address(factoryTaxSniper));
