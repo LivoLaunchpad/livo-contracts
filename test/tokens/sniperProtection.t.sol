@@ -9,6 +9,13 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
+
+/// @dev Both sniper-protected variants expose the same `maxTokenPurchaseNow` selector but don't
+///      share a public interface; this thin interface lets the abstract base test call it
+///      generically against `_token()`.
+interface IMaxTokenPurchaseNow {
+    function maxTokenPurchaseNow(address buyer) external view returns (uint256);
+}
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
@@ -360,6 +367,76 @@ abstract contract SniperProtectionBaseTest is Test {
         address clone = _cloneImpl();
         _initClone(clone, maxBuyBps, maxWalletBps, window, whitelist);
         return LivoToken(payable(clone));
+    }
+
+    /// @dev Generic accessor for `maxTokenPurchaseNow` against the variant under test.
+    function _maxBuy(address account) internal view returns (uint256) {
+        return IMaxTokenPurchaseNow(address(_token())).maxTokenPurchaseNow(account);
+    }
+
+    /// -------------------- maxTokenPurchaseNow tests --------------------
+
+    function test_maxTokenPurchaseNow_freshBuyerReturnsMaxTx() public view {
+        // Defaults: MAX_BUY_PER_TX == MAX_WALLET. With balance=0, walletRemaining == MAX_WALLET,
+        // so min(MAX_BUY_PER_TX, MAX_WALLET) == MAX_BUY_PER_TX.
+        assertEq(_maxBuy(buyer), MAX_BUY_PER_TX);
+    }
+
+    function test_maxTokenPurchaseNow_partialBalanceShrinksReturn() public {
+        _curveBuy(buyer, MAX_BUY_PER_TX / 2);
+        // walletRemaining = MAX_WALLET - MAX_BUY_PER_TX/2 < MAX_BUY_PER_TX, so wallet binds.
+        assertEq(_maxBuy(buyer), MAX_WALLET - MAX_BUY_PER_TX / 2);
+    }
+
+    function test_maxTokenPurchaseNow_walletAtCapReturnsZero() public {
+        _curveBuy(buyer, MAX_WALLET);
+        assertEq(_maxBuy(buyer), 0);
+    }
+
+    function test_maxTokenPurchaseNow_whitelistedReturnsMax() public view {
+        assertEq(_maxBuy(whitelisted1), type(uint256).max);
+        assertEq(_maxBuy(whitelisted2), type(uint256).max);
+    }
+
+    function test_maxTokenPurchaseNow_afterWindowReturnsMax() public {
+        uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
+        vm.warp(launchTs + DEFAULT_WINDOW);
+        assertEq(_maxBuy(buyer), type(uint256).max);
+    }
+
+    function test_maxTokenPurchaseNow_afterGraduationReturnsMax() public {
+        vm.prank(address(graduator));
+        _token().markGraduated();
+        assertEq(_maxBuy(buyer), type(uint256).max);
+    }
+
+    /// @dev With asymmetric configs (maxBuyPerTxBps < maxWalletBps), the tx cap binds for a
+    ///      fresh buyer regardless of the wallet cap.
+    function test_maxTokenPurchaseNow_txCapBindsForFreshBuyerWithAsymmetricConfigs() public {
+        uint16 buyBps = 100; // 1%
+        uint16 walletBps = 300; // 3%
+        LivoToken t = _deployCustom(buyBps, walletBps, DEFAULT_WINDOW, new address[](0));
+
+        uint256 expectedMaxTx = (TOTAL_SUPPLY * buyBps) / 10_000;
+        assertEq(IMaxTokenPurchaseNow(address(t)).maxTokenPurchaseNow(buyer), expectedMaxTx);
+    }
+
+    /// @dev Returned value matches the largest non-reverting buy: buying exactly that amount
+    ///      succeeds, while one wei over reverts. Anchors the view to the enforcement path.
+    function test_maxTokenPurchaseNow_matchesEnforcementBoundary() public {
+        uint256 max = _maxBuy(buyer);
+
+        // Boundary buy succeeds.
+        _curveBuy(buyer, max);
+        assertEq(_token().balanceOf(buyer), max);
+
+        // One wei over the (now-reduced) returned value reverts.
+        uint256 maxAfter = _maxBuy(buyer);
+        if (maxAfter > 0) {
+            vm.prank(launchpad);
+            vm.expectRevert();
+            _token().transfer(buyer, maxAfter + 1);
+        }
     }
 }
 

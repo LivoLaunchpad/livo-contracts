@@ -140,4 +140,27 @@ abstract contract SniperProtection {
             require(toBalance + amount <= maxWallet, MaxWalletExceeded());
         }
     }
+
+    /// @notice Largest token amount `buyer` may receive from the launchpad right now without
+    ///         tripping the per-tx or per-wallet caps. Returns `type(uint256).max` when no
+    ///         sniper cap applies (window closed, graduated, or whitelisted).
+    /// @dev Does not account for launchpad-side limits (available supply, graduation excess
+    ///      cap). Callers should `min()` with `LivoLaunchpad.getMaxEthToSpend` converted to
+    ///      tokens via the bonding curve.
+    /// @dev The `factory` and `graduator` recipient exemptions in `_checkSniperProtection` are
+    ///      intentionally NOT mirrored here: neither address ever buys via
+    ///      `LivoLaunchpad.buyTokensWithExactEth` (factory only receives during the
+    ///      `createToken` deployer-buy hop, graduator only at graduation), so spending storage
+    ///      reads to model that case is unnecessary.
+    function _maxTokenPurchaseNow(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
+        if (graduated) return type(uint256).max;
+        if (sniperBypass[buyer]) return type(uint256).max;
+        if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return type(uint256).max;
+
+        uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
+        uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
+        uint256 walletRemaining = buyerBalance >= maxWallet ? 0 : maxWallet - buyerBalance;
+
+        return maxTx < walletRemaining ? maxTx : walletRemaining;
+    }
 }
