@@ -26,7 +26,7 @@ contract LivoTokenSniperProtected is LivoToken, SniperProtection {
         super._update(from, to, amount);
     }
 
-    function maxTokenPurchaseNow(address buyer) external view override(LivoToken) returns (uint256) {
-        return _maxTokenPurchaseNow(buyer, balanceOf(buyer), graduated);
+    function maxTokenPurchase(address buyer) external view override(LivoToken) returns (uint256) {
+        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated);
     }
 }

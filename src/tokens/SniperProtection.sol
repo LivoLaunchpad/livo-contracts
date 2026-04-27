@@ -152,7 +152,7 @@ abstract contract SniperProtection {
     ///      `LivoLaunchpad.buyTokensWithExactEth` (factory only receives during the
     ///      `createToken` deployer-buy hop, graduator only at graduation), so spending storage
     ///      reads to model that case is unnecessary.
-    function _maxTokenPurchaseNow(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
+    function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
         if (graduated) return type(uint256).max;
         if (sniperBypass[buyer]) return type(uint256).max;
         if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return type(uint256).max;

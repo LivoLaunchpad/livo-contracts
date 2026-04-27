@@ -171,7 +171,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
 
     /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
-    function maxTokenPurchaseNow(address) external view virtual returns (uint256) {
+    function maxTokenPurchase(address) external view virtual returns (uint256) {
         return type(uint256).max;
     }
 

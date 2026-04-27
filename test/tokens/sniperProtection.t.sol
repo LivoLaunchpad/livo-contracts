@@ -363,42 +363,42 @@ abstract contract SniperProtectionBaseTest is Test {
         return LivoToken(payable(clone));
     }
 
-    /// @dev Generic accessor for `maxTokenPurchaseNow` against the variant under test.
+    /// @dev Generic accessor for `maxTokenPurchase` against the variant under test.
     function _maxBuy(address account) internal view returns (uint256) {
-        return _token().maxTokenPurchaseNow(account);
+        return _token().maxTokenPurchase(account);
     }
 
-    /// -------------------- maxTokenPurchaseNow tests --------------------
+    /// -------------------- maxTokenPurchase tests --------------------
 
-    function test_maxTokenPurchaseNow_freshBuyerReturnsMaxTx() public view {
+    function test_maxTokenPurchase_freshBuyerReturnsMaxTx() public view {
         // Defaults: MAX_BUY_PER_TX == MAX_WALLET. With balance=0, walletRemaining == MAX_WALLET,
         // so min(MAX_BUY_PER_TX, MAX_WALLET) == MAX_BUY_PER_TX.
         assertEq(_maxBuy(buyer), MAX_BUY_PER_TX);
     }
 
-    function test_maxTokenPurchaseNow_partialBalanceShrinksReturn() public {
+    function test_maxTokenPurchase_partialBalanceShrinksReturn() public {
         _curveBuy(buyer, MAX_BUY_PER_TX / 2);
         // walletRemaining = MAX_WALLET - MAX_BUY_PER_TX/2 < MAX_BUY_PER_TX, so wallet binds.
         assertEq(_maxBuy(buyer), MAX_WALLET - MAX_BUY_PER_TX / 2);
     }
 
-    function test_maxTokenPurchaseNow_walletAtCapReturnsZero() public {
+    function test_maxTokenPurchase_walletAtCapReturnsZero() public {
         _curveBuy(buyer, MAX_WALLET);
         assertEq(_maxBuy(buyer), 0);
     }
 
-    function test_maxTokenPurchaseNow_whitelistedReturnsMax() public view {
+    function test_maxTokenPurchase_whitelistedReturnsMax() public view {
         assertEq(_maxBuy(whitelisted1), type(uint256).max);
         assertEq(_maxBuy(whitelisted2), type(uint256).max);
     }
 
-    function test_maxTokenPurchaseNow_afterWindowReturnsMax() public {
+    function test_maxTokenPurchase_afterWindowReturnsMax() public {
         uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW);
         assertEq(_maxBuy(buyer), type(uint256).max);
     }
 
-    function test_maxTokenPurchaseNow_afterGraduationReturnsMax() public {
+    function test_maxTokenPurchase_afterGraduationReturnsMax() public {
         vm.prank(address(graduator));
         _token().markGraduated();
         assertEq(_maxBuy(buyer), type(uint256).max);
@@ -406,18 +406,18 @@ abstract contract SniperProtectionBaseTest is Test {
 
     /// @dev With asymmetric configs (maxBuyPerTxBps < maxWalletBps), the tx cap binds for a
     ///      fresh buyer regardless of the wallet cap.
-    function test_maxTokenPurchaseNow_txCapBindsForFreshBuyerWithAsymmetricConfigs() public {
+    function test_maxTokenPurchase_txCapBindsForFreshBuyerWithAsymmetricConfigs() public {
         uint16 buyBps = 100; // 1%
         uint16 walletBps = 300; // 3%
         LivoToken t = _deployCustom(buyBps, walletBps, DEFAULT_WINDOW, new address[](0));
 
         uint256 expectedMaxTx = (TOTAL_SUPPLY * buyBps) / 10_000;
-        assertEq(t.maxTokenPurchaseNow(buyer), expectedMaxTx);
+        assertEq(t.maxTokenPurchase(buyer), expectedMaxTx);
     }
 
     /// @dev Returned value matches the largest non-reverting buy: buying exactly that amount
     ///      succeeds, while one wei over reverts. Anchors the view to the enforcement path.
-    function test_maxTokenPurchaseNow_matchesEnforcementBoundary() public {
+    function test_maxTokenPurchase_matchesEnforcementBoundary() public {
         uint256 max = _maxBuy(buyer);
 
         // Boundary buy succeeds.

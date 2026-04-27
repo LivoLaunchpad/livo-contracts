@@ -87,5 +87,5 @@ interface ILivoToken is IERC20 {
     /// @notice Returns the maximum amount of tokens `buyer` can purchase right now on the bonding curve.
     /// @dev Sniper-protected variants enforce per-tx and per-wallet caps during the protection window;
     ///      non-protected tokens always return `type(uint256).max` (no cap).
-    function maxTokenPurchaseNow(address buyer) external view returns (uint256);
+    function maxTokenPurchase(address buyer) external view returns (uint256);
 }
