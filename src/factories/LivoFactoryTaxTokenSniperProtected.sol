@@ -46,6 +46,7 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
+        bool renounceOwnership,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token, address feeSplitter) {
@@ -54,22 +55,9 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
 
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        token = _deployClone(salt);
-
-        emit TokenCreated(
-            token,
-            name,
-            symbol,
-            msg.sender,
-            address(LAUNCHPAD),
-            address(GRADUATOR),
-            routing.feeHandler,
-            routing.feeReceiver
+        token = _deployAndInitTaxSniperToken(
+            name, symbol, salt, renounceOwnership ? address(0) : msg.sender, routing, taxCfg, antiSniperCfg
         );
-
-        _initTaxToken(token, name, symbol, routing.feeHandler, routing.feeReceiver, taxCfg, antiSniperCfg);
-
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
 
         _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;
@@ -82,34 +70,45 @@ contract LivoFactoryTaxTokenSniperProtected is LivoFactoryAbstract {
         require(taxCfg.taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
     }
 
-    function _deployClone(bytes32 salt) internal returns (address token) {
+    function _deployAndInitTaxSniperToken(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        FeeRouting memory routing,
+        TaxConfigInit calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
         token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
-    }
 
-    function _initTaxToken(
-        address token,
-        string calldata name,
-        string calldata symbol,
-        address feeHandler_,
-        address feeReceiver,
-        TaxConfigInit calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) internal {
+        emit TokenCreated(
+            token,
+            name,
+            symbol,
+            tokenOwner,
+            address(LAUNCHPAD),
+            address(GRADUATOR),
+            routing.feeHandler,
+            routing.feeReceiver
+        );
+
         LivoTaxableTokenUniV4SniperProtected(payable(token))
             .initialize(
                 ILivoToken.InitializeParams({
                     name: name,
                     symbol: symbol,
-                    tokenOwner: msg.sender,
+                    tokenOwner: tokenOwner,
                     graduator: address(GRADUATOR),
                     launchpad: address(LAUNCHPAD),
-                    feeHandler: feeHandler_,
-                    feeReceiver: feeReceiver
+                    feeHandler: routing.feeHandler,
+                    feeReceiver: routing.feeReceiver
                 }),
                 taxCfg,
                 antiSniperCfg
             );
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
     }
 }

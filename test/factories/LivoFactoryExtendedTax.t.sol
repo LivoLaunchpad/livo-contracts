@@ -38,7 +38,7 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, creator));
         factoryExtended.createToken(
-            "TestToken", "TEST", salt, _fs(creator), _noSs(), _taxCfgExt(100, 100, uint32(30 days))
+            "TestToken", "TEST", salt, _fs(creator), _noSs(), false, _taxCfgExt(100, 100, uint32(30 days))
         );
     }
 
@@ -48,7 +48,7 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
 
         vm.prank(admin);
         (address token,) = factoryExtended.createToken(
-            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(1000, 1000, uint32(365 days))
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), false, _taxCfgExt(1000, 1000, uint32(365 days))
         );
 
         assertTrue(token != address(0));
@@ -63,7 +63,7 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryExtendedTax.InvalidTaxBps.selector));
         factoryExtended.createToken(
-            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(0, 1001, uint32(14 days))
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), false, _taxCfgExt(0, 1001, uint32(14 days))
         );
     }
 
@@ -73,7 +73,7 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
 
         vm.prank(admin);
         (address token,) = factoryExtended.createToken(
-            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(1000, 1000, uint32(14 days))
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), false, _taxCfgExt(1000, 1000, uint32(14 days))
         );
 
         assertTrue(token != address(0));
@@ -91,7 +91,7 @@ contract LivoFactoryExtendedTaxTest is LaunchpadBaseTestsWithUniv4GraduatorTaxab
 
         vm.prank(admin);
         (address token,) = factoryExtended.createToken(
-            "TestToken", "TEST", salt, _fs(admin), _noSs(), _taxCfgExt(100, 100, longDuration)
+            "TestToken", "TEST", salt, _fs(admin), _noSs(), false, _taxCfgExt(100, 100, longDuration)
         );
 
         assertTrue(token != address(0));

@@ -20,6 +20,7 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfgSniper(100, 200, uint32(1 days)),
             _defaultAntiSniperCfg()
         );
@@ -47,6 +48,7 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfgSniper(0, 400, uint32(14 days)),
             _antiSniperCfg(25, 100, 2 hours, wl)
         );
@@ -68,6 +70,7 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfgSniper(0, 401, uint32(14 days)),
             _defaultAntiSniperCfg()
         );
@@ -82,6 +85,7 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfgSniper(0, 400, uint32(14 days + 1)),
             _defaultAntiSniperCfg()
         );
@@ -96,6 +100,7 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfgSniper(0, 400, uint32(1 days)),
             _antiSniperCfg(301, 300, 1 hours, new address[](0))
         );
@@ -105,7 +110,14 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidNameOrSymbol.selector);
         factoryTaxSniper.createToken(
-            "", "TEST", "0x12", _fs(creator), _noSs(), _taxCfgSniper(0, 400, uint32(1 days)), _defaultAntiSniperCfg()
+            "",
+            "TEST",
+            "0x12",
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfgSniper(0, 400, uint32(1 days)),
+            _defaultAntiSniperCfg()
         );
     }
 
@@ -118,6 +130,7 @@ contract LivoFactoryTaxTokenSniperProtectedTest is LaunchpadBaseTestsWithUniv4Gr
             _newSalt(),
             _fs(creator),
             _ss(creator),
+            false,
             _taxCfgSniper(100, 100, uint32(1 days)),
             _defaultAntiSniperCfg()
         );

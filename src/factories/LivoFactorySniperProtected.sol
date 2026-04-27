@@ -37,12 +37,13 @@ contract LivoFactorySniperProtected is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
+        bool renounceOwnership,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token, address feeSplitter) {
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
         token = _createAndInitializeSniperProtectedToken(
-            name, symbol, routing.feeHandler, routing.feeReceiver, salt, msg.sender, antiSniperCfg
+            name, symbol, salt, renounceOwnership ? address(0) : msg.sender, routing, antiSniperCfg
         );
 
         _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
@@ -54,10 +55,9 @@ contract LivoFactorySniperProtected is LivoFactoryAbstract {
     function _createAndInitializeSniperProtectedToken(
         string calldata name,
         string calldata symbol,
-        address feeHandler_,
-        address feeReceiver,
         bytes32 salt,
         address tokenOwner,
+        FeeRouting memory routing,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         _validateNameSymbol(name, symbol);
@@ -67,7 +67,14 @@ contract LivoFactorySniperProtected is LivoFactoryAbstract {
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(
-            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
+            token,
+            name,
+            symbol,
+            tokenOwner,
+            address(LAUNCHPAD),
+            address(GRADUATOR),
+            routing.feeHandler,
+            routing.feeReceiver
         );
 
         LivoTokenSniperProtected(token)
@@ -78,8 +85,8 @@ contract LivoFactorySniperProtected is LivoFactoryAbstract {
                     tokenOwner: tokenOwner,
                     graduator: address(GRADUATOR),
                     launchpad: address(LAUNCHPAD),
-                    feeHandler: feeHandler_,
-                    feeReceiver: feeReceiver
+                    feeHandler: routing.feeHandler,
+                    feeReceiver: routing.feeReceiver
                 }),
                 antiSniperCfg
             );

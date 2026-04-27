@@ -125,7 +125,7 @@ contract InvariantsHelperLaunchpad is Test {
         } else {
             bytes32 salt = _nextValidSalt(address(factoryV4), address(factoryV4.TOKEN_IMPLEMENTATION()));
             vm.prank(currentActor);
-            (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs);
+            (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs, false);
         }
         _tokens.add(token);
     }

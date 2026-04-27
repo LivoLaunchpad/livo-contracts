@@ -42,11 +42,14 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
+        bool renounceOwnership,
         TaxConfigInit calldata taxCfg
     ) external payable onlyOwner returns (address token, address feeSplitter) {
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        token = _createAndInitializeTaxToken(name, symbol, routing.feeHandler, routing.feeReceiver, salt, taxCfg);
+        token = _createAndInitializeTaxToken(
+            name, symbol, salt, renounceOwnership ? address(0) : msg.sender, routing, taxCfg
+        );
 
         _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;
@@ -57,9 +60,9 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
     function _createAndInitializeTaxToken(
         string calldata name,
         string calldata symbol,
-        address feeHandler_,
-        address feeReceiver,
         bytes32 salt,
+        address tokenOwner,
+        FeeRouting memory routing,
         TaxConfigInit calldata taxCfg
     ) internal returns (address token) {
         _validateNameSymbol(name, symbol);
@@ -72,7 +75,14 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(
-            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
+            token,
+            name,
+            symbol,
+            tokenOwner,
+            address(LAUNCHPAD),
+            address(GRADUATOR),
+            routing.feeHandler,
+            routing.feeReceiver
         );
 
         LivoTaxableTokenUniV4(payable(token))
@@ -80,11 +90,11 @@ contract LivoFactoryExtendedTax is LivoFactoryAbstract {
                 ILivoToken.InitializeParams({
                     name: name,
                     symbol: symbol,
-                    tokenOwner: msg.sender,
+                    tokenOwner: tokenOwner,
                     graduator: address(GRADUATOR),
                     launchpad: address(LAUNCHPAD),
-                    feeHandler: feeHandler_,
-                    feeReceiver: feeReceiver
+                    feeHandler: routing.feeHandler,
+                    feeReceiver: routing.feeReceiver
                 }),
                 taxCfg
             );

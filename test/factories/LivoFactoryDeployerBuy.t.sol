@@ -293,7 +293,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         (address token,) = factoryTax.createToken{value: ethToSpend}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _taxCfg(0, 400, uint32(14 days))
+            "TestToken", "TEST", salt, _fs(creator), _ss(creator), false, _taxCfg(0, 400, uint32(14 days))
         );
 
         uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
@@ -307,8 +307,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        (address token,) =
-            factoryTax.createToken("TestToken", "TEST", salt, _fs(creator), _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        (address token,) = factoryTax.createToken(
+            "TestToken", "TEST", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days))
+        );
 
         assertEq(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), 0);
     }
@@ -322,7 +323,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidBuyOnDeploy.selector));
         factoryTax.createToken{value: 1 ether}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _taxCfg(0, 400, uint32(14 days))
+            "TestToken", "TEST", salt, _fs(creator), _ss(creator), false, _taxCfg(0, 400, uint32(14 days))
         );
     }
 
@@ -353,7 +354,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         (address token,) = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _taxCfg(0, 400, uint32(14 days))
+            "TestToken", "TEST", salt, _fs(creator), _ss(creator), false, _taxCfg(0, 400, uint32(14 days))
         );
 
         assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), tokenAmount);
@@ -368,7 +369,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         (address token,) = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _taxCfg(0, 400, uint32(14 days))
+            "TestToken", "TEST", salt, _fs(creator), _ss(creator), false, _taxCfg(0, 400, uint32(14 days))
         );
 
         assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
@@ -381,8 +382,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        (, address feeSplitter) =
-            factoryTax.createToken("TestToken", "TEST", salt, _fs(creator), _noSs(), _taxCfg(0, 400, uint32(14 days)));
+        (, address feeSplitter) = factoryTax.createToken(
+            "TestToken", "TEST", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days))
+        );
 
         assertEq(feeSplitter, address(0));
     }
@@ -397,7 +399,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
 
         vm.prank(creator);
         (, address feeSplitter) =
-            factoryTax.createToken("TestToken", "TEST", salt, fs, _noSs(), _taxCfg(0, 400, uint32(14 days)));
+            factoryTax.createToken("TestToken", "TEST", salt, fs, _noSs(), false, _taxCfg(0, 400, uint32(14 days)));
 
         assertTrue(feeSplitter != address(0));
     }

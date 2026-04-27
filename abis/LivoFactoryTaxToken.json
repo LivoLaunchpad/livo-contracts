@@ -200,6 +200,11 @@
         ]
       },
       {
+        "name": "renounceOwnership",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
         "name": "taxCfg",
         "type": "tuple",
         "internalType": "struct TaxConfigInit",

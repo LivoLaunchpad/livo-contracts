@@ -120,54 +120,54 @@ create-token-v2 tokenName value="0":
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{livodev}},10000)]" "[]" --value {{value}}
 
-create-token-v4 tokenName value="0":
+create-token-v4 tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[])" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" --value {{value}}
+            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} --value {{value}}
 
-create-tax-token tokenName value="0":
+create-tax-token tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint32))" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" \
+            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,500,1209600)" --value {{value}}
 
-create-token-v4-feesplit tokenName value="0":
+create-token-v4-feesplit tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[])" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[(0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,3000),(0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f,7000)]" \
-            "[]" --value {{value}}
+            "[]" {{renounceOwnership}} --value {{value}}
 
-create-tax-token-feesplit tokenName value="0":
+create-tax-token-feesplit tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint32))" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[(0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,3000),(0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f,7000)]" \
-            "[]" \
+            "[]" {{renounceOwnership}} \
             "(300,500,1209600)" --value {{value}}
 
 # ExtendedTax factory: owner-only, 10% tax cap, no duration cap. Defaults shown: buy=800, sell=1000, duration=365 days.
-create-extended-tax-token tokenName value="0":
+create-extended-tax-token tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryExtendedTax}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryExtendedTax}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint32))" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" \
+            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
             "(800,1000,31536000)" --value {{value}}
 
-create-extended-tax-token-feesplit tokenName value="0":
+create-extended-tax-token-feesplit tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryExtendedTax}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryExtendedTax}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint32))" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[(0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,3000),(0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f,7000)]" \
-            "[]" \
+            "[]" {{renounceOwnership}} \
             "(800,1000,31536000)" --value {{value}}
 
 # ##################### Create tokens — sniper-protected variants #######################
@@ -181,20 +181,20 @@ create-token-v2-sniper tokenName value="0":
             "[({{livodev}},10000)]" "[]" \
             "(300,300,10800,[])" --value {{value}}
 
-create-token-v4-sniper tokenName value="0":
+create-token-v4-sniper tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factorySniperProtected}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factorySniperProtected}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint40,address[]))" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" \
+            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,300,10800,[])" --value {{value}}
 
-create-tax-token-sniper tokenName value="0":
+create-tax-token-sniper tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxTokenSniperProtected}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxTokenSniperProtected}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint32),(uint16,uint16,uint40,address[]))" \
+            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32),(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" \
+            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,500,1209600)" \
             "(300,300,10800,[])" --value {{value}}
 

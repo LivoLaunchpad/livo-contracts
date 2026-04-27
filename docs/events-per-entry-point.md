@@ -84,13 +84,13 @@ Test: `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryBaseDeployerBuyTe
 
 ## 2. createToken — `LivoFactoryBase` (V4 graduator, `LivoToken`)
 
-Signature: `createToken(string name, string symbol, address feeReceiver, bytes32 salt)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership)` (payable).
 
-Differs from §1 by using the Uniswap V4 graduator: no V2 pair is created, instead a V4 pool is initialized.
+Differs from §1 by using the Uniswap V4 graduator: no V2 pair is created, instead a V4 pool is initialized. `tokenOwner` in the `TokenCreated` event below is `msg.sender` when `renounceOwnership == false` and `address(0)` when `renounceOwnership == true`.
 
 ### 2a. Without deployer buy
 
-1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner=msg.sender, launchpad, graduator, feeHandler, feeReceiver`).
+1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad, graduator, feeHandler, feeReceiver`).
 2. **`PoolManager.Initialize`** (external V4: `id, currency0=0x0, currency1=token, fee=0, tickSpacing=200, hooks=LivoSwapHook, sqrtPriceX96, tick`) — V4 pool initialized at graduation price by graduator.
 3. **`LivoGraduator.PairInitialized`** (`token, pair=PoolManager`).
 4. **`LivoGraduator.PoolIdRegistered`** (`token, poolId`) — V4-specific, maps token → `PoolId`.
@@ -108,7 +108,7 @@ Same as 2a plus the deployer-buy tail (same 4 events as §1b: `Transfer`, `LivoT
 
 ## 3. createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax` (V4 graduator, `LivoTaxableTokenUniV4`)
 
-Signature: `createToken(string name, string symbol, address feeReceiver, bytes32 salt, uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg)` (payable). `renounceOwnership` follows the same convention as §2: `address(0)` when `true`, `msg.sender` when `false`.
 
 Differs from §2 only by adding one extra event from the taxable-token initializer. `LivoFactoryExtendedTax` is owner-gated and lifts caps but emits the same events in the same order.
 
@@ -335,7 +335,7 @@ The sniper-protected factories emit the exact same sequence as their non-protect
 
 ### 14.1. `LivoFactorySniperProtected.createToken` (V4 graduator, `LivoTokenSniperProtected`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, AntiSniperConfigs antiSniperCfg)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention: `address(0)` when `true`, `msg.sender` when `false`.
 
 Same event sequence as §2a, with `SniperProtectionInitialized` inserted between the mint and OZ `Initialized`:
 
@@ -368,7 +368,7 @@ Test: `test/factories/LivoFactoryUniV2SniperProtected.t.sol::test_createToken_ha
 
 ### 14.3. `LivoFactoryTaxTokenSniperProtected.createToken` (V4 graduator, `LivoTaxableTokenUniV4SniperProtected`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, TaxCfg taxCfg, AntiSniperConfigs antiSniperCfg)` (payable).
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention.
 
 Same sequence as §3 plus `SniperProtectionInitialized` after `LivoTaxableTokenInitialized`:
 

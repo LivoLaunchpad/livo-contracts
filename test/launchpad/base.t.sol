@@ -321,11 +321,17 @@ contract LaunchpadBaseTests is Test {
                     _nextValidSalt(address(factoryTax), address(livoTaxToken)),
                     _fs(creator),
                     _noSs(),
+                    false,
                     _taxCfg(0, 400, uint32(14 days))
                 );
             } else {
                 (testToken,) = factoryV4.createToken(
-                    "TestToken", "TEST", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(creator), _noSs()
+                    "TestToken",
+                    "TEST",
+                    _nextValidSalt(address(factoryV4), address(livoToken)),
+                    _fs(creator),
+                    _noSs(),
+                    false
                 );
             }
         } else {

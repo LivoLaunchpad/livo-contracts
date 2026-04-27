@@ -13,8 +13,9 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
 
     function test_createToken_happyPath() public {
         vm.prank(creator);
-        (address token,) =
-            factorySniper.createToken("TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), _defaultAntiSniperCfg());
+        (address token,) = factorySniper.createToken(
+            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), false, _defaultAntiSniperCfg()
+        );
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
         assertEq(t.name(), "TestToken");
@@ -33,7 +34,7 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
 
         vm.prank(creator);
         (address token,) = factorySniper.createToken(
-            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), _antiSniperCfg(50, 100, 30 minutes, wl)
+            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), false, _antiSniperCfg(50, 100, 30 minutes, wl)
         );
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
@@ -49,7 +50,13 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
         vm.prank(creator);
         vm.expectRevert(SniperProtection.MaxBuyPerTxBpsTooLow.selector);
         factorySniper.createToken(
-            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), _antiSniperCfg(9, 300, 1 hours, new address[](0))
+            "TestToken",
+            "TEST",
+            _newSalt(),
+            _fs(creator),
+            _noSs(),
+            false,
+            _antiSniperCfg(9, 300, 1 hours, new address[](0))
         );
     }
 
@@ -57,7 +64,13 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
         vm.prank(creator);
         vm.expectRevert(SniperProtection.MaxBuyPerTxBpsTooHigh.selector);
         factorySniper.createToken(
-            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), _antiSniperCfg(301, 300, 1 hours, new address[](0))
+            "TestToken",
+            "TEST",
+            _newSalt(),
+            _fs(creator),
+            _noSs(),
+            false,
+            _antiSniperCfg(301, 300, 1 hours, new address[](0))
         );
     }
 
@@ -65,7 +78,13 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
         vm.prank(creator);
         vm.expectRevert(SniperProtection.MaxWalletBpsTooLow.selector);
         factorySniper.createToken(
-            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), _antiSniperCfg(300, 9, 1 hours, new address[](0))
+            "TestToken",
+            "TEST",
+            _newSalt(),
+            _fs(creator),
+            _noSs(),
+            false,
+            _antiSniperCfg(300, 9, 1 hours, new address[](0))
         );
     }
 
@@ -73,7 +92,13 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
         vm.prank(creator);
         vm.expectRevert(SniperProtection.MaxWalletBpsTooHigh.selector);
         factorySniper.createToken(
-            "TestToken", "TEST", _newSalt(), _fs(creator), _noSs(), _antiSniperCfg(300, 301, 1 hours, new address[](0))
+            "TestToken",
+            "TEST",
+            _newSalt(),
+            _fs(creator),
+            _noSs(),
+            false,
+            _antiSniperCfg(300, 301, 1 hours, new address[](0))
         );
     }
 
@@ -86,6 +111,7 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _antiSniperCfg(300, 300, 59 seconds, new address[](0))
         );
     }
@@ -99,6 +125,7 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
             _newSalt(),
             _fs(creator),
             _noSs(),
+            false,
             _antiSniperCfg(300, 300, 1 days + 1, new address[](0))
         );
     }
@@ -106,14 +133,14 @@ contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator 
     function test_createToken_revertsOnEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidNameOrSymbol.selector);
-        factorySniper.createToken("", "TEST", "0x12", _fs(creator), _noSs(), _defaultAntiSniperCfg());
+        factorySniper.createToken("", "TEST", "0x12", _fs(creator), _noSs(), false, _defaultAntiSniperCfg());
     }
 
     function test_createToken_withDeployerBuy_distributesCorrectly() public {
         uint256 ethIn = 0.05 ether;
         vm.prank(creator);
         (address token,) = factorySniper.createToken{value: ethIn}(
-            "TestToken", "TEST", _newSalt(), _fs(creator), _ss(creator), _defaultAntiSniperCfg()
+            "TestToken", "TEST", _newSalt(), _fs(creator), _ss(creator), false, _defaultAntiSniperCfg()
         );
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);

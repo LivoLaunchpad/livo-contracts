@@ -172,6 +172,11 @@
             "internalType": "uint256"
           }
         ]
+      },
+      {
+        "name": "renounceOwnership",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [
