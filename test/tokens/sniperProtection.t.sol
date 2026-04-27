@@ -10,12 +10,6 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 
-/// @dev Both sniper-protected variants expose the same `maxTokenPurchaseNow` selector but don't
-///      share a public interface; this thin interface lets the abstract base test call it
-///      generically against `_token()`.
-interface IMaxTokenPurchaseNow {
-    function maxTokenPurchaseNow(address buyer) external view returns (uint256);
-}
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
@@ -371,7 +365,7 @@ abstract contract SniperProtectionBaseTest is Test {
 
     /// @dev Generic accessor for `maxTokenPurchaseNow` against the variant under test.
     function _maxBuy(address account) internal view returns (uint256) {
-        return IMaxTokenPurchaseNow(address(_token())).maxTokenPurchaseNow(account);
+        return _token().maxTokenPurchaseNow(account);
     }
 
     /// -------------------- maxTokenPurchaseNow tests --------------------
@@ -418,7 +412,7 @@ abstract contract SniperProtectionBaseTest is Test {
         LivoToken t = _deployCustom(buyBps, walletBps, DEFAULT_WINDOW, new address[](0));
 
         uint256 expectedMaxTx = (TOTAL_SUPPLY * buyBps) / 10_000;
-        assertEq(IMaxTokenPurchaseNow(address(t)).maxTokenPurchaseNow(buyer), expectedMaxTx);
+        assertEq(t.maxTokenPurchaseNow(buyer), expectedMaxTx);
     }
 
     /// @dev Returned value matches the largest non-reverting buy: buying exactly that amount

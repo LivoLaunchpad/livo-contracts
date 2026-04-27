@@ -83,4 +83,9 @@ interface ILivoToken is IERC20 {
     /// @dev If the fee receiver is a splitter, returns the splitter's recipients and shares.
     ///      Otherwise, returns the single fee receiver with 10_000 bps (100%).
     function getFeeReceivers() external view returns (address[] memory receivers, uint256[] memory sharesBps);
+
+    /// @notice Returns the maximum amount of tokens `buyer` can purchase right now on the bonding curve.
+    /// @dev Sniper-protected variants enforce per-tx and per-wallet caps during the protection window;
+    ///      non-protected tokens always return `type(uint256).max` (no cap).
+    function maxTokenPurchaseNow(address buyer) external view returns (uint256);
 }

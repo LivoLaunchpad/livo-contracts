@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -27,7 +28,7 @@ contract LivoTaxableTokenUniV4SniperProtected is LivoTaxableTokenUniV4, SniperPr
         super._update(from, to, amount);
     }
 
-    function maxTokenPurchaseNow(address buyer) external view returns (uint256) {
+    function maxTokenPurchaseNow(address buyer) external view override(LivoToken, ILivoToken) returns (uint256) {
         return _maxTokenPurchaseNow(buyer, balanceOf(buyer), graduated);
     }
 }
