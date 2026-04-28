@@ -203,7 +203,9 @@ contract LivoQuoter is ILivoQuoter {
 
     /// @dev Compute the max ETH `buyer` can spend on `token` right now without tripping any cap,
     ///      returning the binding cap's reason. Caller must ensure the token is registered and not
-    ///      graduated.
+    ///      graduated. Tokens deployed before sniper-protection don't expose `maxTokenPurchase`;
+    ///      a revert on that call is treated as "no cap" so the quoter stays usable for legacy
+    ///      tokens.
     function _maxEthToSpendForBuyer(address token, address buyer)
         internal
         view
@@ -212,7 +214,12 @@ contract LivoQuoter is ILivoQuoter {
         uint256 ethCapGrad = launchpad.getMaxEthToSpend(token);
         if (ethCapGrad == 0) return (0, LimitReason.GRADUATION_EXCESS);
 
-        uint256 sniperTokenCap = ILivoToken(token).maxTokenPurchase(buyer);
+        uint256 sniperTokenCap;
+        try ILivoToken(token).maxTokenPurchase(buyer) returns (uint256 cap) {
+            sniperTokenCap = cap;
+        } catch {
+            sniperTokenCap = type(uint256).max;
+        }
         if (sniperTokenCap == type(uint256).max) return (ethCapGrad, LimitReason.GRADUATION_EXCESS);
 
         // Forward-quote at the graduation ceiling. If the buyer's sniper cap is at or above what
