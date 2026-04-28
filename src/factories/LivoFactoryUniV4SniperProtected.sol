@@ -12,7 +12,7 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 /// @notice Factory for deploying sniper-protected non-taxable Livo tokens with dev-configurable
 ///         max-buy-per-tx, max-wallet, and protection-window settings plus an immutable
 ///         bypass whitelist.
-contract LivoFactorySniperProtected is LivoFactoryAbstract {
+contract LivoFactoryUniV4SniperProtected is LivoFactoryAbstract {
     constructor(
         address launchpad,
         address tokenImplementation,

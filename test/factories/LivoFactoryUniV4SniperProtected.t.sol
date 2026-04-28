@@ -6,7 +6,7 @@ import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol"
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
-contract LivoFactorySniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract LivoFactoryUniV4SniperProtectedTest is LaunchpadBaseTestsWithUniv4Graduator {
     function _newSalt() internal returns (bytes32) {
         return _nextValidSalt(address(factorySniper), address(livoTokenSniper));
     }

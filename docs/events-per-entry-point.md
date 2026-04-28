@@ -333,7 +333,7 @@ Test: `test/feeSplitters/LivoFeeSplitter.t.sol::test_claim_assertEmitsEvents` (i
 
 The sniper-protected factories emit the exact same sequence as their non-protected twins (§1, §2, §3) **plus one extra event** — `SniperProtectionInitialized` — fired from the token's initializer after the mint (§14.1) or after `LivoTaxableTokenInitialized` (§14.3). Everything else (splitter tail from §4, deployer-buy tail from §1c, post-event ordering of `TokenLaunched`) is unchanged.
 
-### 14.1. `LivoFactorySniperProtected.createToken` (V4 graduator, `LivoTokenSniperProtected`)
+### 14.1. `LivoFactoryUniV4SniperProtected.createToken` (V4 graduator, `LivoTokenSniperProtected`)
 
 Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention: `address(0)` when `true`, `msg.sender` when `false`.
 
@@ -350,7 +350,7 @@ Same event sequence as §2a, with `SniperProtectionInitialized` inserted between
 
 With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
 
-Test: `test/factories/LivoFactorySniperProtected.t.sol::test_createToken_happyPath`.
+Test: `test/factories/LivoFactoryUniV4SniperProtected.t.sol::test_createToken_happyPath`.
 
 ### 14.2. `LivoFactoryUniV2SniperProtected.createToken` (V2 graduator, `LivoTokenSniperProtected`)
 

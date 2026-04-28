@@ -13,7 +13,7 @@ import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
-import {LivoFactorySniperProtected} from "src/factories/LivoFactorySniperProtected.sol";
+import {LivoFactoryUniV4SniperProtected} from "src/factories/LivoFactoryUniV4SniperProtected.sol";
 import {LivoFactoryTaxTokenSniperProtected} from "src/factories/LivoFactoryTaxTokenSniperProtected.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -105,12 +105,12 @@ contract DeploymentsFactories is Script {
         LivoFactoryUniV4 factoryV4 = new LivoFactoryUniV4(
             c.launchpad, address(livoToken), c.bondingCurve, c.graduatorV4, c.feeHandler, c.feeSplitterImpl
         );
-        console.log("| LivoFactoryUniV4 (V4) | ", address(factoryV4));
+        console.log("| LivoFactoryUniV4 | ", address(factoryV4));
 
         LivoFactoryTaxToken factoryTax = new LivoFactoryTaxToken(
             c.launchpad, address(livoTaxableToken), c.bondingCurve, c.graduatorV4, c.feeHandler, c.feeSplitterImpl
         );
-        console.log("| LivoFactoryTaxToken (V4) | ", address(factoryTax));
+        console.log("| LivoFactoryTaxToken | ", address(factoryTax));
 
         // ---- Sniper-protected factories ----
         LivoFactoryUniV2SniperProtected factoryV2Sniper = new LivoFactoryUniV2SniperProtected(
@@ -118,10 +118,10 @@ contract DeploymentsFactories is Script {
         );
         console.log("| LivoFactoryUniV2SniperProtected | ", address(factoryV2Sniper));
 
-        LivoFactorySniperProtected factoryV4Sniper = new LivoFactorySniperProtected(
+        LivoFactoryUniV4SniperProtected factoryV4Sniper = new LivoFactoryUniV4SniperProtected(
             c.launchpad, address(livoTokenSniper), c.bondingCurve, c.graduatorV4, c.feeHandler, c.feeSplitterImpl
         );
-        console.log("| LivoFactorySniperProtected (V4) | ", address(factoryV4Sniper));
+        console.log("| LivoFactoryUniV4SniperProtected | ", address(factoryV4Sniper));
 
         LivoFactoryTaxTokenSniperProtected factoryTaxSniper = new LivoFactoryTaxTokenSniperProtected(
             c.launchpad, address(livoTaxTokenSniper), c.bondingCurve, c.graduatorV4, c.feeHandler, c.feeSplitterImpl

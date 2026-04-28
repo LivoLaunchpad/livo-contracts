@@ -10,7 +10,7 @@ import {LivoFactoryTaxToken as _LFTT} from "src/factories/LivoFactoryTaxToken.so
 import {LivoFactoryExtendedTax as _LFET} from "src/factories/LivoFactoryExtendedTax.sol";
 import {LivoFactoryTaxTokenSniperProtected as _LFTTS} from "src/factories/LivoFactoryTaxTokenSniperProtected.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
-import {LivoFactorySniperProtected} from "src/factories/LivoFactorySniperProtected.sol";
+import {LivoFactoryUniV4SniperProtected} from "src/factories/LivoFactoryUniV4SniperProtected.sol";
 import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
@@ -75,7 +75,7 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
     _LFET public factoryExtendedTax;
-    LivoFactorySniperProtected public factorySniper;
+    LivoFactoryUniV4SniperProtected public factorySniper;
     LivoFactoryUniV2SniperProtected public factoryV2Sniper;
     _LFTTS public factoryTaxSniper;
     LivoTokenSniperProtected public livoTokenSniper;
@@ -286,7 +286,7 @@ contract LaunchpadBaseTests is Test {
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
 
-        factorySniper = new LivoFactorySniperProtected(
+        factorySniper = new LivoFactoryUniV4SniperProtected(
             address(launchpad),
             address(livoTokenSniper),
             address(bondingCurve),
