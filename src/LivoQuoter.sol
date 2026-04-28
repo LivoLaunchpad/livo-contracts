@@ -38,7 +38,7 @@ contract LivoQuoter is ILivoQuoter {
         view
         returns (BuyExactEthQuote memory q)
     {
-        (LimitReason validity,) = _checkBuyValidity(token);
+        LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) {
             q.reason = validity;
             return q;
@@ -65,7 +65,7 @@ contract LivoQuoter is ILivoQuoter {
         view
         returns (BuyExactTokensQuote memory q)
     {
-        (LimitReason validity,) = _checkBuyValidity(token);
+        LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) {
             q.reason = validity;
             return q;
@@ -116,7 +116,7 @@ contract LivoQuoter is ILivoQuoter {
         view
         returns (SellExactTokensQuote memory q)
     {
-        LimitReason validity = _checkSellValidity(token);
+        LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) {
             q.reason = validity;
             return q;
@@ -154,7 +154,7 @@ contract LivoQuoter is ILivoQuoter {
         view
         returns (SellForExactEthQuote memory q)
     {
-        LimitReason validity = _checkSellValidity(token);
+        LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) {
             q.reason = validity;
             return q;
@@ -186,26 +186,17 @@ contract LivoQuoter is ILivoQuoter {
 
     /// @inheritdoc ILivoQuoter
     function getMaxEthToSpend(address token, address buyer) external view returns (uint256 maxEth, LimitReason reason) {
-        (LimitReason validity,) = _checkBuyValidity(token);
+        LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) return (0, validity);
         return _maxEthToSpendForBuyer(token, buyer);
     }
 
     /////////////////////// internal helpers ///////////////////////
 
-    /// @dev Validity gate for buy quotes. Returns `NONE` when the token is registered and not
-    ///      graduated; otherwise the matching reason code.
-    function _checkBuyValidity(address token) internal view returns (LimitReason reason, TokenConfig memory cfg) {
-        cfg = launchpad.getTokenConfig(token);
-        if (address(cfg.bondingCurve) == address(0)) return (LimitReason.INVALID_TOKEN, cfg);
-        if (launchpad.getTokenState(token).graduated) return (LimitReason.GRADUATED, cfg);
-        return (LimitReason.NONE, cfg);
-    }
-
-    /// @dev Same as `_checkBuyValidity` but only returns the reason — sells don't need the config.
-    function _checkSellValidity(address token) internal view returns (LimitReason) {
-        TokenConfig memory cfg = launchpad.getTokenConfig(token);
-        if (address(cfg.bondingCurve) == address(0)) return LimitReason.INVALID_TOKEN;
+    /// @dev Validity gate. Returns `NONE` when the token is registered and not graduated;
+    ///      otherwise the matching reason code.
+    function _checkValidity(address token) internal view returns (LimitReason) {
+        if (address(launchpad.getTokenConfig(token).bondingCurve) == address(0)) return LimitReason.INVALID_TOKEN;
         if (launchpad.getTokenState(token).graduated) return LimitReason.GRADUATED;
         return LimitReason.NONE;
     }
@@ -221,19 +212,19 @@ contract LivoQuoter is ILivoQuoter {
         uint256 ethCapGrad = launchpad.getMaxEthToSpend(token);
         if (ethCapGrad == 0) return (0, LimitReason.GRADUATION_EXCESS);
 
-        uint256 sniperCap = ILivoToken(token).maxTokenPurchase(buyer);
-        if (sniperCap == type(uint256).max) return (ethCapGrad, LimitReason.GRADUATION_EXCESS);
+        uint256 sniperTokenCap = ILivoToken(token).maxTokenPurchase(buyer);
+        if (sniperTokenCap == type(uint256).max) return (ethCapGrad, LimitReason.GRADUATION_EXCESS);
 
         // Forward-quote at the graduation ceiling. If the buyer's sniper cap is at or above what
         // would fit anyway, sniper isn't binding.
         uint256 tokensAtGrad = _forwardTokens(token, ethCapGrad);
-        if (sniperCap >= tokensAtGrad) return (ethCapGrad, LimitReason.GRADUATION_EXCESS);
+        if (sniperTokenCap >= tokensAtGrad) return (ethCapGrad, LimitReason.GRADUATION_EXCESS);
 
-        if (sniperCap == 0) return (0, LimitReason.SNIPER_CAP);
+        if (sniperTokenCap == 0) return (0, LimitReason.SNIPER_CAP);
 
-        // Sniper is the binding cap. Inverse-quote `sniperCap` and decrement until forward yields
-        // at most `sniperCap` tokens — neutralizes the curve's non-symmetric invertibility.
-        (uint256 ethSafe,) = _safeBuyExactTokens(token, sniperCap);
+        // Sniper is the binding cap. Inverse-quote `sniperTokenCap` and decrement until forward yields
+        // at most `sniperTokenCap` tokens — neutralizes the curve's non-symmetric invertibility.
+        (uint256 ethSafe,) = _safeBuyExactTokens(token, sniperTokenCap);
         return (ethSafe, LimitReason.SNIPER_CAP);
     }
 
