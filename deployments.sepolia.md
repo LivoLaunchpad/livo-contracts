@@ -11,6 +11,7 @@
 | LivoGraduatorUniswapV2      | 0x7131c8141cd356dF22a9d30B292DB3f64B281AA5 |
 | LivoGraduatorUniswapV4      | 0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d |
 | LivoFeeSplitter (impl)      | 0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7 |
+| LivoQuoter                  | 0x123d99E61Ae78237400bf94de1A79eBBb450aBCa |
 | LivoToken                   | 0x06089fc51A93A5045C168E9A317951Cec757e0d7 |
 | LivoTaxableTokenUniV4       | 0x05fB9128dC50D3a3dB1F0d040bbe54b1e63B7e4f |
 | ConstantProductBondingCurve | 0x91F4fEc03A537aBeD00Ed49CB49E9A0EfC44f16e |
