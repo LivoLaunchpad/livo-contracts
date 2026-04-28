@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice E2E suite for sniper-protected variants only. Verifies that the protection window
@@ -65,6 +66,41 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         assertTrue(launchpad.getTokenState(token).graduated);
         // Confirm we're still inside the window when graduation completes
         assertLt(block.timestamp, uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()));
+    }
+
+    /// @dev Off-chain pattern for buying as close to the sniper cap as possible without reverting.
+    ///      The bonding curve isn't symmetrically invertible: `forward(inverse(maxTokens))` mints
+    ///      strictly more than `maxTokens` (both directions round in the user's favor and that
+    ///      compounds). The integrator must (a) target slightly below the cap to absorb the curve
+    ///      overshoot, then (b) verify with `quoteBuyTokensWithExactEth` before broadcasting.
+    function test_e2e_sniper_maxTokenPurchaseTargetUnderCap_succeeds() public {
+        bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
+        address token = _createTestToken(salt);
+
+        SniperProtection sp = SniperProtection(token);
+        assertGt(uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp);
+
+        uint256 maxTokens = ILivoToken(token).maxTokenPurchase(buyer);
+        assertGt(maxTokens, 0);
+        assertLt(maxTokens, type(uint256).max);
+
+        // 10ppm margin absorbs the constant-product curve overshoot at the largest possible buy
+        // (~7ppm for a 3% cap from a fresh curve). The `+ 1` guarantees a non-zero margin even
+        // if the cap is so small that `maxTokens / 100_000` rounds to zero.
+        uint256 targetTokens = maxTokens - (maxTokens / 100_000) - 1;
+
+        (,, uint256 totalEthNeeded) = launchpad.quoteBuyExactTokens(token, targetTokens);
+
+        // Forward-quote the same ETH back to confirm the actual delivery stays under the cap.
+        (,, uint256 tokensThatWillArrive) = launchpad.quoteBuyTokensWithExactEth(token, totalEthNeeded);
+        assertLe(tokensThatWillArrive, maxTokens, "forward quote must respect sniper cap");
+
+        vm.deal(buyer, totalEthNeeded);
+        vm.prank(buyer);
+        uint256 received = launchpad.buyTokensWithExactEth{value: totalEthNeeded}(token, 0, DEADLINE);
+
+        assertEq(received, tokensThatWillArrive);
+        assertLe(received, maxTokens);
     }
 
     function test_e2e_sniper_postGradSwap_unaffectedByCaps() public {
