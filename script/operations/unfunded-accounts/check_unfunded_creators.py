@@ -27,7 +27,13 @@ HTTP_TIMEOUT = 30
 
 QUERY = """
 query MyQuery {
-  RewardsTokenCreator(where: {chainId: {_eq: "1"}, accountedEth: {_gt: "0"}}) {
+  RewardsTokenCreator(
+    where: {
+      chainId: {_eq: "1"},
+      accountedEth: {_gt: "0"},
+      claimedEth: {_eq: "0"}
+    }
+  ) {
     accruedEth
     creator
   }
