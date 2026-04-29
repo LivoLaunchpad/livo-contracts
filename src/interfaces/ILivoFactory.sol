@@ -2,6 +2,28 @@
 pragma solidity 0.8.28;
 
 interface ILivoFactory {
+    ////////////////// Structs //////////////////////
+
+    /// @notice A single fee-receiver entry: account + shares in basis points (sum must == 10 000).
+    struct FeeShare {
+        address account;
+        uint256 shares;
+    }
+
+    /// @notice A single supply-share entry: account + shares in basis points (sum must == 10 000).
+    struct SupplyShare {
+        address account;
+        uint256 shares;
+    }
+
+    /// @notice Resolved fee routing returned from `_validateInputsAndResolveFees`. Bundling the three
+    ///         addresses into a memory struct keeps `createToken` bodies within the EVM stack limit.
+    struct FeeRouting {
+        address feeHandler;
+        address feeReceiver;
+        address feeSplitter;
+    }
+
     ////////////////// Events //////////////////////
 
     event TokenCreated(
@@ -19,9 +41,16 @@ interface ILivoFactory {
         address indexed token, address indexed feeSplitter, address[] recipients, uint256[] sharesBps
     );
 
-    event DeployerBuy(address indexed token, address indexed buyer, uint256 ethSpent, uint256 tokensBought);
+    event BuyOnDeploy(
+        address indexed token,
+        address indexed buyer,
+        uint256 ethSpent,
+        uint256 tokensBought,
+        address[] recipients,
+        uint256[] amounts
+    );
 
-    event MaxDeployerBuyBpsUpdated(uint256 newMaxDeployerBuyBps);
+    event MaxBuyOnDeployBpsUpdated(uint256 newMaxBuyOnDeployBps);
 
     event TokenImplementationUpdated(address newTokenImplementation);
 
@@ -30,11 +59,14 @@ interface ILivoFactory {
     error InvalidNameOrSymbol();
     error InvalidTokenOwner();
     error InvalidFeeReceiver();
+    error InvalidSupplyShares();
+    error InvalidShares();
     error InvalidTokenAddress();
-    error InvalidDeployerBuy();
+    error InvalidBuyOnDeploy();
     error InvalidTokenImplementation();
+    error InvalidMaxBuyOnDeployBps();
 
     ////////////////// Views //////////////////////
 
-    function quoteDeployerBuy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded);
+    function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded);
 }

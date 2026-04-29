@@ -7,7 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
@@ -24,7 +24,7 @@ contract LaunchpadInvariants is Test {
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoFactoryUniV2 public factoryV2;
-    LivoFactoryBase public factoryV4;
+    LivoFactoryUniV4 public factoryV4;
     LivoFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
@@ -92,10 +92,11 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler)
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
 
-        factoryV4 = new LivoFactoryBase(
+        factoryV4 = new LivoFactoryUniV4(
             address(launchpad),
             address(tokenImplementation),
             address(bondingCurve),

@@ -349,12 +349,22 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         assertApproxEqAbs(tokensAfterMultipleSells, 0, 4, "bob1 should have sold all tokens. 4 wei allowed error");
 
         // Reset state by creating a new token and setting up the same initial conditions
+        address testToken2;
         vm.prank(creator);
-        address testToken2 = address(graduator) == address(graduatorV2)
-            ? factoryV2.createToken("Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(livoToken)))
-            : factoryV4.createToken(
-                "Test Token 2", "TT2", creator, _nextValidSalt(address(factoryV4), address(livoToken))
+        if (address(graduator) == address(graduatorV2)) {
+            (testToken2,) = factoryV2.createToken(
+                "Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(livoToken)), _fs(creator), _noSs()
             );
+        } else {
+            (testToken2,) = factoryV4.createToken(
+                "Test Token 2",
+                "TT2",
+                _nextValidSalt(address(factoryV4), address(livoToken)),
+                _fs(creator),
+                _noSs(),
+                false
+            );
+        }
 
         // Buy the same amount for both scenarios to establish identical starting conditions
         vm.prank(alice);

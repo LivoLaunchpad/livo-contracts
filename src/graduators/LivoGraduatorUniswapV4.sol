@@ -25,9 +25,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Graduation ETH fee (creator compensation + treasury fee)
     uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
 
-    /// @notice ETH compensation paid to token creator at graduation
+    /// @notice ETH compensation paid to token creator at graduation (half of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
 
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
@@ -139,7 +139,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
         // 1. Handle fee split
-        uint256 ethForLiquidity = _handleGraduationFeesV4(tokenAddress);
+        uint256 ethForLiquidity = _handleGraduationFeesV4(tokenAddress, treasury);
 
         // 2. Continue with V4 liquidity logic
         uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
@@ -176,7 +176,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice Splits graduation ETH between creator compensation, treasury, and liquidity
-    function _handleGraduationFeesV4(address tokenAddress) internal returns (uint256 ethForLiquidity) {
+    function _handleGraduationFeesV4(address tokenAddress, address treasury)
+        internal
+        returns (uint256 ethForLiquidity)
+    {
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
@@ -185,8 +188,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
 
         // Send treasury share directly to treasury
-        address treasuryAddr = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-        (bool success,) = treasuryAddr.call{value: treasuryShare}("");
+        (bool success,) = treasury.call{value: treasuryShare}("");
         require(success, EtherTransferFailed());
         emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
