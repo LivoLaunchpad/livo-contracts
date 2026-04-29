@@ -73,8 +73,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     /// @notice Updates the max aggregate buy-on-deploy percentage
     /// @param newMaxBuyOnDeployBps New max in basis points (e.g. 1000 = 10%)
+    /// @dev setting 0 here will make deployments revert, as msg.value > 0 is required to trigger the buy-on-deploy logic
     function setMaxBuyOnDeployBps(uint256 newMaxBuyOnDeployBps) external onlyOwner {
-        require(newMaxBuyOnDeployBps < BASIS_POINTS, "Exceeds max bps");
+        require(newMaxBuyOnDeployBps < BASIS_POINTS, InvalidMaxBuyOnDeployBps());
         maxBuyOnDeployBps = newMaxBuyOnDeployBps;
         emit MaxBuyOnDeployBpsUpdated(newMaxBuyOnDeployBps);
     }
@@ -82,6 +83,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @notice Quotes the ETH needed (msg.value) to receive exactly `tokenAmount` tokens on a new token
     /// @param tokenAmount Amount of tokens to receive
     /// @return totalEthNeeded The msg.value to pass to createToken
+    /// @dev this doesn't take into account the maxBuyOnDeployBps limit, so it is the responsibility of the caller to ensure the quoted amount doesn't exceed that limit
     function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
         (uint256 ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
 
@@ -165,6 +167,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
     ///      The cap is enforced on the aggregate `tokensBought`, not per recipient. Rounding dust
     ///      goes to the last recipient so no tokens remain in the factory.
+    /// @dev deployer-buy receivers bypass the sniper-protection features
     function _buyAndDistribute(address token, SupplyShare[] calldata supplyShares) internal {
         uint256 tokensBought = LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
 

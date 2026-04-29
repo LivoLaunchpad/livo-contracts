@@ -64,6 +64,7 @@ interface ILivoFactory {
     error InvalidTokenAddress();
     error InvalidBuyOnDeploy();
     error InvalidTokenImplementation();
+    error InvalidMaxBuyOnDeployBps();
 
     ////////////////// Views //////////////////////
 
