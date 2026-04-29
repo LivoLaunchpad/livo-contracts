@@ -31,7 +31,7 @@ contract ExportDeployments is Script {
 
     // ---------------------------------------------------------------- Mainnet
 
-    function _renderMainnet() internal view returns (string memory s) {
+    function _renderMainnet() internal pure returns (string memory s) {
         s = string.concat(DO_NOT_EDIT_MAINNET, "# Mainnet deployments\n\n");
 
         s = string.concat(s, "## Livo\n\n", _tableHeader("Contract"));
@@ -76,7 +76,7 @@ contract ExportDeployments is Script {
 
     // ---------------------------------------------------------------- Sepolia
 
-    function _renderSepolia() internal view returns (string memory s) {
+    function _renderSepolia() internal pure returns (string memory s) {
         s = string.concat(DO_NOT_EDIT_SEPOLIA, "# Sepolia deployments\n\n");
 
         s = string.concat(s, "## Livo\n\n", _tableHeader("Contract"));
@@ -124,7 +124,7 @@ contract ExportDeployments is Script {
         return string.concat("| ", firstCol, " | Address |\n| --- | --- |\n");
     }
 
-    function _row(string memory name, address a) private view returns (string memory) {
+    function _row(string memory name, address a) private pure returns (string memory) {
         if (a == address(0)) {
             return string.concat("| ", name, " | _(not deployed)_ |\n");
         }
