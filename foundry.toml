@@ -9,6 +9,12 @@ threads = 4
 
 verbosity = 3
 
+# Allow ExportDeployments script to (re)write the generated deployment manifests.
+fs_permissions = [
+    { access = "read-write", path = "./deployments.mainnet.md" },
+    { access = "read-write", path = "./deployments.sepolia.md" },
+]
+
 # extra_output = ["storageLayout"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

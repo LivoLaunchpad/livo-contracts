@@ -18,6 +18,8 @@ import {LivoFactoryTaxTokenSniperProtected} from "src/factories/LivoFactoryTaxTo
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
+import {DeploymentsMainnet} from "../deployments.mainnet.sol";
+import {DeploymentsSepolia} from "../deployments.sepolia.sol";
 
 /// @title Livo Factories Re-Deployment Script
 /// @notice Deploys all six factories (V2/V4/TaxToken + their sniper-protected variants) plus their four token
@@ -35,30 +37,31 @@ contract DeploymentsFactories is Script {
     }
 
     /// @notice Returns the previously-deployed Livo core addresses for the active chain.
-    /// @dev Sourced from deployments.{mainnet,sepolia}.md. Also asserts that LivoTaxableTokenUniV4's
-    ///      hardcoded chain import matches the active chain (must run `just taxtokenaddresses` before sepolia).
+    /// @dev Sourced from `deployments.{mainnet,sepolia}.sol` (the per-chain manifest libraries).
+    ///      Also asserts that LivoTaxableTokenUniV4's hardcoded chain import matches the active
+    ///      chain (must run `just taxtokenaddresses` before sepolia).
     function _getDeployedCore() internal view returns (LivoCore memory c) {
-        if (block.chainid == 1) {
+        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
             c = LivoCore({
-                launchpad: 0xd9f8bbe437a3423b725c6616C1B543775ecf1110,
-                bondingCurve: 0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23,
-                graduatorV2: 0x46aF9F05825459d149ed036Bb6461E1FE8fA25D8,
-                graduatorV4: 0xCF6910d89d052F025ed402638e4Ae78ecDCdDfA5,
-                feeHandler: 0xc18030d76573784fff4E6365309E1acD967506ff,
-                feeSplitterImpl: 0x80d97b49169067f339934C39F3ae76C50ED046a6
+                launchpad: DeploymentsMainnet.LAUNCHPAD,
+                bondingCurve: DeploymentsMainnet.BONDING_CURVE,
+                graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
+                feeHandler: DeploymentsMainnet.FEE_HANDLER,
+                feeSplitterImpl: DeploymentsMainnet.FEE_SPLITTER_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesMainnet.UNIV4_POOL_MANAGER,
                 "LivoTaxableTokenUniV4 import is not Mainnet"
             );
-        } else if (block.chainid == 11155111) {
+        } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
             c = LivoCore({
-                launchpad: 0xd9f8bbe437a3423b725c6616C1B543775ecf1110,
-                bondingCurve: 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5,
-                graduatorV2: 0x7131c8141cd356dF22a9d30B292DB3f64B281AA5,
-                graduatorV4: 0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d,
-                feeHandler: 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF,
-                feeSplitterImpl: 0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7
+                launchpad: DeploymentsSepolia.LAUNCHPAD,
+                bondingCurve: DeploymentsSepolia.BONDING_CURVE,
+                graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
+                feeHandler: DeploymentsSepolia.FEE_HANDLER,
+                feeSplitterImpl: DeploymentsSepolia.FEE_SPLITTER_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesSepolia.UNIV4_POOL_MANAGER,
@@ -146,6 +149,7 @@ contract DeploymentsFactories is Script {
         console.log(
             "1. Replace factory addresses in justfile (factoryV2 / factoryV4 / factoryTaxToken + 3 sniper slots)"
         );
-        console.log("2. Update deployments.{sepolia,mainnet}.md with the new factory addresses");
+        console.log("2. Update deployments.{mainnet,sepolia}.sol with the new addresses");
+        console.log("3. Run `just export-deployments` to refresh the .md files and commit them");
     }
 }

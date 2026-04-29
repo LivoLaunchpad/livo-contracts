@@ -114,6 +114,11 @@ deploy-sepolia-factories: taxtokenaddresses
 deploy-mainnet-factories:
     forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
+# Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
+# CI runs the same command and fails if the result is not committed.
+export-deployments:
+    forge script ExportDeployments
+
 create-token-v2 tokenName value="0":
     SALT=$(just next-salt {{factoryV2}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \
