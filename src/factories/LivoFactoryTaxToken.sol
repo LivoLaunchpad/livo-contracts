@@ -6,18 +6,13 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Factory for deploying taxable Livo tokens with Uniswap V4 hook integration
 contract LivoFactoryTaxToken is LivoFactoryAbstract {
     error InvalidTaxBps();
     error InvalidTaxDuration();
-
-    struct TaxCfg {
-        uint16 buyTaxBps;
-        uint16 sellTaxBps;
-        uint32 taxDurationSeconds;
-    }
 
     /// @notice max configurable tax (buy or sell)
     uint256 public constant MAX_TAX_BPS = 400;
@@ -49,11 +44,14 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
-        TaxCfg calldata taxCfg
+        bool renounceOwnership,
+        TaxConfigInit calldata taxCfg
     ) external payable returns (address token, address feeSplitter) {
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        token = _createAndInitializeTaxToken(name, symbol, routing.feeHandler, routing.feeReceiver, salt, taxCfg);
+        token = _createAndInitializeTaxToken(
+            name, symbol, salt, renounceOwnership ? address(0) : msg.sender, routing, taxCfg
+        );
 
         _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;
@@ -64,10 +62,10 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
     function _createAndInitializeTaxToken(
         string calldata name,
         string calldata symbol,
-        address feeHandler_,
-        address feeReceiver,
         bytes32 salt,
-        TaxCfg calldata taxCfg
+        address tokenOwner,
+        FeeRouting memory routing,
+        TaxConfigInit calldata taxCfg
     ) internal returns (address token) {
         _validateNameSymbol(name, symbol);
 
@@ -76,10 +74,18 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
 
         // minimal proxy pattern to deploy a new LivoToken instance
         token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(
-            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
+            token,
+            name,
+            symbol,
+            tokenOwner,
+            address(LAUNCHPAD),
+            address(GRADUATOR),
+            routing.feeHandler,
+            routing.feeReceiver
         );
 
         LivoTaxableTokenUniV4(payable(token))
@@ -87,15 +93,13 @@ contract LivoFactoryTaxToken is LivoFactoryAbstract {
                 ILivoToken.InitializeParams({
                     name: name,
                     symbol: symbol,
-                    tokenOwner: msg.sender,
+                    tokenOwner: tokenOwner,
                     graduator: address(GRADUATOR),
                     launchpad: address(LAUNCHPAD),
-                    feeHandler: feeHandler_,
-                    feeReceiver: feeReceiver
+                    feeHandler: routing.feeHandler,
+                    feeReceiver: routing.feeReceiver
                 }),
-                taxCfg.buyTaxBps,
-                taxCfg.sellTaxBps,
-                uint40(taxCfg.taxDurationSeconds)
+                taxCfg
             );
         // this will emit another event (from the launchpad)
         LAUNCHPAD.launchToken(token, BONDING_CURVE);

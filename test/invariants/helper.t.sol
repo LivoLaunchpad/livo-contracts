@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
@@ -36,7 +36,7 @@ contract InvariantsHelperLaunchpad is Test {
     LivoLaunchpad public launchpad;
 
     LivoFactoryUniV2 public factoryV2;
-    LivoFactoryBase public factoryV4;
+    LivoFactoryUniV4 public factoryV4;
 
     mapping(address => uint256) public aggregatedEthForBuys;
     mapping(address => uint256) public aggregatedTokensBought;
@@ -64,7 +64,7 @@ contract InvariantsHelperLaunchpad is Test {
     }
 
     /////////////////////////////////////////////////////
-    constructor(LivoLaunchpad _launchpad, LivoFactoryUniV2 _factoryV2, LivoFactoryBase _factoryV4) {
+    constructor(LivoLaunchpad _launchpad, LivoFactoryUniV2 _factoryV2, LivoFactoryUniV4 _factoryV4) {
         launchpad = _launchpad;
         factoryV2 = _factoryV2;
         factoryV4 = _factoryV4;
@@ -125,7 +125,7 @@ contract InvariantsHelperLaunchpad is Test {
         } else {
             bytes32 salt = _nextValidSalt(address(factoryV4), address(factoryV4.TOKEN_IMPLEMENTATION()));
             vm.prank(currentActor);
-            (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs);
+            (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs, false);
         }
         _tokens.add(token);
     }

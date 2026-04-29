@@ -24,7 +24,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     /// @dev Returns the fee handler for the current test token
     function _tokenFeeHandler() internal view virtual returns (ILivoFeeHandler);
 
-    /// @dev Creator graduation compensation for the active graduator. V4 = 0.05 ether, V2 = 0.125 ether.
+    /// @dev Creator graduation compensation for the active graduator. Both V2 and V4 = 0.125 ether (50/50 split).
     function _creatorCompensation() internal pure virtual returns (uint256) {
         return CREATOR_GRADUATION_COMPENSATION;
     }

@@ -880,6 +880,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
         );
         _;

@@ -27,6 +27,8 @@ jobs:
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
 
       - name: Show Forge version
         run: |
@@ -41,6 +43,15 @@ jobs:
         run: |
           forge build --sizes
         id: build
+
+      - name: Deployment manifest drift check
+        run: |
+          forge script ExportDeployments
+          if ! git diff --exit-code deployments.mainnet.md deployments.sepolia.md; then
+            echo "::error::deployments.{mainnet,sepolia}.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
+            exit 1
+          fi
+        id: deployments_drift
 
       - name: Forge tests (no invariants)
         run: |

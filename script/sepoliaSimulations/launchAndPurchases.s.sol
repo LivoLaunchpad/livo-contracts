@@ -3,9 +3,10 @@ pragma solidity 0.8.28;
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
 
 contract BuySellSimulations is Script {
@@ -19,7 +20,7 @@ contract BuySellSimulations is Script {
 
         LivoLaunchpad launchpad = LivoLaunchpad(launchpadAddress);
         LivoFactoryUniV2 factoryV2 = LivoFactoryUniV2(factoryV2Address);
-        LivoFactoryBase factoryV4 = LivoFactoryBase(factoryV4Address);
+        LivoFactoryUniV4 factoryV4 = LivoFactoryUniV4(factoryV4Address);
         LivoFactoryTaxToken factoryTax = LivoFactoryTaxToken(factoryTaxAddress);
 
         vm.startBroadcast();
@@ -30,11 +31,11 @@ contract BuySellSimulations is Script {
         ILivoFactory.SupplyShare[] memory noSupplyShares = new ILivoFactory.SupplyShare[](0);
 
         (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares);
-        (address TOKEN2,) = factoryV4.createToken("projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares);
-        LivoFactoryTaxToken.TaxCfg memory taxCfg =
-            LivoFactoryTaxToken.TaxCfg({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
+        (address TOKEN2,) = factoryV4.createToken("projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares, false);
+        TaxConfigInit memory taxCfg =
+            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
         (address TOKEN3,) =
-            factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, taxCfg);
+            factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, false, taxCfg);
 
         uint256 deadline = block.timestamp + 300 days;
 

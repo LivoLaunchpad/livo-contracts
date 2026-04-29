@@ -300,7 +300,12 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
             );
         } else {
             (testToken2,) = factoryV4.createToken(
-                "Test Token 2", "TT2", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(creator), _noSs()
+                "Test Token 2",
+                "TT2",
+                _nextValidSalt(address(factoryV4), address(livoToken)),
+                _fs(creator),
+                _noSs(),
+                false
             );
         }
 

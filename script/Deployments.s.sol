@@ -8,7 +8,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
 import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
@@ -195,7 +195,7 @@ contract Deployments is Script {
             address(feeSplitterImpl)
         );
         console.log("| LivoFactoryUniV2 (V2) | ", address(factoryV2));
-        LivoFactoryBase factoryV4 = new LivoFactoryBase(
+        LivoFactoryUniV4 factoryV4 = new LivoFactoryUniV4(
             address(launchpad),
             address(livoToken),
             address(bondingCurve),
@@ -219,7 +219,7 @@ contract Deployments is Script {
         console.log("Whitelisting factories...");
 
         launchpad.whitelistFactory(address(factoryV2));
-        console.log("whitelisting LivoFactoryBase (V2) in LivoLaunchpad");
+        console.log("whitelisting LivoFactoryUniV2 in LivoLaunchpad");
         launchpad.whitelistFactory(address(factoryV4));
         console.log("whitelisting factoryV4 (V4) in launchpad");
         launchpad.whitelistFactory(address(factoryTax));

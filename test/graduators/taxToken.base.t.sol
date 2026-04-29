@@ -53,6 +53,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
             _fs(creator),
             _noSs(),
+            false,
             _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds))
         );
     }
