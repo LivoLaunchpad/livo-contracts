@@ -8,7 +8,7 @@
 | ConstantProductBondingCurve        | 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5  |
 | LivoFeeHandler                     | 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF  |
 | LivoSwapHook                       | 0x0591a87D3a56797812C4DA164C1B005c545400Cc  |
-| LivoGraduatorUniswapV2             | 0x7131c8141cd356dF22a9d30B292DB3f64B281AA5  |
+| LivoGraduatorUniswapV2             | 0x9ac078c4E22917db450624632eA1997aD2ED4C73  |
 | LivoGraduatorUniswapV4             | 0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d  |
 | LivoFeeSplitter (impl)             | 0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7  |
 | LivoQuoter                         | 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438  |

@@ -205,7 +205,7 @@ Same entry point as §6, but the token is registered against the V4 graduator. T
 1. **`ERC20.Transfer`** (launchpad → buyer) — tokens for the trade.
 2. **`LivoLaunchpad.LivoTokenBuy`**.
 3. **`ERC20.Transfer`** (launchpad → V4 graduator, `value = tokensForGraduation`).
-4. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount = 5e16` for V4).
+4. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount = 1.25e17` for V4).
 5. **`LivoFeeHandler.CreatorFeesDeposited`** *(or `LivoFeeSplitter.FeesAccrued` if the token uses a splitter — see note below)*.
 6. **`LivoGraduator.TreasuryGraduationFeeCollected`**.
 7. **`ILivoToken.Graduated`**.

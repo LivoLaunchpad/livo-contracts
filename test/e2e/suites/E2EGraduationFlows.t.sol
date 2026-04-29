@@ -65,7 +65,7 @@ abstract contract E2EGraduationFlows is LivoE2EBase {
         _graduateE2E(token);
 
         // Creator should have non-zero claimable from the graduation creator fee
-        // (CREATOR_GRADUATION_COMPENSATION = 0.05 ether for V4, 0.125 ether for V2).
+        // (CREATOR_GRADUATION_COMPENSATION = 0.125 ether for both V2 and V4).
         address[] memory tokens = new address[](1);
         tokens[0] = token;
 

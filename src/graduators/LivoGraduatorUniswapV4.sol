@@ -25,9 +25,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Graduation ETH fee (creator compensation + treasury fee)
     uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
 
-    /// @notice ETH compensation paid to token creator at graduation
+    /// @notice ETH compensation paid to token creator at graduation (half of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
 
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
