@@ -8,6 +8,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment: tests
     env:
       MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
     steps:
