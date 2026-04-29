@@ -120,14 +120,51 @@ contract ExportDeployments is Script {
 
     // ---------------------------------------------------------------- Helpers
 
+    /// @dev Inner column widths (content + padding, excluding the surrounding `| ` and ` |`).
+    ///      Longest name today is `LivoTaxableTokenUniV4SniperProtected (impl)` = 43 chars,
+    ///      so 44 leaves a 1-char buffer. Backticked addresses are exactly 44 chars
+    ///      (`0x` + 40 hex + 2 backticks), so the same width fits the address column too.
+    uint256 private constant COL1_WIDTH = 44;
+    uint256 private constant COL2_WIDTH = 44;
+
     function _tableHeader(string memory firstCol) private pure returns (string memory) {
-        return string.concat("| ", firstCol, " | Address |\n| --- | --- |\n");
+        return string.concat(
+            "| ",
+            _padRight(firstCol, COL1_WIDTH),
+            " | ",
+            _padRight("Address", COL2_WIDTH),
+            " |\n",
+            "| ",
+            _repeat(0x2d, COL1_WIDTH),
+            " | ",
+            _repeat(0x2d, COL2_WIDTH),
+            " |\n"
+        );
     }
 
     function _row(string memory name, address a) private pure returns (string memory) {
-        if (a == address(0)) {
-            return string.concat("| ", name, " | _(not deployed)_ |\n");
+        string memory addr = (a == address(0)) ? "_(not deployed)_" : string.concat("`", vm.toString(a), "`");
+        return string.concat("| ", _padRight(name, COL1_WIDTH), " | ", _padRight(addr, COL2_WIDTH), " |\n");
+    }
+
+    function _padRight(string memory s, uint256 width) private pure returns (string memory) {
+        bytes memory original = bytes(s);
+        if (original.length >= width) return s;
+        bytes memory result = new bytes(width);
+        for (uint256 i = 0; i < original.length; i++) {
+            result[i] = original[i];
         }
-        return string.concat("| ", name, " | `", vm.toString(a), "` |\n");
+        for (uint256 i = original.length; i < width; i++) {
+            result[i] = 0x20;
+        }
+        return string(result);
+    }
+
+    function _repeat(bytes1 ch, uint256 n) private pure returns (string memory) {
+        bytes memory result = new bytes(n);
+        for (uint256 i = 0; i < n; i++) {
+            result[i] = ch;
+        }
+        return string(result);
     }
 }
