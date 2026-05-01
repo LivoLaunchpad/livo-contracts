@@ -21,7 +21,7 @@
 | LivoFactoryUniV2                             | `0xEd16647144C099E3Ef5B60a6714c5C42E15f61Bb` |
 | LivoFactoryUniV4                             | `0xD2c2af16c76f2640fDF1208B6fEA107059079ffc` |
 | LivoFactoryTaxToken                          | `0x57aA990063b49cABf3EE9FeB49dca8DADc9511cD` |
-| LivoFactoryUniV2SniperProtected              | `0xFDf923d596013009F7a0bDb117C7132dc28C06D7` |
+| LivoFactoryUniV2SniperProtected              | `0x95e2C672aeeA71aE7a1b2058CF9de63B7261C7ca` |
 | LivoFactoryUniV4SniperProtected              | `0x8f8142E3438bF05e50F8322ce159C507Cc21A577` |
 | LivoFactoryTaxTokenSniperProtected           | `0x1F630Ae795353Dbee4E8a48ce242Fb18479A9333` |
 
