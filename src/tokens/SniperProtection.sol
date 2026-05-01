@@ -35,6 +35,10 @@ abstract contract SniperProtection {
     /// @notice Max allowed protection window duration.
     uint40 public constant ANTI_SNIPER_MAX_WINDOW = 1 days;
 
+    /// @notice Max number of dev-supplied whitelist entries that bypass sniper caps.
+    /// @dev Includes the deployer address if the dev chooses to add it to the list.
+    uint256 public constant MAX_WHITELISTED = 5;
+
     /// @dev Mirrors `LivoToken.TOTAL_SUPPLY` (different name to avoid collision through multiple
     ///      inheritance). Kept as an internal constant so the mixin stays self-contained.
     uint256 internal constant _ANTI_SNIPER_TOTAL_SUPPLY = 1_000_000_000e18;
@@ -67,6 +71,7 @@ abstract contract SniperProtection {
     error MaxBuyPerTxBpsExceedsMaxWalletBps();
     error ProtectionWindowTooShort();
     error ProtectionWindowTooLong();
+    error WhitelistTooLong();
 
     event SniperProtectionInitialized(
         uint16 maxBuyPerTxBps, uint16 maxWalletBps, uint40 protectionWindowSeconds, address[] whitelist
@@ -82,6 +87,7 @@ abstract contract SniperProtection {
         require(cfg.maxBuyPerTxBps <= cfg.maxWalletBps, MaxBuyPerTxBpsExceedsMaxWalletBps());
         require(cfg.protectionWindowSeconds >= ANTI_SNIPER_MIN_WINDOW, ProtectionWindowTooShort());
         require(cfg.protectionWindowSeconds <= ANTI_SNIPER_MAX_WINDOW, ProtectionWindowTooLong());
+        require(cfg.whitelist.length <= MAX_WHITELISTED, WhitelistTooLong());
 
         maxBuyPerTxBps = cfg.maxBuyPerTxBps;
         maxWalletBps = cfg.maxWalletBps;

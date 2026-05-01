@@ -344,6 +344,31 @@ abstract contract SniperProtectionBaseTest is Test {
         _initClone(clone, DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, 1 days + 1, new address[](0));
     }
 
+    function test_revertsWhitelistTooLong() public {
+        uint256 max = SniperProtection(address(_token())).MAX_WHITELISTED();
+        address[] memory wl = new address[](max + 1);
+        for (uint256 i; i < wl.length; ++i) {
+            wl[i] = address(uint160(0x1000 + i));
+        }
+        address clone = _cloneImpl();
+        vm.expectRevert(SniperProtection.WhitelistTooLong.selector);
+        _initClone(clone, DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
+    }
+
+    function test_acceptsWhitelistAtMaxLength() public {
+        uint256 max = SniperProtection(address(_token())).MAX_WHITELISTED();
+        address[] memory wl = new address[](max);
+        for (uint256 i; i < max; ++i) {
+            wl[i] = address(uint160(0x2000 + i));
+        }
+        LivoToken t = _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
+
+        SniperProtection sp = SniperProtection(address(t));
+        for (uint256 i; i < max; ++i) {
+            assertTrue(sp.sniperBypass(wl[i]));
+        }
+    }
+
     /// @dev Deploy a fresh clone (pre-init). Split from `_initClone` so revert tests can
     ///      wrap only the init call with `expectRevert` (the CREATE opcode otherwise confuses it).
     function _cloneImpl() internal virtual returns (address);

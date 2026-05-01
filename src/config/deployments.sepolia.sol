@@ -14,20 +14,19 @@ library DeploymentsSepolia {
     // --- Core ---
     address internal constant LAUNCHPAD = 0xd9f8bbe437a3423b725c6616C1B543775ecf1110;
     address internal constant BONDING_CURVE = 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5;
-    address internal constant FEE_HANDLER = 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF;
-    address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
     address internal constant GRADUATOR_UNIV2 = 0x9ac078c4E22917db450624632eA1997aD2ED4C73;
     address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
+    address internal constant FEE_HANDLER = 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF;
     address internal constant FEE_SPLITTER_IMPL = 0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7;
+
+    address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
     address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x8DC0820854de7A13055D041edd859A0ce49746c7;
     address internal constant TAXABLE_TOKEN_IMPL = 0x3102B1b7b4F7e0CC32e8e50F303dd0452e1f9323;
 
-    /// @notice Sniper-protected token implementations: deployed on sepolia but
-    ///         their addresses are not currently recorded — fill in after the
-    ///         next redeploy.
+    /// @notice Sniper-protected token implementations
     address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xBaFe48EeF04D06b4217d16Afea8ab13356ADC316;
     address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x90191ADfC2DfB4E49897C55fD797aa97f5710cD9;
 
