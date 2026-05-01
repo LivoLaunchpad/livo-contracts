@@ -3,8 +3,8 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {DeploymentsMainnet} from "../deployments.mainnet.sol";
-import {DeploymentsSepolia} from "../deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
 /// @title ExportDeployments

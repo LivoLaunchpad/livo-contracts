@@ -18,8 +18,8 @@ import {LivoFactoryTaxTokenSniperProtected} from "src/factories/LivoFactoryTaxTo
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "../deployments.mainnet.sol";
-import {DeploymentsSepolia} from "../deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
 /// @title Livo Factories Re-Deployment Script
 /// @notice Deploys all six factories (V2/V4/TaxToken + their sniper-protected variants) plus their four token
