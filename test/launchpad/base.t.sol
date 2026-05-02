@@ -233,10 +233,7 @@ contract LaunchpadBaseTests is Test {
         launchpad = new LivoLaunchpad(treasury, admin);
         bondingCurve = new ConstantProductBondingCurve();
         graduatorV2 = new LivoGraduatorUniswapV2(
-            UNISWAP_V2_ROUTER,
-            address(launchpad),
-            // Stock UniswapV2 pair init code hash (mainnet fork)
-            0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f
+            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
 
         deployCodeTo(

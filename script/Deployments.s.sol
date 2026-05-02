@@ -50,7 +50,13 @@ contract Deployments is Script {
     function _getNetworkAddresses()
         internal
         view
-        returns (address univ2Router, address univ4PoolManager, address univ4PositionManager, address permit2)
+        returns (
+            address univ2Router,
+            address univ4PoolManager,
+            address univ4PositionManager,
+            address permit2,
+            bytes32 univ2PairInitCodeHash
+        )
     {
         if (block.chainid == 1) {
             // Mainnet
@@ -58,12 +64,14 @@ contract Deployments is Script {
             univ4PoolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
             univ4PositionManager = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
             permit2 = DeploymentAddressesMainnet.PERMIT2;
+            univ2PairInitCodeHash = DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH;
         } else if (block.chainid == 11155111) {
             // Sepolia
             univ2Router = DeploymentAddressesSepolia.UNIV2_ROUTER;
             univ4PoolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
             univ4PositionManager = DeploymentAddressesSepolia.UNIV4_POSITION_MANAGER;
             permit2 = DeploymentAddressesSepolia.PERMIT2;
+            univ2PairInitCodeHash = DeploymentAddressesSepolia.UNIV2_PAIR_INIT_CODE_HASH;
         } else {
             revert("Unsupported chain");
         }
@@ -123,8 +131,13 @@ contract Deployments is Script {
     function run() public {
         require(TREASURY != address(0), "TREASURY address not set");
 
-        (address univ2Router, address univ4PoolManager, address univ4PositionManager, address permit2) =
-            _getNetworkAddresses();
+        (
+            address univ2Router,
+            address univ4PoolManager,
+            address univ4PositionManager,
+            address permit2,
+            bytes32 univ2PairInitCodeHash
+        ) = _getNetworkAddresses();
 
         console.log("=== Livo Protocol Deployment ===");
         console.log("Chain ID:", block.chainid);
@@ -172,8 +185,6 @@ contract Deployments is Script {
         console.log("| LivoSwapHook | ", hookAddress);
 
         // 8. Deploy LivoGraduatorUniswapV2
-        // Stock UniswapV2 pair init code hash (mainnet & Sepolia use the same UniV2 deployment)
-        bytes32 univ2PairInitCodeHash = 0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
         LivoGraduatorUniswapV2 graduatorV2 =
             new LivoGraduatorUniswapV2(univ2Router, address(launchpad), univ2PairInitCodeHash);
         console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
