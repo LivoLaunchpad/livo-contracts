@@ -172,7 +172,10 @@ contract Deployments is Script {
         console.log("| LivoSwapHook | ", hookAddress);
 
         // 8. Deploy LivoGraduatorUniswapV2
-        LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
+        // Stock UniswapV2 pair init code hash (mainnet & Sepolia use the same UniV2 deployment)
+        bytes32 univ2PairInitCodeHash = 0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+        LivoGraduatorUniswapV2 graduatorV2 =
+            new LivoGraduatorUniswapV2(univ2Router, address(launchpad), univ2PairInitCodeHash);
         console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
         // 7. Deploy LivoGraduatorUniswapV4

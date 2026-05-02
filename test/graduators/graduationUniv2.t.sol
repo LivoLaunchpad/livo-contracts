@@ -28,8 +28,16 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         (testToken,) = factoryV2.createToken(
             "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _fs(creator), _noSs()
         );
-        uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
+        // Pair contract is not deployed at token creation; only the CREATE2 address is reserved
+        // and stored on the token. The actual contract is deployed lazily at graduation.
+        uniswapPair = LivoToken(testToken).pair();
         _;
+    }
+
+    /// @dev Helper: permissionlessly deploys the pair via the UniV2 factory, simulating an
+    ///      outside actor (or the graduator itself) creating the pair before graduation.
+    function _deployPairPermissionlessly() internal returns (address pair) {
+        pair = UNISWAP_FACTORY.createPair(testToken, address(WETH));
     }
 
     function _swapBuy(address account, address token, uint256 ethAmount, uint256 minTokens) internal {
@@ -67,14 +75,25 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         // just create the token
     }
 
-    /// @notice Test that univ2pair is created in uniswap at token launch
-    function test_uniV2PairCreatedAtTokenLaunch() public createTestTokenWithPair {
-        assertTrue(uniswapPair != address(0), "Uniswap pair should be created");
+    /// @notice Test that the deterministic UniV2 pair address is known at token launch (no contract deployed yet)
+    function test_uniV2PairAddressKnownAtTokenLaunch() public createTestTokenWithPair {
+        assertTrue(uniswapPair != address(0), "Pair address should be precomputed and non-zero");
 
-        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        // Pair contract is NOT deployed at token creation
+        assertEq(uniswapPair.code.length, 0, "Pair contract should NOT be deployed at token creation");
+        assertEq(
+            UNISWAP_FACTORY.getPair(testToken, address(WETH)), address(0), "Factory should not yet know about the pair"
+        );
+
+        // Permissionlessly deploying the pair must yield the exact same address
+        // (verifies the CREATE2 prediction matches reality)
+        address actualPair = _deployPairPermissionlessly();
+        assertEq(actualPair, uniswapPair, "Precomputed address must match CREATE2 deployment");
+
+        // After actual deployment, token0/token1 should be set correctly
+        IUniswapV2Pair pair = IUniswapV2Pair(actualPair);
         address token0 = pair.token0();
         address token1 = pair.token1();
-
         assertTrue(
             (token0 == testToken && token1 == address(WETH)) || (token0 == address(WETH) && token1 == testToken),
             "Pair should contain test token and WETH"
@@ -110,16 +129,25 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         assertEq(IERC20(testToken).balanceOf(buyer), buyerBalance - pairTransferAmount, "Buyer balance should decrease");
     }
 
-    /// @notice Test that it is not possible to create the univ2pair right after token is deployed
-    function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
+    /// @notice Pair is not deployed at token creation, but anyone can permissionlessly deploy
+    ///         it later — and the deployed address must equal the precomputed address stored on the token.
+    function test_pairNotDeployedAtCreation_canBePermissionlesslyDeployed() public {
         vm.prank(creator);
         (testToken,) = factoryV2.createToken(
             "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _fs(creator), _noSs()
         );
 
-        address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
-        assertTrue(existingPair != address(0), "Pair should already exist from token creation");
+        address precomputed = LivoToken(testToken).pair();
+        assertTrue(precomputed != address(0), "Token should have a precomputed pair address");
+        assertEq(precomputed.code.length, 0, "No code at precomputed address before graduation");
+        assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), address(0), "Factory has no pair record yet");
 
+        // Permissionless deployment must land at the precomputed address
+        address deployed = UNISWAP_FACTORY.createPair(testToken, address(WETH));
+        assertEq(deployed, precomputed, "Deployed pair must match precomputed CREATE2 address");
+        assertGt(deployed.code.length, 0, "Pair contract should now exist");
+
+        // And the standard 'PAIR_EXISTS' guard kicks in for a second deployment
         vm.expectRevert("UniswapV2: PAIR_EXISTS");
         UNISWAP_FACTORY.createPair(testToken, address(WETH));
     }
@@ -164,13 +192,10 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
 
     /// @notice Test that LP tokens are burned or transferred to 0xDEAD address
     function test_lpTokensBurnedOrTransferredToDeadAddress() public createTestTokenWithPair {
-        uint256 deadBalanceBefore = IERC20(uniswapPair).balanceOf(DEAD_ADDRESS);
-
+        // Pair contract not yet deployed → no LP balance exists pre-graduation
         _graduateToken();
 
-        uint256 deadBalanceAfter = IERC20(uniswapPair).balanceOf(DEAD_ADDRESS);
-        uint256 lpTokensLocked = deadBalanceAfter - deadBalanceBefore;
-
+        uint256 lpTokensLocked = IERC20(uniswapPair).balanceOf(DEAD_ADDRESS);
         assertTrue(lpTokensLocked > 0, "LP tokens should be locked in dead address");
 
         uint256 totalLpSupply = IERC20(uniswapPair).totalSupply();
@@ -270,10 +295,14 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     }
 
     /// @notice Test that if WETH is transferred to the univ2pair pre-graduation, call pair.sync(), liquidity addition doesn't revert
+    /// @dev Requires permissionlessly deploying the pair first so `sync` has a contract to call.
     function test_ethTransferToUniV2PairPreGraduation_sync_liquidityAdditionDoesNotRevert()
         public
         createTestTokenWithPair
     {
+        // Attacker pre-deploys the pair so sync() is callable
+        _deployPairPermissionlessly();
+
         // Transfer some WETH to the pair
         uint256 wethAmount = 1 ether;
         WETH.deposit{value: wethAmount}();
@@ -286,7 +315,11 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     }
 
     /// @notice Test that if WETH is transferred to the univ2pair pre-graduation, call pair.sync(), price in univ2 is higher than in the base graduation scenario
+    /// @dev Requires permissionlessly deploying the pair first so `sync` has a contract to call.
     function test_ethTransferToUniV2PairPreGraduation_sync_uniswapPriceHigher() public createTestTokenWithPair {
+        // Attacker pre-deploys the pair so sync() is callable
+        _deployPairPermissionlessly();
+
         // donate some eth to the pair
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         deal(address(WETH), address(pair), 0.1 ether);
@@ -351,7 +384,11 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     }
 
     /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail
+    /// @dev Requires permissionlessly deploying the pair first so `sync` has a contract to call.
     function test_large_ethTransferToUniV2PairPreGraduation_sync_graduationOk() public createTestTokenWithPair {
+        // Attacker pre-deploys the pair so sync() is callable
+        _deployPairPermissionlessly();
+
         // donate some eth to the pair
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         // nobody would donate this amount of eth to block a token graduation, but just in case
@@ -467,5 +504,119 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         launchpad.buyTokensWithExactEth{value: maxEth}(testToken, 0, DEADLINE);
 
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+    }
+}
+
+/// @notice Tests covering the deferred-pair-deployment refactor: the pair contract is no longer
+///         deployed at token creation, only its CREATE2 address is reserved. These tests verify
+///         (a) the graduator deploys the pair on demand, (b) graduation tolerates a pair that was
+///         already deployed by an outside actor, and (c) every DOS-resistance invariant holds when
+///         the attacker permissionlessly pre-creates the pair before graduation.
+contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
+    /// @notice Pre-creating the pair is harmless: graduation succeeds, address is stable, contract has code.
+    function test_graduationDeploysPairIfMissing() public createTestTokenWithPair {
+        assertEq(uniswapPair.code.length, 0, "Pair contract should not exist before graduation");
+
+        _graduateToken();
+
+        assertGt(uniswapPair.code.length, 0, "Pair contract must be deployed by graduation");
+        assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), uniswapPair, "Factory must record the pair");
+    }
+
+    /// @notice Graduation must succeed when an outside actor already deployed the pair pre-graduation.
+    function test_graduationUsesPreExistingPair() public createTestTokenWithPair {
+        // Outside actor pre-creates the pair
+        address deployed = _deployPairPermissionlessly();
+        assertEq(deployed, uniswapPair, "Address invariant");
+        assertGt(deployed.code.length, 0, "Pair contract pre-deployed");
+
+        _graduateToken();
+
+        assertTrue(LivoToken(testToken).graduated(), "Token should graduate");
+        assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), uniswapPair, "Factory still records the same pair");
+        // Liquidity actually landed in the pre-existing pair
+        assertGt(WETH.balanceOf(uniswapPair), 0, "Pair should have WETH reserves");
+        assertGt(IERC20(testToken).balanceOf(uniswapPair), 0, "Pair should have token reserves");
+    }
+
+    //////////////////////// DOS-resistance under attacker-pre-creates-pair ////////////////////////
+
+    /// @notice Even when the pair contract physically exists pre-graduation (attacker pre-deployed it),
+    ///         the token's transfer gate still blocks `to == pair` transfers until graduation.
+    function test_dos_attackerPreCreatedPair_tokenTransferStillReverts() public createTestTokenWithPair {
+        _deployPairPermissionlessly();
+        assertGt(uniswapPair.code.length, 0, "Pair contract exists pre-graduation");
+
+        // Buyer acquires tokens via bonding curve
+        uint256 buyAmount = 1 ether;
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: buyAmount}(testToken, 0, DEADLINE);
+        uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
+        assertGt(tokenBalance, 0, "Buyer should hold tokens");
+
+        // Gate still revs even though the pair contract now exists
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector));
+        IERC20(testToken).transfer(uniswapPair, tokenBalance / 2);
+    }
+
+    /// @notice Attacker pre-creates pair AND donates WETH; graduation still succeeds and the resulting
+    ///         pool price is strictly greater than the bonding-curve price right before graduation
+    ///         (the invariant from `LivoGraduatorUniswapV2._addLiquidityWithPriceMatching`).
+    function test_dos_attackerPreCreatedPair_wethDonationCannotBlockGraduation() public createTestTokenWithPair {
+        _deployPairPermissionlessly();
+
+        // Attacker donates WETH to the pre-existing pair (no sync — graduator will sync during graduation)
+        deal(address(WETH), uniswapPair, 0.01 ether);
+
+        // Drive the bonding curve close to graduation, capture the bonding-curve price right before the
+        // graduating buy, then trigger graduation. Mirrors the structure of
+        // `test_ethTransferToUniV2PairPreGraduation_noSync_uniswapPriceHigher`.
+        uint256 ethAmountToGraduate = _increaseWithFees(GRADUATION_THRESHOLD);
+        vm.deal(buyer, ethAmountToGraduate + 1 ether);
+        vm.startPrank(buyer);
+        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate - 0.0001 ether}(testToken, 0, DEADLINE);
+        uint256 tokensBefore = IERC20(testToken).balanceOf(buyer);
+
+        uint256 secondBuy = 0.00011 ether;
+        uint256 secondBuyPlusFees = _increaseWithFees(secondBuy);
+        launchpad.buyTokensWithExactEth{value: secondBuyPlusFees}(testToken, 0, DEADLINE);
+        uint256 tokensAfter = IERC20(testToken).balanceOf(buyer);
+        vm.stopPrank();
+
+        assertTrue(LivoToken(testToken).graduated(), "Graduation must succeed despite WETH donation");
+
+        uint256 bondingCurvePrice = (secondBuy * 1e18) / (tokensAfter - tokensBefore);
+
+        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
+        (uint256 wethReserve, uint256 tokenReserve) =
+            pair.token0() == address(WETH) ? (reserve0, reserve1) : (reserve1, reserve0);
+        assertGt(wethReserve, 0, "WETH reserves positive after graduation");
+        assertGt(tokenReserve, 0, "Token reserves positive after graduation");
+
+        uint256 uniswapPrice = (wethReserve * 1e18) / tokenReserve;
+        assertGt(uniswapPrice, bondingCurvePrice, "Pool price must be > bonding curve price (price-matching invariant)");
+    }
+
+    /// @notice Control case: attacker pre-creates the pair but does NOT donate. Graduation should
+    ///         take the naive path and yield the canonical post-graduation reserves
+    ///         (~3.5 WETH / ~285.7M tokens).
+    function test_dos_attackerPreCreatedPair_normalGraduationYieldsExpectedPrice() public createTestTokenWithPair {
+        _deployPairPermissionlessly();
+
+        _graduateToken();
+
+        assertTrue(LivoToken(testToken).graduated(), "Token should be graduated");
+
+        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
+        (uint256 wethReserve, uint256 tokenReserve) =
+            pair.token0() == address(WETH) ? (reserve0, reserve1) : (reserve1, reserve0);
+
+        // Same expectations as the existing `test_rightAmountOfEthToLiquidity` /
+        // `test_rightAmountOfTokensToLiquidity` tests — the pair pre-existing must not change them.
+        assertApproxEqRel(wethReserve, 3.5 ether, 0.000001e18, "WETH reserves should match canonical graduation");
+        assertApproxEqRel(tokenReserve, 285_714_286e18, 0.0001e18, "Token reserves should match canonical graduation");
     }
 }

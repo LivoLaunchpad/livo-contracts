@@ -75,7 +75,9 @@ contract LaunchpadInvariants is Test {
 
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
-        graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+        graduatorV2 = new LivoGraduatorUniswapV2(
+            UNISWAP_V2_ROUTER, address(launchpad), 0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f
+        );
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
         );
