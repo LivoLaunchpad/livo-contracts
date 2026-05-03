@@ -37,6 +37,12 @@ library DeploymentAddressesMainnet {
     /// @dev Creates and manages V2 pair contracts
     address public constant UNIV2_FACTORY = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
 
+    /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
+    /// @dev Required by `LivoGraduatorUniswapV2` to predict the CREATE2 pair address without
+    ///      deploying the pair upfront. Canonical stock UniswapV2 value.
+    bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
+        0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+
     /// @notice Dead address used for burning LP tokens
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
@@ -71,6 +77,13 @@ library DeploymentAddressesSepolia {
 
     /// @notice Uniswap V2 Factory contract
     address public constant UNIV2_FACTORY = 0x7E0987E5b3a30e3f2828572Bb659A548460a3003;
+
+    /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
+    /// @dev Required by `LivoGraduatorUniswapV2` to predict the CREATE2 pair address without
+    ///      deploying the pair upfront. Sepolia's UniV2 deployment uses the same canonical
+    ///      stock pair bytecode as mainnet, so the hash matches.
+    bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
+        0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
 
     /// @notice Dead address used for burning LP tokens
     /// @dev Standard burn address that works on all chains

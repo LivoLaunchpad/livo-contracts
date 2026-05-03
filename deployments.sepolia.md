@@ -10,7 +10,7 @@
 | ConstantProductBondingCurve                  | `0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5` |
 | LivoFeeHandler                               | `0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF` |
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
-| LivoGraduatorUniswapV2                       | `0x9ac078c4E22917db450624632eA1997aD2ED4C73` |
+| LivoGraduatorUniswapV2                       | `0x67C95f98fa373781bc09efBff3c6a6E3614FE6e6` |
 | LivoGraduatorUniswapV4                       | `0x85fE2051413a4b80b904f05841d1142FeF7f789c` |
 | LivoFeeSplitter (impl)                       | `0xDEAA2606f3F6Ff3B4277a30B7dCD382F9BA4bdB7` |
 | LivoQuoter                                   | `0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438` |
@@ -18,10 +18,10 @@
 | LivoTaxableTokenUniV4 (impl)                 | `0x3102B1b7b4F7e0CC32e8e50F303dd0452e1f9323` |
 | LivoTokenSniperProtected (impl)              | `0xBaFe48EeF04D06b4217d16Afea8ab13356ADC316` |
 | LivoTaxableTokenUniV4SniperProtected (impl)  | `0x90191ADfC2DfB4E49897C55fD797aa97f5710cD9` |
-| LivoFactoryUniV2                             | `0x933b7b99974bcf598c1E9abe8e513F5E08eEf11E` |
+| LivoFactoryUniV2                             | `0x8a6f7A98Bb71d21D50cB799F7574A528b41Dc52b` |
 | LivoFactoryUniV4                             | `0x9039E9d741cF71C522ec3407dA34FA8eccE95531` |
 | LivoFactoryTaxToken                          | `0x09af239e3FfaD62482504868c335d9e0F2eCD3be` |
-| LivoFactoryUniV2SniperProtected              | `0x30Cb195a8b7E69636Dd5b0F99939deB6FFD5F1e1` |
+| LivoFactoryUniV2SniperProtected              | `0x0b428B51B81AD8BE825B55A8094eDbf7a4A55988` |
 | LivoFactoryUniV4SniperProtected              | `0xFb81a889D90A8aB35D09fC4467174B0647B65563` |
 | LivoFactoryTaxTokenSniperProtected           | `0xB975497b333B64352aAc32c1431C433ea9607719` |
 

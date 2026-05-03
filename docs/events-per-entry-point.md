@@ -51,11 +51,10 @@ Same dispatch shape as every other factory: `feeReceivers.length == 1` → direc
 ### 1a. Single fee receiver, no deployer buy (`msg.value == 0`, `feeReceivers.length == 1`)
 
 1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner=address(0), launchpad, graduator, feeHandler=LivoFeeHandler, feeReceiver=feeReceivers[0].account`) — emitted by the factory *before* `initialize()` so indexers see the entity first.
-2. **`UniswapV2Factory.PairCreated`** (external) — pair for `<token, WETH>` created by graduator's `initialize()`.
-3. **`LivoGraduator.PairInitialized`** (`token, pair`) — graduator records the pair.
-4. **`ERC20.Transfer`** (from `0x0` to `LivoLaunchpad`, `value = 1e27`) — initial `1_000_000_000 * 1e18` mint to the launchpad.
-5. **`Initializable.Initialized`** (OpenZeppelin, `version=1`) — token clone marked initialized.
-6. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold=3.75e18, maxExcessOverThreshold=5e16`) — launchpad registers the token.
+2. **`LivoGraduator.PairInitialized`** (`token, pair`) — graduator records the **precomputed** CREATE2 pair address. The pair contract itself is **NOT** deployed at this point; it is deployed lazily at graduation (see §6). Off-chain consumers should read `LivoToken.pair()` to obtain the pair address pre-graduation rather than `UniswapV2Factory.getPair(token, WETH)` (which returns `address(0)` until the pair is deployed).
+3. **`ERC20.Transfer`** (from `0x0` to `LivoLaunchpad`, `value = 1e27`) — initial `1_000_000_000 * 1e18` mint to the launchpad.
+4. **`Initializable.Initialized`** (OpenZeppelin, `version=1`) — token clone marked initialized.
+5. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold=3.75e18, maxExcessOverThreshold=5e16`) — launchpad registers the token.
 
 Test: `test/launchpad/createTokens.t.sol::testDeployLivoToken_happyPath`.
 
@@ -63,9 +62,9 @@ Test: `test/launchpad/createTokens.t.sol::testDeployLivoToken_happyPath`.
 
 All of 1a (with `feeHandler` = `feeReceiver` = the splitter clone in the `TokenCreated` event), then append the splitter tail from §4:
 
-7. **`LivoFactory.FeeSplitterCreated`** (`token, feeSplitter, recipients, sharesBps`) — emitted *before* the splitter's `initialize()`.
-8. **`LivoFeeSplitter.SharesUpdated`** (`recipients, sharesBps`).
-9. **`Initializable.Initialized`** (splitter clone, `version=1`).
+6. **`LivoFactory.FeeSplitterCreated`** (`token, feeSplitter, recipients, sharesBps`) — emitted *before* the splitter's `initialize()`.
+7. **`LivoFeeSplitter.SharesUpdated`** (`recipients, sharesBps`).
+8. **`Initializable.Initialized`** (splitter clone, `version=1`).
 
 ### 1c. With deployer buy (`msg.value > 0`)
 
@@ -178,21 +177,22 @@ When the buy pushes `ethCollected` over the threshold, the same call continues i
 3. **`ERC20.Transfer`** (launchpad → graduator, `value = tokensForGraduation`): launchpad forwards graduation-reserved tokens.
 4. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount = 1.25e17` for V2).
 5. **`LivoFeeHandler.CreatorFeesDeposited`** (`token, account=creator, amount`) — creator share routed through `token.accrueFees()` → `feeHandler.depositFees()`. *For fee-split tokens this is instead `LivoFeeSplitter.FeesAccrued` — see §6 note below.*
-6. **`LivoGraduator.TreasuryGraduationFeeCollected`** (`token, amount`).
-7. **`ILivoToken.Graduated`** (no args) — from `LivoToken.markGraduated()`.
-8. **`ERC20.Approval`** (external, from graduator to `UniswapV2Router02`, `value = tokensForGraduation`) — ERC20 approval.
-9. **`UniswapV2Pair.Sync`** (external, `reserve0=0, reserve1=0`).
-10. **`ERC20.Transfer`** (external, graduator → pair, `value = tokensForGraduation`) — token side of the add-liquidity.
-11. **`WETH9.Deposit`** (external, `dst=UniswapV2Router02, wad=ethForLiquidity`).
-12. **`WETH9.Transfer`** (external, router → pair, `value = ethForLiquidity`).
-13. **`UniswapV2Pair.Transfer`** (external, LP-token mint `from=0x0, to=0x0, value=1000`) — MINIMUM_LIQUIDITY locked to the zero address.
-14. **`UniswapV2Pair.Transfer`** (external, LP-token mint `from=0x0, to=DEAD_ADDRESS=0x…dEaD, value=<LP minted>`) — LP tokens permanently burned per Livo design.
-15. **`UniswapV2Pair.Sync`** (external, final reserves).
-16. **`UniswapV2Pair.Mint`** (external, `sender=router, amount0, amount1`).
-17. **`LivoGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`).
-18. **`LivoLaunchpad.TokenGraduated`** (`token, ethCollected, tokensForGraduation`) — note: distinct event from `LivoGraduator.TokenGraduated`, same name but different signature.
+6. **`LivoGraduator.TreasuryGraduationFeeCollected`** (`token, amount = 1.23e17` for V2). The treasury share is `GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION - TRIGGERER_GRADUATION_COMPENSATION = 0.123 ether`. The graduator also performs a best-effort, non-reverting push of `TRIGGERER_GRADUATION_COMPENSATION = 0.002 ether` to `tx.origin` (the original buyer's transaction origin) right before this step — no Livo event is emitted for that transfer; if it fails the 0.002 stays in the graduator and is later swept to treasury via `SweepedRemainingEth` (see note below).
+7. **`UniswapV2Factory.PairCreated`** (external) — **conditional**: only fires when no outside actor pre-created the pair. The pair is no longer deployed at token creation (see §1a); the graduator deploys it lazily here via `factory.createPair(token, WETH)` only when `factory.getPair(token, WETH) == address(0)`. The deployed address always equals `LivoToken.pair()` (precomputed CREATE2).
+8. **`ILivoToken.Graduated`** (no args) — from `LivoToken.markGraduated()`.
+9. **`ERC20.Approval`** (external, from graduator to `UniswapV2Router02`, `value = tokensForGraduation`) — ERC20 approval.
+10. **`UniswapV2Pair.Sync`** (external, `reserve0=0, reserve1=0`).
+11. **`ERC20.Transfer`** (external, graduator → pair, `value = tokensForGraduation`) — token side of the add-liquidity.
+12. **`WETH9.Deposit`** (external, `dst=UniswapV2Router02, wad=ethForLiquidity`).
+13. **`WETH9.Transfer`** (external, router → pair, `value = ethForLiquidity`).
+14. **`UniswapV2Pair.Transfer`** (external, LP-token mint `from=0x0, to=0x0, value=1000`) — MINIMUM_LIQUIDITY locked to the zero address.
+15. **`UniswapV2Pair.Transfer`** (external, LP-token mint `from=0x0, to=DEAD_ADDRESS=0x…dEaD, value=<LP minted>`) — LP tokens permanently burned per Livo design.
+16. **`UniswapV2Pair.Sync`** (external, final reserves).
+17. **`UniswapV2Pair.Mint`** (external, `sender=router, amount0, amount1`).
+18. **`LivoGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`).
+19. **`LivoLaunchpad.TokenGraduated`** (`token, ethCollected, tokensForGraduation`) — note: distinct event from `LivoGraduator.TokenGraduated`, same name but different signature.
 
-**Conditional**: if after `addLiquidityETH` the graduator holds leftover ETH, it emits **`LivoGraduator.SweepedRemainingEth`** (`token, amount`) before `TokenGraduated`. This is rare on the happy path (excess was already capped by `MAX_EXCESS`) but possible when the V2 pool is pre-seeded with reserves.
+**Conditional**: if after `addLiquidityETH` the graduator holds leftover ETH, it emits **`LivoGraduator.SweepedRemainingEth`** (`token, amount`) before `TokenGraduated`. Reasons this can fire: (a) the V2 pool was pre-seeded with reserves so `addLiquidityETH` returned dust; (b) `tx.origin` could not receive the 0.002 ether triggerer compensation (see step 6), so that amount fell through to the sweep; or (c) any `addLiquidityETH` rounding leftover. On a clean happy path with an EOA `tx.origin` and no pre-seeded reserves, the sweep does not fire.
 
 Test: `test/graduators/graduation.t.sol::UniswapV2AgnosticGraduationTests::test_graduatedBooleanTurnsTrueInLaunchpad`.
 
@@ -354,15 +354,14 @@ Test: `test/factories/LivoFactoryUniV4SniperProtected.t.sol::test_createToken_ha
 
 ### 14.2. `LivoFactoryUniV2SniperProtected.createToken` (V2 graduator, `LivoTokenSniperProtected`)
 
-Signature identical to §14.1. Uses the V2 graduator (ownership renounced at creation, `tokenOwner = address(0)` in `TokenCreated`). Event sequence mirrors §1a plus `SniperProtectionInitialized`:
+Signature identical to §14.1. Uses the V2 graduator (ownership renounced at creation, `tokenOwner = address(0)` in `TokenCreated`). Event sequence mirrors §1a plus `SniperProtectionInitialized`. As in §1a, the UniV2 pair is **not** deployed at this point — only its CREATE2 address is reserved; deployment happens at graduation (see §6):
 
 1. **`LivoFactory.TokenCreated`** (`tokenOwner = address(0)`).
-2. **`UniswapV2Factory.PairCreated`** (external).
-3. **`LivoGraduator.PairInitialized`**.
-4. **`ERC20.Transfer`** (mint `1e27` to launchpad).
-5. **`SniperProtection.SniperProtectionInitialized`** — NEW.
-6. **`Initializable.Initialized`** (`version=1`).
-7. **`LivoLaunchpad.TokenLaunched`**.
+2. **`LivoGraduator.PairInitialized`** — precomputed CREATE2 address; pair contract not yet deployed.
+3. **`ERC20.Transfer`** (mint `1e27` to launchpad).
+4. **`SniperProtection.SniperProtectionInitialized`** — NEW.
+5. **`Initializable.Initialized`** (`version=1`).
+6. **`LivoLaunchpad.TokenLaunched`**.
 
 Test: `test/factories/LivoFactoryUniV2SniperProtected.t.sol::test_createToken_happyPath_ownerIsZero`.
 
