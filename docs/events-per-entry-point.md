@@ -177,7 +177,7 @@ When the buy pushes `ethCollected` over the threshold, the same call continues i
 3. **`ERC20.Transfer`** (launchpad → graduator, `value = tokensForGraduation`): launchpad forwards graduation-reserved tokens.
 4. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount = 1.25e17` for V2).
 5. **`LivoFeeHandler.CreatorFeesDeposited`** (`token, account=creator, amount`) — creator share routed through `token.accrueFees()` → `feeHandler.depositFees()`. *For fee-split tokens this is instead `LivoFeeSplitter.FeesAccrued` — see §6 note below.*
-6. **`LivoGraduator.TreasuryGraduationFeeCollected`** (`token, amount`).
+6. **`LivoGraduator.TreasuryGraduationFeeCollected`** (`token, amount = 1.23e17` for V2). The treasury share is `GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION - TRIGGERER_GRADUATION_COMPENSATION = 0.123 ether`. The graduator also performs a best-effort, non-reverting push of `TRIGGERER_GRADUATION_COMPENSATION = 0.002 ether` to `tx.origin` (the original buyer's transaction origin) right before this step — no Livo event is emitted for that transfer; if it fails the 0.002 stays in the graduator and is later swept to treasury via `SweepedRemainingEth` (see note below).
 7. **`UniswapV2Factory.PairCreated`** (external) — **conditional**: only fires when no outside actor pre-created the pair. The pair is no longer deployed at token creation (see §1a); the graduator deploys it lazily here via `factory.createPair(token, WETH)` only when `factory.getPair(token, WETH) == address(0)`. The deployed address always equals `LivoToken.pair()` (precomputed CREATE2).
 8. **`ILivoToken.Graduated`** (no args) — from `LivoToken.markGraduated()`.
 9. **`ERC20.Approval`** (external, from graduator to `UniswapV2Router02`, `value = tokensForGraduation`) — ERC20 approval.
@@ -192,7 +192,7 @@ When the buy pushes `ethCollected` over the threshold, the same call continues i
 18. **`LivoGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`).
 19. **`LivoLaunchpad.TokenGraduated`** (`token, ethCollected, tokensForGraduation`) — note: distinct event from `LivoGraduator.TokenGraduated`, same name but different signature.
 
-**Conditional**: if after `addLiquidityETH` the graduator holds leftover ETH, it emits **`LivoGraduator.SweepedRemainingEth`** (`token, amount`) before `TokenGraduated`. This is rare on the happy path (excess was already capped by `MAX_EXCESS`) but possible when the V2 pool is pre-seeded with reserves.
+**Conditional**: if after `addLiquidityETH` the graduator holds leftover ETH, it emits **`LivoGraduator.SweepedRemainingEth`** (`token, amount`) before `TokenGraduated`. Reasons this can fire: (a) the V2 pool was pre-seeded with reserves so `addLiquidityETH` returned dust; (b) `tx.origin` could not receive the 0.002 ether triggerer compensation (see step 6), so that amount fell through to the sweep; or (c) any `addLiquidityETH` rounding leftover. On a clean happy path with an EOA `tx.origin` and no pre-seeded reserves, the sweep does not fire.
 
 Test: `test/graduators/graduation.t.sol::UniswapV2AgnosticGraduationTests::test_graduatedBooleanTurnsTrueInLaunchpad`.
 

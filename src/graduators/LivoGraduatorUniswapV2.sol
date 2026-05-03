@@ -19,6 +19,10 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
 
+    /// @notice ETH compensation paid to `tx.origin` for triggering graduation, to offset the
+    ///         extra gas spent deploying the UniswapV2 pair lazily inside `graduateToken()`.
+    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.002 ether;
+
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
 
@@ -192,11 +196,17 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         require(msg.value > GRADUATION_ETH_FEE, NotEnoughEthForGraduation());
 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
-        uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
+        uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION - TRIGGERER_GRADUATION_COMPENSATION;
 
         // Creator share routed through token -> feeHandler -> feeReceiver
         emit CreatorGraduationFeeCollected(tokenAddress, CREATOR_GRADUATION_COMPENSATION);
         ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
+
+        // Best-effort triggerer compensation. If `tx.origin` cannot receive ETH the amount
+        // stays in the contract and is swept to the treasury by `_cleanup()`.
+        // slither-disable-next-line tx-origin,unchecked-low-level,arbitrary-send-eth
+        (bool triggererPaid,) = tx.origin.call{value: TRIGGERER_GRADUATION_COMPENSATION}("");
+        triggererPaid; // intentionally ignored: failure path is handled by `_cleanup()`
 
         // Treasury share sent directly
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();

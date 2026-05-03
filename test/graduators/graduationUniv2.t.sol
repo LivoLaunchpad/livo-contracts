@@ -13,6 +13,10 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+
+/// @dev Helper contract used to simulate `tx.origin` being a contract that cannot receive ETH.
+contract NonReceiver {}
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     address public uniswapPair;
@@ -618,5 +622,87 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
         // `test_rightAmountOfTokensToLiquidity` tests — the pair pre-existing must not change them.
         assertApproxEqRel(wethReserve, 3.5 ether, 0.000001e18, "WETH reserves should match canonical graduation");
         assertApproxEqRel(tokenReserve, 285_714_286e18, 0.0001e18, "Token reserves should match canonical graduation");
+    }
+}
+
+/// @notice Triggerer ETH compensation paid by the V2 graduator out of `GRADUATION_ETH_FEE`.
+///         Carved from the treasury share (creator share unchanged); best-effort push to `tx.origin`.
+contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
+    event SweepedRemainingEth(address graduatedToken, uint256 amount);
+
+    /// @dev Drives graduation with a single buy where both `msg.sender` and `tx.origin`
+    ///      are set to `triggerer` via the two-arg `vm.prank` form.
+    function _graduateAs(address triggerer) internal {
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        vm.deal(triggerer, missing);
+        vm.prank(triggerer, triggerer);
+        launchpad.buyTokensWithExactEth{value: missing}(testToken, 0, DEADLINE);
+        assertTrue(launchpad.getTokenState(testToken).graduated, "token should have graduated");
+    }
+
+    function test_triggerer_eoa_receivesCompensation() public createTestToken {
+        address eoa = makeAddr("graduationTriggerer");
+        vm.deal(eoa, 0); // normalize starting balance
+        uint256 treasuryBalanceBefore = treasury.balance;
+
+        _graduateAs(eoa);
+
+        // EOA balance: started at 0, was funded with `missing`, spent all `missing` on the buy, then received 0.002 from the graduator
+        assertEq(eoa.balance, TRIGGERER_GRADUATION_COMPENSATION, "triggerer should net +0.002 ether");
+
+        // Treasury delta = trading fee + 0.123 (treasury graduation share after the triggerer carve-out)
+        uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD);
+        uint256 expectedTradingFee = (missing * BASE_BUY_FEE_BPS) / 10000;
+        uint256 expectedTreasuryGraduationShare =
+            GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION - TRIGGERER_GRADUATION_COMPENSATION;
+        assertEq(
+            treasury.balance - treasuryBalanceBefore,
+            expectedTradingFee + expectedTreasuryGraduationShare,
+            "treasury should receive trading fee + 0.123 ether (treasury share after triggerer carve-out)"
+        );
+    }
+
+    function test_triggerer_nonReceiverContract_compensationFallsThroughToTreasury() public createTestToken {
+        NonReceiver triggerer = new NonReceiver();
+        address triggererAddr = address(triggerer);
+        // Foundry's deterministic CREATE addresses can land on slots with pre-existing balance from
+        // unrelated test setup; explicitly zero the slot so the balance-delta assertion is meaningful.
+        vm.deal(triggererAddr, 0);
+        uint256 treasuryBalanceBefore = treasury.balance;
+
+        // Expect the cleanup sweep to fire with exactly the failed-triggerer amount
+        vm.expectEmit(true, true, true, true);
+        emit SweepedRemainingEth(testToken, TRIGGERER_GRADUATION_COMPENSATION);
+
+        _graduateAs(triggererAddr);
+
+        // Triggerer can't receive ETH, ends at exactly zero (started at 0, was funded with `missing`, spent all of it on the buy)
+        assertEq(triggererAddr.balance, 0, "non-receiver triggerer must not gain ETH");
+
+        // Treasury collects: trading fee + 0.123 (TreasuryGraduationFeeCollected push) + 0.002 (sweep) = trading fee + 0.125
+        uint256 treasuryDelta = treasury.balance - treasuryBalanceBefore;
+        uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD);
+        uint256 expectedTradingFee = (missing * BASE_BUY_FEE_BPS) / 10000;
+        assertEq(
+            treasuryDelta,
+            expectedTradingFee + GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,
+            "treasury should receive the full 0.125 graduation share when triggerer can't receive"
+        );
+    }
+
+    function test_triggerer_compensationConstantValue() public view {
+        assertEq(
+            LivoGraduatorUniswapV2(address(graduator)).TRIGGERER_GRADUATION_COMPENSATION(),
+            0.002 ether,
+            "constant should equal 0.002 ether"
+        );
+        // Sum invariant on the carve-out: creator + triggerer + treasury == GRADUATION_ETH_FEE
+        assertEq(
+            CREATOR_GRADUATION_COMPENSATION + TRIGGERER_GRADUATION_COMPENSATION
+                + (GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION - TRIGGERER_GRADUATION_COMPENSATION),
+            GRADUATION_FEE,
+            "fee shares must sum to GRADUATION_FEE"
+        );
     }
 }

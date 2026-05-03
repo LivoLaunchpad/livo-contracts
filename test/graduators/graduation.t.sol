@@ -29,6 +29,11 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         return CREATOR_GRADUATION_COMPENSATION;
     }
 
+    /// @dev Triggerer compensation taken from the graduation fee. V2 = 0.002 ether, V4 = 0.
+    function _triggererCompensation() internal pure virtual returns (uint256) {
+        return 0;
+    }
+
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
     /// @notice Test that graduated boolean turns true in launchpad
@@ -148,7 +153,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         assertEq(
             feeCollected,
-            (GRADUATION_FEE - _creatorCompensation()) + expectedTradingFee,
+            (GRADUATION_FEE - _creatorCompensation() - _triggererCompensation()) + expectedTradingFee,
             "Treasury should receive graduation fee share plus trading fees"
         );
     }
@@ -258,7 +263,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         assertEq(
             totalTreasuryChange,
-            tradingFee + (GRADUATION_FEE - _creatorCompensation()),
+            tradingFee + (GRADUATION_FEE - _creatorCompensation() - _triggererCompensation()),
             "Treasury should collect its graduation fee share (plus trading fee)"
         );
     }
@@ -336,6 +341,11 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
     /// @dev V2 graduator splits the graduation fee 50/50 between treasury and creator
     function _creatorCompensation() internal pure override returns (uint256) {
         return GRADUATION_FEE / 2;
+    }
+
+    /// @dev V2 graduator pays out 0.002 ether to the graduation triggerer (`tx.origin`)
+    function _triggererCompensation() internal pure override returns (uint256) {
+        return TRIGGERER_GRADUATION_COMPENSATION;
     }
 }
 
