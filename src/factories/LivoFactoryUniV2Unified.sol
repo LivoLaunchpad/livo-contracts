@@ -53,7 +53,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         token = _dispatchAndInitialize(name, symbol, salt, routing, antiSniperCfg);
 
         // Wrapping up: Handle fee splitter deployment, creator buy, etc.
-        _finalizeCreateToken(token, routing.feeSplitter, feeReceivers, supplyShares);
+        _finalizeCreation(token, routing.feeSplitter, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;
     }
 

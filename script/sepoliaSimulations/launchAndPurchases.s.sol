@@ -37,7 +37,7 @@ contract BuySellSimulations is Script {
             "projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares, false, noTaxCfg, noSniperCfg
         );
         TaxConfigInit memory taxCfg =
-            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
+            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 400, taxDurationSeconds: uint32(14 days)});
         (address TOKEN3,) = factoryV4.createToken(
             "projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, false, taxCfg, noSniperCfg
         );

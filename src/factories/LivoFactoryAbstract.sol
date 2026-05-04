@@ -186,7 +186,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @dev Shared preamble for every factory's `createToken`: validates fee shares, conditionally
     ///      validates supply shares (requires empty when msg.value == 0), and resolves fee routing.
     ///      `feeSplitter` is cloned here without emitting — `FeeSplitterCreated` is emitted later
-    ///      by `_finalizeCreateToken` so the indexer sees `TokenCreated` first.
+    ///      by `_finalizeCreation` so the indexer sees `TokenCreated` first.
     ///      Returns a `FeeRouting` memory struct (1 stack slot) to keep caller stacks shallow.
     function _validateInputsAndResolveFees(
         FeeShare[] calldata feeReceivers,
@@ -203,7 +203,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @dev Shared postamble: initializes the splitter (if any) and performs the deployer buy (if any).
     ///      Event order: `FeeSplitterCreated` fires strictly after `TokenLaunched`, and the deployer
     ///      buy events fire last.
-    function _finalizeCreateToken(
+    function _finalizeCreation(
         address token,
         address feeSplitter,
         FeeShare[] calldata feeReceivers,
