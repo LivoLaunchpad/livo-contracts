@@ -21,7 +21,9 @@ contract E2E_FactoryUniV4 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
-        (token,) = factoryV4.createToken("E2E", "E2E", salt, _fs(creator), _noSs(), false);
+        (token,) = factoryV4.createToken(
+            "E2E", "E2E", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
     }
 
     function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
@@ -30,7 +32,9 @@ contract E2E_FactoryUniV4 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
         returns (address token, address splitter)
     {
         vm.prank(creator);
-        (token, splitter) = factoryV4.createToken("E2E", "E2E", salt, feeReceivers, _noSs(), false);
+        (token, splitter) = factoryV4.createToken(
+            "E2E", "E2E", salt, feeReceivers, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
     }
 
     function _createTokenWithDeployerBuy(bytes32 salt, uint256 ethValue, ILivoFactory.SupplyShare[] memory supplyShares)
@@ -40,7 +44,9 @@ contract E2E_FactoryUniV4 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
     {
         vm.deal(creator, ethValue);
         vm.prank(creator);
-        (token,) = factoryV4.createToken{value: ethValue}("E2E", "E2E", salt, _fs(creator), supplyShares, false);
+        (token,) = factoryV4.createToken{value: ethValue}(
+            "E2E", "E2E", salt, _fs(creator), supplyShares, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
     }
 
     function _isV4Graduator() internal pure override returns (bool) {

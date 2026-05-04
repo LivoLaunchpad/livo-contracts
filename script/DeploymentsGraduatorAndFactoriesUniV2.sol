@@ -5,19 +5,17 @@ import {Script, console} from "forge-std/Script.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
-import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
-import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
+import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Livo V2 Graduator + V2 Factories Re-Deployment
-/// @notice Deploys a fresh `LivoGraduatorUniswapV2` and the two V2 factories
-///         (`LivoFactoryUniV2`, `LivoFactoryUniV2SniperProtected`) wired against the new graduator.
-///         Reuses the live core (launchpad, bonding curve, fee handler, fee splitter impl) and the
-///         existing token implementations from `deployments.{mainnet,sepolia}.sol`.
-///         Whitelists both new factories on the launchpad in the same broadcast.
+/// @title Livo V2 Graduator + V2 Unified Factory Re-Deployment
+/// @notice Deploys a fresh `LivoGraduatorUniswapV2` and the unified V2 factory
+///         (`LivoFactoryUniV2Unified`) wired against the new graduator. Reuses the live core
+///         (launchpad, bonding curve, fee handler, fee splitter impl) and the existing token
+///         implementations from `deployments.{mainnet,sepolia}.sol`.
 /// @dev Run with:
 ///      forge script DeploymentsGraduatorAndFactoriesUniV2 --rpc-url <mainnet|sepolia> --broadcast --verify --account livo.dev --slow
 contract DeploymentsGraduatorAndFactoriesUniV2 is Script {
@@ -32,7 +30,7 @@ contract DeploymentsGraduatorAndFactoriesUniV2 is Script {
         bytes32 univ2PairInitCodeHash;
     }
 
-    /// @notice Resolves the deps needed to deploy the V2 graduator + V2 factories on the active chain.
+    /// @notice Resolves the deps needed to deploy the V2 graduator + V2 unified factory on the active chain.
     /// @dev Core/token-impl addresses come from `deployments.{mainnet,sepolia}.sol`.
     ///      UniV2 router + pair init-code hash come from `DeploymentAddresses.sol`.
     function _getDeps() internal view returns (Deps memory d) {
@@ -66,7 +64,7 @@ contract DeploymentsGraduatorAndFactoriesUniV2 is Script {
     function run() public {
         Deps memory d = _getDeps();
 
-        console.log("=== Livo V2 Graduator + V2 Factories Deployment ===");
+        console.log("=== Livo V2 Graduator + V2 Unified Factory Deployment ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("Launchpad:", d.launchpad);
@@ -83,17 +81,17 @@ contract DeploymentsGraduatorAndFactoriesUniV2 is Script {
             new LivoGraduatorUniswapV2(d.univ2Router, d.launchpad, d.univ2PairInitCodeHash);
         console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
-        // 2. Deploy V2 factory wired to the *just-deployed* graduator (not the manifest's stale one).
-        LivoFactoryUniV2 factoryV2 = new LivoFactoryUniV2(
-            d.launchpad, d.tokenImpl, d.bondingCurve, address(graduatorV2), d.feeHandler, d.feeSplitterImpl
+        // 2. Deploy unified V2 factory wired to the *just-deployed* graduator (not the manifest's stale one).
+        LivoFactoryUniV2Unified factoryV2 = new LivoFactoryUniV2Unified(
+            d.launchpad,
+            d.tokenImpl,
+            d.tokenSniperImpl,
+            d.bondingCurve,
+            address(graduatorV2),
+            d.feeHandler,
+            d.feeSplitterImpl
         );
-        console.log("| LivoFactoryUniV2 | ", address(factoryV2));
-
-        // 3. Deploy sniper-protected V2 factory wired to the same new graduator.
-        LivoFactoryUniV2SniperProtected factoryV2Sniper = new LivoFactoryUniV2SniperProtected(
-            d.launchpad, d.tokenSniperImpl, d.bondingCurve, address(graduatorV2), d.feeHandler, d.feeSplitterImpl
-        );
-        console.log("| LivoFactoryUniV2SniperProtected | ", address(factoryV2Sniper));
+        console.log("| LivoFactoryUniV2Unified | ", address(factoryV2));
 
         // whitelisting has to be done with livo.admin account instead
 
@@ -102,9 +100,9 @@ contract DeploymentsGraduatorAndFactoriesUniV2 is Script {
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("Next steps:");
-        console.log("1. Update GRADUATOR_UNIV2 / FACTORY_UNIV2 / FACTORY_UNIV2_SNIPER_PROTECTED in");
+        console.log("1. Update GRADUATOR_UNIV2 / FACTORY_UNIV2_UNIFIED in");
         console.log("   src/config/deployments.{mainnet,sepolia}.sol with the addresses above.");
         console.log("2. Run `just export-deployments` to refresh the .md manifests and commit.");
-        console.log("3. Whitelist factories in launchpad");
+        console.log("3. Whitelist factory in launchpad");
     }
 }

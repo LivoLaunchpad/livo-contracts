@@ -43,7 +43,8 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             _fs(creator),
             _noSs(),
             false,
-            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
+            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
+            _emptyAntiSniperCfg()
         );
         return token;
     }

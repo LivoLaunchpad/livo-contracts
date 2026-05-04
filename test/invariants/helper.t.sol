@@ -4,9 +4,11 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
-import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {TokenState} from "src/types/tokenData.sol";
@@ -35,8 +37,9 @@ contract InvariantsHelperLaunchpad is Test {
 
     LivoLaunchpad public launchpad;
 
-    LivoFactoryUniV2 public factoryV2;
-    LivoFactoryUniV4 public factoryV4;
+    LivoFactoryUniV2Unified public factoryV2;
+    LivoFactoryUniV4Unified public factoryV4;
+    address public tokenImpl;
 
     mapping(address => uint256) public aggregatedEthForBuys;
     mapping(address => uint256) public aggregatedTokensBought;
@@ -64,10 +67,16 @@ contract InvariantsHelperLaunchpad is Test {
     }
 
     /////////////////////////////////////////////////////
-    constructor(LivoLaunchpad _launchpad, LivoFactoryUniV2 _factoryV2, LivoFactoryUniV4 _factoryV4) {
+    constructor(
+        LivoLaunchpad _launchpad,
+        LivoFactoryUniV2Unified _factoryV2,
+        LivoFactoryUniV4Unified _factoryV4,
+        address _tokenImpl
+    ) {
         launchpad = _launchpad;
         factoryV2 = _factoryV2;
         factoryV4 = _factoryV4;
+        tokenImpl = _tokenImpl;
 
         _actors.add(address(makeAddr("actor1")));
         _actors.add(address(makeAddr("actor2")));
@@ -119,15 +128,27 @@ contract InvariantsHelperLaunchpad is Test {
         ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
         creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000});
         if (seed % 2 == 0) {
-            bytes32 salt = _nextValidSalt(address(factoryV2), address(factoryV2.TOKEN_IMPLEMENTATION()));
+            bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl);
             vm.prank(currentActor);
-            (token,) = factoryV2.createToken("TestToken", "TEST", salt, creatorFs, noSs);
+            (token,) = factoryV2.createToken("TestToken", "TEST", salt, creatorFs, noSs, _emptyAntiSniperCfg());
         } else {
-            bytes32 salt = _nextValidSalt(address(factoryV4), address(factoryV4.TOKEN_IMPLEMENTATION()));
+            bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl);
             vm.prank(currentActor);
-            (token,) = factoryV4.createToken("TestToken", "TEST", salt, creatorFs, noSs, false);
+            (token,) = factoryV4.createToken(
+                "TestToken", "TEST", salt, creatorFs, noSs, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            );
         }
         _tokens.add(token);
+    }
+
+    function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
+    }
+
+    function _emptyAntiSniperCfg() internal pure returns (AntiSniperConfigs memory) {
+        return AntiSniperConfigs({
+            maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
+        });
     }
 
     function buy1(uint256 seed, uint256 amount) public {

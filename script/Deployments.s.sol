@@ -3,14 +3,15 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
+import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
-import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
-import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
+import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
+import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
@@ -128,6 +129,74 @@ contract Deployments is Script {
 
     // ========================= Deployment =========================
 
+    /// @dev Bundle of deployed addresses returned from `_deployCore` to keep `run()` under the
+    ///      stack limit when also computing the V4 hook + factory wiring.
+    struct CoreDeployment {
+        address launchpad;
+        address bondingCurve;
+        address feeHandler;
+        address feeSplitterImpl;
+        address graduatorV2;
+        address graduatorV4;
+        address tokenImpl;
+        address tokenSniperImpl;
+        address taxTokenImpl;
+        address taxTokenSniperImpl;
+    }
+
+    function _deployCore(
+        address univ2Router,
+        bytes32 univ2PairInitCodeHash,
+        address univ4PoolManager,
+        address univ4PositionManager,
+        address permit2,
+        bytes32 launchpadSalt,
+        address expectedLaunchpad
+    ) internal returns (CoreDeployment memory c) {
+        // 1. Deploy token implementations (cloned by factories)
+        c.tokenImpl = address(new LivoToken());
+        console.log("| LivoToken | ", c.tokenImpl);
+
+        c.tokenSniperImpl = address(new LivoTokenSniperProtected());
+        console.log("| LivoTokenSniperProtected | ", c.tokenSniperImpl);
+
+        c.taxTokenImpl = address(new LivoTaxableTokenUniV4());
+        console.log("| LivoTaxableTokenUniV4 | ", c.taxTokenImpl);
+
+        c.taxTokenSniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
+        console.log("| LivoTaxableTokenUniV4SniperProtected | ", c.taxTokenSniperImpl);
+
+        // 2. Bonding curve
+        c.bondingCurve = address(new ConstantProductBondingCurve());
+        console.log("| ConstantProductBondingCurve | ", c.bondingCurve);
+
+        // 3. LivoLaunchpad with vanity address via CREATE2
+        c.launchpad = address(new LivoLaunchpad{salt: launchpadSalt}(TREASURY, DEPLOYER));
+        require(c.launchpad == expectedLaunchpad, "Launchpad vanity address mismatch");
+        console.log("| LivoLaunchpad | ", c.launchpad);
+
+        // 4. Fee handler
+        c.feeHandler = address(new LivoFeeHandler());
+        console.log("| LivoFeeHandler | ", c.feeHandler);
+
+        // 5. Hook (via CREATE2 with mined salt)
+        address hookAddress = _deployHook(univ4PoolManager, c.launchpad);
+        console.log("| LivoSwapHook | ", hookAddress);
+
+        // 6. Graduators
+        c.graduatorV2 = address(new LivoGraduatorUniswapV2(univ2Router, c.launchpad, univ2PairInitCodeHash));
+        console.log("| LivoGraduatorUniswapV2 | ", c.graduatorV2);
+
+        c.graduatorV4 = address(
+            new LivoGraduatorUniswapV4(c.launchpad, univ4PoolManager, univ4PositionManager, permit2, hookAddress)
+        );
+        console.log("| LivoGraduatorUniswapV4 | ", c.graduatorV4);
+
+        // 7. Fee splitter implementation
+        c.feeSplitterImpl = address(new LivoFeeSplitter());
+        console.log("| LivoFeeSplitter (impl) | ", c.feeSplitterImpl);
+    }
+
     function run() public {
         require(TREASURY != address(0), "TREASURY address not set");
 
@@ -158,86 +227,43 @@ contract Deployments is Script {
         console.log("| Contract Name | Address |");
         console.log("| ---- | --- | ");
 
-        // 1. Deploy LivoToken (implementation for clones)
-        LivoToken livoToken = new LivoToken();
-        console.log("| LivoToken | ", address(livoToken));
-
-        // 7. Deploy LivoTaxableTokenUniV4 (implementation for clones)
-        // note: the right chainid config is checked when reading configs
-        LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
-        console.log("| LivoTaxableTokenUniV4 | ", address(livoTaxableToken));
-
-        // 2. Deploy ConstantProductBondingCurve
-        ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
-        console.log("| ConstantProductBondingCurve | ", address(bondingCurve));
-
-        // 3. Deploy LivoLaunchpad with vanity address via CREATE2
-        LivoLaunchpad launchpad = new LivoLaunchpad{salt: launchpadSalt}(TREASURY, DEPLOYER);
-        require(address(launchpad) == expectedLaunchpad, "Launchpad vanity address mismatch");
-        console.log("| LivoLaunchpad | ", address(launchpad));
-
-        // 5. Deploy fee handler used by all factories
-        LivoFeeHandler feeHandler = new LivoFeeHandler();
-        console.log("| LivoFeeHandler | ", address(feeHandler));
-
-        // 6. Mine and deploy LivoSwapHook via CREATE2
-        address hookAddress = _deployHook(univ4PoolManager, address(launchpad));
-        console.log("| LivoSwapHook | ", hookAddress);
-
-        // 8. Deploy LivoGraduatorUniswapV2
-        LivoGraduatorUniswapV2 graduatorV2 =
-            new LivoGraduatorUniswapV2(univ2Router, address(launchpad), univ2PairInitCodeHash);
-        console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
-
-        // 7. Deploy LivoGraduatorUniswapV4
-        LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), univ4PoolManager, univ4PositionManager, permit2, hookAddress
+        CoreDeployment memory c = _deployCore(
+            univ2Router,
+            univ2PairInitCodeHash,
+            univ4PoolManager,
+            univ4PositionManager,
+            permit2,
+            launchpadSalt,
+            expectedLaunchpad
         );
-        console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
-        // 9. Deploy fee splitter implementation
-        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
-        console.log("| LivoFeeSplitter (impl) | ", address(feeSplitterImpl));
+        // Unified factories — V2 family (2 impls) + V4 family (4 impls).
+        LivoFactoryUniV2Unified factoryV2 = new LivoFactoryUniV2Unified(
+            c.launchpad, c.tokenImpl, c.tokenSniperImpl, c.bondingCurve, c.graduatorV2, c.feeHandler, c.feeSplitterImpl
+        );
+        console.log("| LivoFactoryUniV2Unified | ", address(factoryV2));
 
-        // 10. Deploy factories
-        LivoFactoryUniV2 factoryV2 = new LivoFactoryUniV2(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
+        LivoFactoryUniV4Unified factoryV4 = new LivoFactoryUniV4Unified(
+            c.launchpad,
+            c.tokenImpl,
+            c.tokenSniperImpl,
+            c.taxTokenImpl,
+            c.taxTokenSniperImpl,
+            c.bondingCurve,
+            c.graduatorV4,
+            c.feeHandler,
+            c.feeSplitterImpl
         );
-        console.log("| LivoFactoryUniV2 (V2) | ", address(factoryV2));
-        LivoFactoryUniV4 factoryV4 = new LivoFactoryUniV4(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-        console.log("| LivoFactory (V4) | ", address(factoryV4));
-
-        LivoFactoryTaxToken factoryTax = new LivoFactoryTaxToken(
-            address(launchpad),
-            address(livoTaxableToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-        console.log("| LivoFactoryTaxToken (V4) | ", address(factoryTax));
+        console.log("| LivoFactoryUniV4Unified | ", address(factoryV4));
 
         console.log("");
         console.log("Whitelisting factories...");
 
+        LivoLaunchpad launchpad = LivoLaunchpad(c.launchpad);
         launchpad.whitelistFactory(address(factoryV2));
-        console.log("whitelisting LivoFactoryUniV2 in LivoLaunchpad");
+        console.log("whitelisting LivoFactoryUniV2Unified in LivoLaunchpad");
         launchpad.whitelistFactory(address(factoryV4));
-        console.log("whitelisting factoryV4 (V4) in launchpad");
-        launchpad.whitelistFactory(address(factoryTax));
-        console.log("whitelisting factoryTax in launchpad");
+        console.log("whitelisting LivoFactoryUniV4Unified in LivoLaunchpad");
 
         vm.stopBroadcast();
 

@@ -49,12 +49,20 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
             _fs(creator),
             _noSs(),
             false,
+            _emptyTaxCfg(),
             _sniperCfg()
         );
 
         vm.prank(creator);
         (baseToken,) = factoryV4.createToken(
-            "BASE", "BASE", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(creator), _noSs(), false
+            "BASE",
+            "BASE",
+            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _fs(creator),
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
         );
     }
 
@@ -120,6 +128,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
             _fs(creator),
             _noSs(),
             false,
+            _emptyTaxCfg(),
             _sniperCfgWithWhitelist(buyer)
         );
         _quoteAndBuyExactEth(wlToken, buyer, 0.5 ether, LimitReason.NONE);

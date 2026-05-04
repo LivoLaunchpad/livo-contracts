@@ -6,12 +6,9 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {LivoFactoryTaxToken as _LFTT} from "src/factories/LivoFactoryTaxToken.sol";
-import {LivoFactoryExtendedTax as _LFET} from "src/factories/LivoFactoryExtendedTax.sol";
-import {LivoFactoryTaxTokenSniperProtected as _LFTTS} from "src/factories/LivoFactoryTaxTokenSniperProtected.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4SniperProtected} from "src/factories/LivoFactoryUniV4SniperProtected.sol";
-import {LivoFactoryUniV2SniperProtected} from "src/factories/LivoFactoryUniV2SniperProtected.sol";
+import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -26,38 +23,9 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
-import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
-
-contract TestLivoFactory is LivoFactoryUniV4 {
-    constructor(
-        address launchpad,
-        address tokenImplementation,
-        address bondingCurve,
-        address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
-    )
-        LivoFactoryUniV4(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation)
-    {}
-}
-
-contract TestLivoFactoryUniV2 is LivoFactoryUniV2 {
-    constructor(
-        address launchpad,
-        address tokenImplementation,
-        address bondingCurve,
-        address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
-    )
-        LivoFactoryUniV2(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation)
-    {}
-}
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
@@ -71,13 +39,24 @@ contract LaunchpadBaseTests is Test {
 
     ILivoGraduator public graduator;
 
-    TestLivoFactoryUniV2 public factoryV2;
-    TestLivoFactory public factoryV4;
-    LivoFactoryTaxToken public factoryTax;
-    _LFET public factoryExtendedTax;
-    LivoFactoryUniV4SniperProtected public factorySniper;
-    LivoFactoryUniV2SniperProtected public factoryV2Sniper;
-    _LFTTS public factoryTaxSniper;
+    // Two unified factories. Legacy aliases below point to these instances so existing call sites
+    // that read `factoryV2`, `factoryV4`, `factoryTax`, `factoryV2Sniper`, `factorySniper`, and
+    // `factoryTaxSniper` keep working. The unified factories dispatch implementations based on
+    // `TaxConfigInit`/`AntiSniperConfigs` sentinels.
+    LivoFactoryUniV2Unified public factoryV2Unified;
+    LivoFactoryUniV4Unified public factoryV4Unified;
+
+    // Legacy aliases (read-only). The pre-consolidation factories (`LivoFactoryUniV2`,
+    // `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV2SniperProtected`,
+    // `LivoFactoryUniV4SniperProtected`, `LivoFactoryTaxTokenSniperProtected`) no longer exist;
+    // these names now refer to the unified factories so the test surface remains stable.
+    LivoFactoryUniV2Unified public factoryV2;
+    LivoFactoryUniV2Unified public factoryV2Sniper;
+    LivoFactoryUniV4Unified public factoryV4;
+    LivoFactoryUniV4Unified public factoryTax;
+    LivoFactoryUniV4Unified public factorySniper;
+    LivoFactoryUniV4Unified public factoryTaxSniper;
+
     LivoTokenSniperProtected public livoTokenSniper;
     LivoTaxableTokenUniV4SniperProtected public livoTaxTokenSniper;
     LivoFeeHandler public feeHandler;
@@ -179,22 +158,16 @@ contract LaunchpadBaseTests is Test {
         return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
     }
 
-    /// @dev Alias of `_taxCfg` — retained for call-site readability with `LivoFactoryExtendedTax`.
-    function _taxCfgExt(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
-        internal
-        pure
-        returns (TaxConfigInit memory)
-    {
-        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+    /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 disables dispatch).
+    function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
     }
 
-    /// @dev Alias of `_taxCfg` — retained for call-site readability with `LivoFactoryTaxTokenSniperProtected`.
-    function _taxCfgSniper(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
-        internal
-        pure
-        returns (TaxConfigInit memory)
-    {
-        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+    /// @dev Empty `AntiSniperConfigs` — sentinel for "no sniper protection" (protectionWindowSeconds == 0).
+    function _emptyAntiSniperCfg() internal pure returns (AntiSniperConfigs memory) {
+        return AntiSniperConfigs({
+            maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
+        });
     }
 
     /// @dev Build a default `AntiSniperConfigs` (3% / 3% / 3h, empty whitelist).
@@ -229,7 +202,6 @@ contract LaunchpadBaseTests is Test {
         livoToken = new LivoToken();
         livoTaxToken = new LivoTaxableTokenUniV4();
 
-        // todo do we need this outside this setup ?
         implementation = livoToken;
         launchpad = new LivoLaunchpad(treasury, admin);
         bondingCurve = new ConstantProductBondingCurve();
@@ -250,56 +222,12 @@ contract LaunchpadBaseTests is Test {
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
-        factoryV2 = new TestLivoFactoryUniV2(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-
-        factoryV4 = new TestLivoFactory(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-
-        factoryTax = new LivoFactoryTaxToken(
-            address(launchpad),
-            address(livoTaxToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-
-        factoryExtendedTax = new _LFET(
-            address(launchpad),
-            address(livoTaxToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
 
-        factorySniper = new LivoFactoryUniV4SniperProtected(
+        factoryV2Unified = new LivoFactoryUniV2Unified(
             address(launchpad),
-            address(livoTokenSniper),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
-        );
-
-        factoryV2Sniper = new LivoFactoryUniV2SniperProtected(
-            address(launchpad),
+            address(livoToken),
             address(livoTokenSniper),
             address(bondingCurve),
             address(graduatorV2),
@@ -307,8 +235,11 @@ contract LaunchpadBaseTests is Test {
             address(feeSplitterImpl)
         );
 
-        factoryTaxSniper = new _LFTTS(
+        factoryV4Unified = new LivoFactoryUniV4Unified(
             address(launchpad),
+            address(livoToken),
+            address(livoTokenSniper),
+            address(livoTaxToken),
             address(livoTaxTokenSniper),
             address(bondingCurve),
             address(graduatorV4),
@@ -316,13 +247,18 @@ contract LaunchpadBaseTests is Test {
             address(feeSplitterImpl)
         );
 
-        launchpad.whitelistFactory(address(factoryV2));
-        launchpad.whitelistFactory(address(factoryV4));
-        launchpad.whitelistFactory(address(factoryTax));
-        launchpad.whitelistFactory(address(factoryExtendedTax));
-        launchpad.whitelistFactory(address(factorySniper));
-        launchpad.whitelistFactory(address(factoryV2Sniper));
-        launchpad.whitelistFactory(address(factoryTaxSniper));
+        // Legacy aliases — same instance, different reference name. Kept so existing tests that
+        // distinguish "tax factory" vs "sniper factory" vs "plain V4 factory" don't all need to
+        // be rewritten. Dispatch happens at the call site via the cfg structs.
+        factoryV2 = factoryV2Unified;
+        factoryV2Sniper = factoryV2Unified;
+        factoryV4 = factoryV4Unified;
+        factoryTax = factoryV4Unified;
+        factorySniper = factoryV4Unified;
+        factoryTaxSniper = factoryV4Unified;
+
+        launchpad.whitelistFactory(address(factoryV2Unified));
+        launchpad.whitelistFactory(address(factoryV4Unified));
 
         vm.stopPrank();
     }
@@ -331,28 +267,36 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                (testToken,) = factoryTax.createToken(
+                (testToken,) = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
-                    _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+                    _nextValidSalt(address(factoryV4Unified), address(livoTaxToken)),
                     _fs(creator),
                     _noSs(),
                     false,
-                    _taxCfg(0, 400, uint32(14 days))
+                    _taxCfg(0, 400, uint32(14 days)),
+                    _emptyAntiSniperCfg()
                 );
             } else {
-                (testToken,) = factoryV4.createToken(
+                (testToken,) = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
-                    _nextValidSalt(address(factoryV4), address(livoToken)),
+                    _nextValidSalt(address(factoryV4Unified), address(livoToken)),
                     _fs(creator),
                     _noSs(),
-                    false
+                    false,
+                    _emptyTaxCfg(),
+                    _emptyAntiSniperCfg()
                 );
             }
         } else {
-            (testToken,) = factoryV2.createToken(
-                "TestToken", "TEST", _nextValidSalt(address(factoryV2), address(livoToken)), _fs(creator), _noSs()
+            (testToken,) = factoryV2Unified.createToken(
+                "TestToken",
+                "TEST",
+                _nextValidSalt(address(factoryV2Unified), address(livoToken)),
+                _fs(creator),
+                _noSs(),
+                _emptyAntiSniperCfg()
             );
         }
         _;
@@ -402,7 +346,6 @@ contract LaunchpadBaseTestsWithUniv4GraduatorTaxableToken is LaunchpadBaseTests 
         super.setUp();
 
         graduator = graduatorV4;
-        /// todo question do we need this?
         implementation = livoTaxToken;
     }
 }

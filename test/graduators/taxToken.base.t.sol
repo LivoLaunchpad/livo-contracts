@@ -54,7 +54,8 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             _fs(creator),
             _noSs(),
             false,
-            _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds))
+            _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds)),
+            _emptyAntiSniperCfg()
         );
     }
 
