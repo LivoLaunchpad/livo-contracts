@@ -8,7 +8,22 @@
         "internalType": "address"
       },
       {
-        "name": "tokenImplementation",
+        "name": "tokenImplBase",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenImplAntiSniper",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenImplTax",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenImplTaxAntiSniper",
         "type": "address",
         "internalType": "address"
       },
@@ -102,13 +117,78 @@
   },
   {
     "type": "function",
-    "name": "TOKEN_IMPLEMENTATION",
+    "name": "MAX_SELL_TAX_DURATION_SECONDS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TAX_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "TOKEN_IMPL_ANTISNIPER",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract ILivoToken"
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "TOKEN_IMPL_BASE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "TOKEN_IMPL_TAX",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "TOKEN_IMPL_TAX_ANTISNIPER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -172,6 +252,60 @@
             "internalType": "uint256"
           }
         ]
+      },
+      {
+        "name": "renounceOwnership_",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "taxCfg",
+        "type": "tuple",
+        "internalType": "struct TaxConfigInit",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "antiSniperCfg",
+        "type": "tuple",
+        "internalType": "struct AntiSniperConfigs",
+        "components": [
+          {
+            "name": "maxBuyPerTxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "maxWalletBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "protectionWindowSeconds",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "whitelist",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
       }
     ],
     "outputs": [
@@ -229,6 +363,108 @@
   },
   {
     "type": "function",
+    "name": "previewTokenImplementation",
+    "inputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.FeeShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.SupplyShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "taxCfg",
+        "type": "tuple",
+        "internalType": "struct TaxConfigInit",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "antiSniperCfg",
+        "type": "tuple",
+        "internalType": "struct AntiSniperConfigs",
+        "components": [
+          {
+            "name": "maxBuyPerTxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "maxWalletBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "protectionWindowSeconds",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "whitelist",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "quoteBuyOnDeploy",
     "inputs": [
       {
@@ -261,19 +497,6 @@
         "name": "newMaxBuyOnDeployBps",
         "type": "uint256",
         "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setTokenImplementation",
-    "inputs": [
-      {
-        "name": "newTokenImplementation",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -473,19 +696,6 @@
     "anonymous": false
   },
   {
-    "type": "event",
-    "name": "TokenImplementationUpdated",
-    "inputs": [
-      {
-        "name": "newTokenImplementation",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
     "type": "error",
     "name": "FailedDeployment",
     "inputs": []
@@ -518,6 +728,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidMaxBuyOnDeployBps",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidNameOrSymbol",
     "inputs": []
   },
@@ -533,12 +748,17 @@
   },
   {
     "type": "error",
-    "name": "InvalidTokenAddress",
+    "name": "InvalidTaxBps",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "InvalidTokenImplementation",
+    "name": "InvalidTaxDuration",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTokenAddress",
     "inputs": []
   },
   {

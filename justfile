@@ -18,12 +18,8 @@ abis:
     @jq '.abi' out/ILivoQuoter.sol/ILivoQuoter.json > abis/ILivoQuoter.json
     @jq '.abi' out/ILivoToken.sol/ILivoToken.json > abis/ILivoToken.json
     @jq '.abi' out/ILivoClaims.sol/ILivoClaims.json > abis/ILivoClaims.json
-    @jq '.abi' out/LivoFactoryUniV4.sol/LivoFactoryUniV4.json > abis/LivoFactoryUniV4.json
-    @jq '.abi' out/LivoFactoryUniV2.sol/LivoFactoryUniV2.json > abis/LivoFactoryUniV2.json
-    @jq '.abi' out/LivoFactoryTaxToken.sol/LivoFactoryTaxToken.json > abis/LivoFactoryTaxToken.json
-    @jq '.abi' out/LivoFactorySniperProtected.sol/LivoFactorySniperProtected.json > abis/LivoFactorySniperProtected.json
-    @jq '.abi' out/LivoFactoryUniV2SniperProtected.sol/LivoFactoryUniV2SniperProtected.json > abis/LivoFactoryUniV2SniperProtected.json
-    @jq '.abi' out/LivoFactoryTaxTokenSniperProtected.sol/LivoFactoryTaxTokenSniperProtected.json > abis/LivoFactoryTaxTokenSniperProtected.json
+    @jq '.abi' out/LivoFactoryUniV2Unified.sol/LivoFactoryUniV2Unified.json > abis/LivoFactoryUniV2Unified.json
+    @jq '.abi' out/LivoFactoryUniV4Unified.sol/LivoFactoryUniV4Unified.json > abis/LivoFactoryUniV4Unified.json
     @jq '.abi' out/ILivoFeeSplitter.sol/ILivoFeeSplitter.json > abis/ILivoFeeSplitter.json
     @echo "✔ ABIs copied to abis/ directory"
     
