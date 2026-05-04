@@ -509,6 +509,31 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
     }
+
+    /// @notice An attacker cannot seed the predicted pair via the UniV2 router before graduation.
+    ///         The router's `addLiquidityETH` calls `safeTransferFrom`, which hits LivoToken's
+    ///         `_update` gate and reverts with `TRANSFER_FROM_FAILED`.
+    function test_cannotAddLiquidityToPredictedPairBeforeGraduation_viaRouter() public createTestTokenWithPair {
+        // Attacker acquires tokens via the bonding curve so they have something to seed with.
+        uint256 buyAmount = 1 ether;
+        vm.deal(buyer, buyAmount + 0.1 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: buyAmount}(testToken, 0, DEADLINE);
+        uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
+
+        // Approve the router and attempt to seed liquidity at the predicted pair.
+        vm.startPrank(buyer);
+        IERC20(testToken).approve(UNISWAP_V2_ROUTER, tokenBalance);
+        vm.expectRevert(bytes("TransferHelper: TRANSFER_FROM_FAILED"));
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).addLiquidityETH{value: 0.1 ether}(
+            testToken, tokenBalance, 0, 0, buyer, block.timestamp + 1 hours
+        );
+        vm.stopPrank();
+
+        // The pair must remain unfunded (the pair contract may or may not exist depending on
+        // whether the router's `_addLiquidity` reached `createPair` before reverting).
+        assertEq(IERC20(testToken).balanceOf(uniswapPair), 0, "pair must hold no tokens pre-graduation");
+    }
 }
 
 /// @notice Tests covering the deferred-pair-deployment refactor: the pair contract is no longer
