@@ -32,7 +32,6 @@ contract DeploymentsUnifiedFactories is Script {
         address graduatorV2;
         address graduatorV4;
         address feeHandler;
-        address feeSplitterImpl;
         address tokenImpl;
         address tokenSniperImpl;
         address taxTokenImpl;
@@ -50,7 +49,6 @@ contract DeploymentsUnifiedFactories is Script {
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
                 feeHandler: DeploymentsMainnet.FEE_HANDLER,
-                feeSplitterImpl: DeploymentsMainnet.FEE_SPLITTER_IMPL,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
                 taxTokenImpl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
@@ -67,7 +65,6 @@ contract DeploymentsUnifiedFactories is Script {
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
                 feeHandler: DeploymentsSepolia.FEE_HANDLER,
-                feeSplitterImpl: DeploymentsSepolia.FEE_SPLITTER_IMPL,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
                 taxTokenImpl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
@@ -87,7 +84,6 @@ contract DeploymentsUnifiedFactories is Script {
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
         require(d.feeHandler != address(0), "manifest: FEE_HANDLER missing");
-        require(d.feeSplitterImpl != address(0), "manifest: FEE_SPLITTER_IMPL missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
         require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
@@ -109,7 +105,7 @@ contract DeploymentsUnifiedFactories is Script {
         console.log("| ------------------------- | --- |");
 
         LivoFactoryUniV2Unified factoryV2 = new LivoFactoryUniV2Unified(
-            d.launchpad, d.tokenImpl, d.tokenSniperImpl, d.bondingCurve, d.graduatorV2, d.feeHandler, d.feeSplitterImpl
+            d.launchpad, d.tokenImpl, d.tokenSniperImpl, d.bondingCurve, d.graduatorV2, d.feeHandler
         );
         console.log("| LivoFactoryUniV2Unified  |", address(factoryV2));
 
@@ -121,8 +117,7 @@ contract DeploymentsUnifiedFactories is Script {
             d.taxTokenSniperImpl,
             d.bondingCurve,
             d.graduatorV4,
-            d.feeHandler,
-            d.feeSplitterImpl
+            d.feeHandler
         );
         console.log("| LivoFactoryUniV4Unified  |", address(factoryV4));
 

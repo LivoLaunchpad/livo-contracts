@@ -1,0 +1,393 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {TokenFeeConfigLib} from "src/libraries/TokenFeeConfigLib.sol";
+import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+
+/// @title LivoMasterFeeHandler
+/// @notice Unified singleton fee handler for all Livo tokens. Supports single and multi-receiver
+///         configs with optional synchronous ETH forwarding (direct fees) per receiver.
+///
+///         All ETH enters through `depositFees` — there is no `receive()` fallback and no excess
+///         ETH can accumulate. Every wei is attributed to a specific token at arrival.
+///
+///         Two recipient classes coexist:
+///           - **direct** recipients have their slice forwarded synchronously on every `depositFees`;
+///             failed forwards fall back to per-account pending claims so a hostile receiver cannot
+///             DoS swap or graduation hot paths.
+///           - **claimable** recipients accumulate ETH via a per-token cumulative accumulator
+///             (`ethPerBps`) that scales O(1) per deposit regardless of recipient count.
+///
+///         The direct-receiver set is mutable via `setShares` (token-owner-gated).
+contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuardTransient {
+    using TokenFeeConfigLib for TokenFeeConfigLib.Config;
+
+    uint256 internal constant BPS_TOTAL = 10_000;
+    uint256 internal constant PRECISION = 1e18;
+
+    /// @notice Launchpad whose factory whitelist gates `registerToken`.
+    ILivoLaunchpad public immutable LAUNCHPAD;
+
+    mapping(address token => TokenFeeConfigLib.Config) internal _configs;
+
+    /// @notice BPS share for every recipient (direct and claimable alike). `isDirectReceiver`
+    ///         distinguishes the two classes.
+    mapping(address token => mapping(address account => uint256)) internal _sharesBpsOf;
+
+    /// @notice True iff `account` is currently a direct receiver for `token`.
+    mapping(address token => mapping(address account => bool)) public isDirectReceiver;
+
+    /// @notice Snapshot of `_configs[token].ethPerBps` at the time of the account's last claim
+    ///         or share update. Used in the claimable accumulator formula.
+    mapping(address token => mapping(address account => uint256)) internal _claimedPerBps;
+
+    /// @notice Residual claimable ETH for an account: carried over from share updates
+    ///         (claimable recipients) or from failed direct forwards (direct recipients).
+    mapping(address token => mapping(address account => uint256)) internal _pendingClaims;
+
+    constructor(address launchpad) Ownable(msg.sender) {
+        LAUNCHPAD = ILivoLaunchpad(launchpad);
+    }
+
+    ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
+
+    /// @notice Deposits ETH fees for `token`. For direct receivers the slice is forwarded
+    ///         synchronously; for claimable recipients the accumulator is advanced.
+    /// @dev `CreatorFeesDeposited` is always emitted first to preserve the event-ordering
+    ///      contract for indexers. Reentrancy: the bare `.call` lands in an arbitrary receiver.
+    ///      State mutated post-forward (`_pendingClaims`) is unrelated to the in-flight deposit,
+    ///      so a re-entry into `claim()` only sees already-credited balances. Safe by construction.
+    function depositFees(address token) external payable {
+        TokenFeeConfigLib.Config storage cfg = _configs[token];
+        require(cfg.registered, NotRegistered());
+
+        emit CreatorFeesDeposited(token, msg.value);
+        if (msg.value == 0) return;
+
+        if (!cfg.isSplit) {
+            _depositSingle(token, cfg);
+        } else {
+            _depositSplit(token, cfg);
+        }
+    }
+
+    /// @notice One-shot registration of fee-receiver config for a freshly-deployed token.
+    ///         Callable only by addresses whitelisted as factories on the launchpad.
+    function registerToken(address token, ILivoFactory.FeeShare[] calldata feeShares) external {
+        require(LAUNCHPAD.whitelistedFactories(msg.sender), OnlyWhitelistedFactory());
+        TokenFeeConfigLib.Config storage cfg = _configs[token];
+        require(!cfg.registered, AlreadyRegistered());
+        cfg.registered = true;
+        _setSharesInternal(token, cfg, feeShares, false);
+    }
+
+    /// @notice Replaces the fee-receiver config for `token`. Callable only by the token's current
+    ///         non-zero owner. V2 tokens and V4 tokens with `renounceOwnership = true` have
+    ///         `owner() == address(0)`, so `setShares` is permanently disabled for them.
+    function setShares(address token, ILivoFactory.FeeShare[] calldata feeShares) external {
+        address tokenOwner = ILivoToken(token).owner();
+        require(msg.sender == tokenOwner && tokenOwner != address(0), Unauthorized());
+        TokenFeeConfigLib.Config storage cfg = _configs[token];
+        require(cfg.registered, NotRegistered());
+
+        // Snapshot claimable accumulator into pending so no ETH is lost on transitions.
+        uint256 claimableLen = cfg.claimableRecipients.length;
+        for (uint256 i = 0; i < claimableLen; i++) {
+            address r = cfg.claimableRecipients[i];
+            _pendingClaims[token][r] += _accruedClaimableFor(token, cfg, r);
+            _claimedPerBps[token][r] = cfg.ethPerBps;
+        }
+
+        _setSharesInternal(token, cfg, feeShares, true);
+    }
+
+    /// @notice Claims accumulated ETH fees for `msg.sender` across the given tokens.
+    function claim(address[] calldata tokens) external nonReentrant {
+        uint256 total;
+        uint256 nTokens = tokens.length;
+
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+            TokenFeeConfigLib.Config storage cfg = _configs[token];
+            if (!cfg.registered) continue;
+
+            uint256 claimable = _getAndClearClaimable(token, cfg, msg.sender);
+            if (claimable == 0) continue;
+
+            total += claimable;
+            emit CreatorClaimed(token, msg.sender, claimable);
+        }
+
+        if (total == 0) return;
+        _transferEth(msg.sender, total);
+    }
+
+    ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
+
+    /// @notice Returns the pending claimable ETH for `account` across the given tokens.
+    function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory amounts) {
+        uint256 nTokens = tokens.length;
+        amounts = new uint256[](nTokens);
+
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+            TokenFeeConfigLib.Config storage cfg = _configs[token];
+            if (!cfg.registered) continue;
+            amounts[i] = _claimableView(token, cfg, account);
+        }
+    }
+
+    /// @notice Returns all current recipients and their BPS shares for `token`.
+    function getRecipients(address token) external view returns (address[] memory, uint256[] memory) {
+        TokenFeeConfigLib.Config storage cfg = _configs[token];
+        uint256 directLen = cfg.directReceivers.length;
+        uint256 claimableLen = cfg.claimableRecipients.length;
+        uint256 totalLen = directLen + claimableLen;
+
+        address[] memory addrs = new address[](totalLen);
+        uint256[] memory bps = new uint256[](totalLen);
+
+        for (uint256 i = 0; i < directLen; i++) {
+            address dr = cfg.directReceivers[i];
+            addrs[i] = dr;
+            bps[i] = _sharesBpsOf[token][dr];
+        }
+        for (uint256 i = 0; i < claimableLen; i++) {
+            address cr = cfg.claimableRecipients[i];
+            addrs[directLen + i] = cr;
+            bps[directLen + i] = _sharesBpsOf[token][cr];
+        }
+
+        return (addrs, bps);
+    }
+
+    /// @notice Returns the current direct-receiver addresses for `token`.
+    function getDirectReceivers(address token) external view returns (address[] memory) {
+        return _configs[token].directReceivers;
+    }
+
+    ///////////////////////// INTERNAL //////////////////////////
+
+    /// @dev Single-receiver deposit path. Either forwards directly or credits pending claims.
+    function _depositSingle(address token, TokenFeeConfigLib.Config storage cfg) internal {
+        address receiver;
+        bool isDirect;
+        if (cfg.directReceivers.length > 0) {
+            receiver = cfg.directReceivers[0];
+            isDirect = true;
+        } else {
+            receiver = cfg.claimableRecipients[0];
+        }
+
+        if (isDirect) {
+            (bool ok,) = receiver.call{value: msg.value}("");
+            if (ok) {
+                emit CreatorClaimed(token, receiver, msg.value);
+                return;
+            }
+        }
+        _pendingClaims[token][receiver] += msg.value;
+    }
+
+    /// @dev Multi-receiver deposit path. Forwards direct slices and accumulates the rest.
+    function _depositSplit(address token, TokenFeeConfigLib.Config storage cfg) internal {
+        uint256 directAmountTotal;
+
+        uint256 directLen = cfg.directReceivers.length;
+        for (uint256 i = 0; i < directLen; i++) {
+            address dr = cfg.directReceivers[i];
+            uint256 directAmount = (msg.value * _sharesBpsOf[token][dr]) / BPS_TOTAL;
+            directAmountTotal += directAmount;
+            if (directAmount == 0) continue;
+
+            (bool ok,) = dr.call{value: directAmount}("");
+            if (ok) {
+                emit CreatorClaimed(token, dr, directAmount);
+            } else {
+                _pendingClaims[token][dr] += directAmount;
+            }
+        }
+
+        uint256 claimableBpsTot = cfg.claimableBpsTotal();
+        if (claimableBpsTot > 0) {
+            uint256 toAccumulate = msg.value - directAmountTotal;
+            cfg.ethPerBps += (toAccumulate * PRECISION) / claimableBpsTot;
+        }
+    }
+
+    /// @dev Returns and clears all claimable ETH for `account` on `token`.
+    function _getAndClearClaimable(address token, TokenFeeConfigLib.Config storage cfg, address account)
+        internal
+        returns (uint256 claimable)
+    {
+        if (isDirectReceiver[token][account]) {
+            claimable = _pendingClaims[token][account];
+            _pendingClaims[token][account] = 0;
+        } else {
+            claimable = _accruedClaimableFor(token, cfg, account) + _pendingClaims[token][account];
+            _claimedPerBps[token][account] = cfg.ethPerBps;
+            _pendingClaims[token][account] = 0;
+        }
+    }
+
+    /// @dev View counterpart of `_getAndClearClaimable` — no state mutation.
+    function _claimableView(address token, TokenFeeConfigLib.Config storage cfg, address account)
+        internal
+        view
+        returns (uint256)
+    {
+        if (isDirectReceiver[token][account]) {
+            return _pendingClaims[token][account];
+        }
+        return _accruedClaimableFor(token, cfg, account) + _pendingClaims[token][account];
+    }
+
+    /// @dev Accumulator-based claimable for a claimable (non-direct) account.
+    function _accruedClaimableFor(address token, TokenFeeConfigLib.Config storage cfg, address account)
+        internal
+        view
+        returns (uint256)
+    {
+        return (cfg.ethPerBps - _claimedPerBps[token][account]) * _sharesBpsOf[token][account] / PRECISION;
+    }
+
+    /// @dev Rebuilds the per-token config from `feeShares`. When `isUpdate = true`, wipes previous
+    ///      per-account state and emits diff-style direct-set events before the final `SharesUpdated`.
+    function _setSharesInternal(
+        address token,
+        TokenFeeConfigLib.Config storage cfg,
+        ILivoFactory.FeeShare[] calldata feeShares,
+        bool isUpdate
+    ) internal {
+        uint256 len = feeShares.length;
+        require(len > 0, InvalidFeeShares());
+        _requireNoDuplicates(feeShares);
+
+        address[] memory oldDirects;
+
+        if (isUpdate) {
+            // Capture old direct set for diff events before wiping.
+            oldDirects = cfg.directReceivers;
+
+            // Wipe claimable per-account state (pending preserved — removals keep their residue).
+            uint256 oldClaimableLen = cfg.claimableRecipients.length;
+            for (uint256 i = 0; i < oldClaimableLen; i++) {
+                address r = cfg.claimableRecipients[i];
+                delete _sharesBpsOf[token][r];
+                // _claimedPerBps[token][r] is stale but harmless: sharesBps==0 zeroes the accumulator term.
+            }
+            delete cfg.claimableRecipients;
+
+            // Wipe direct per-account state.
+            uint256 oldDirectLen = oldDirects.length;
+            for (uint256 i = 0; i < oldDirectLen; i++) {
+                address r = oldDirects[i];
+                delete _sharesBpsOf[token][r];
+                delete isDirectReceiver[token][r];
+            }
+            delete cfg.directReceivers;
+        }
+
+        // Build new config (extracted to reduce stack depth).
+        (address[] memory newRecipients, uint256[] memory newShares) = _populateNewShares(token, cfg, feeShares, len);
+
+        cfg.isSplit = len > 1;
+
+        // Diff-style direct-set events (only on updates).
+        if (isUpdate) {
+            uint256 oldDirectLen = oldDirects.length;
+
+            // Removals: old direct whose new isDirectReceiver entry is false.
+            for (uint256 i = 0; i < oldDirectLen; i++) {
+                if (!isDirectReceiver[token][oldDirects[i]]) {
+                    emit DirectReceiverRemoved(token, oldDirects[i]);
+                }
+            }
+
+            // Additions: new direct that wasn't in the old set.
+            for (uint256 i = 0; i < len; i++) {
+                if (!feeShares[i].directFeesEnabled) continue;
+                address acc = feeShares[i].account;
+                bool wasDirectBefore;
+                for (uint256 j = 0; j < oldDirectLen; j++) {
+                    if (oldDirects[j] == acc) {
+                        wasDirectBefore = true;
+                        break;
+                    }
+                }
+                if (!wasDirectBefore) {
+                    emit DirectReceiverRegistered(token, acc);
+                }
+            }
+        } else {
+            // At init: emit DirectReceiverRegistered for every direct entry.
+            for (uint256 i = 0; i < len; i++) {
+                if (feeShares[i].directFeesEnabled) {
+                    emit DirectReceiverRegistered(token, feeShares[i].account);
+                }
+            }
+        }
+
+        emit SharesUpdated(token, newRecipients, newShares);
+    }
+
+    /// @dev Populates per-account mappings and config arrays from `feeShares`. Separated from
+    ///      `_setSharesInternal` to avoid a stack-too-deep error in that function.
+    function _populateNewShares(
+        address token,
+        TokenFeeConfigLib.Config storage cfg,
+        ILivoFactory.FeeShare[] calldata feeShares,
+        uint256 len
+    ) private returns (address[] memory recipients, uint256[] memory shares) {
+        recipients = new address[](len);
+        shares = new uint256[](len);
+        uint256 total;
+        uint256 directSum;
+
+        for (uint256 i = 0; i < len; i++) {
+            address acc = feeShares[i].account;
+            uint256 sh = feeShares[i].shares;
+            require(acc != address(0), InvalidFeeShares());
+            require(sh > 0, InvalidShares());
+
+            recipients[i] = acc;
+            shares[i] = sh;
+            total += sh;
+
+            _sharesBpsOf[token][acc] = sh;
+
+            if (feeShares[i].directFeesEnabled) {
+                isDirectReceiver[token][acc] = true;
+                cfg.directReceivers.push(acc);
+                directSum += sh;
+            } else {
+                cfg.claimableRecipients.push(acc);
+                _claimedPerBps[token][acc] = cfg.ethPerBps;
+            }
+        }
+        require(total == BPS_TOTAL, InvalidShares());
+        cfg.totalDirectBps = directSum;
+    }
+
+    /// @dev Reverts if any two `feeShares` entries share the same `account`.
+    function _requireNoDuplicates(ILivoFactory.FeeShare[] calldata feeShares) internal pure {
+        uint256 len = feeShares.length;
+        for (uint256 i = 0; i < len; i++) {
+            for (uint256 j = i + 1; j < len; j++) {
+                require(feeShares[i].account != feeShares[j].account, InvalidFeeShares());
+            }
+        }
+    }
+
+    /// @dev Transfers ETH to `recipient`, reverting on failure.
+    function _transferEth(address recipient, uint256 amount) internal {
+        if (amount == 0) return;
+        (bool success,) = recipient.call{value: amount}("");
+        require(success, EthTransferFailed());
+    }
+}

@@ -9,7 +9,6 @@ interface ILivoToken is IERC20 {
     event Graduated();
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
-    event FeeReceiverUpdated(address newFeeReceiver);
 
     /// @notice Shared initialization parameters for Livo token clones
     struct InitializeParams {
@@ -19,7 +18,6 @@ interface ILivoToken is IERC20 {
         address graduator;
         address launchpad;
         address feeHandler;
-        address feeReceiver;
     }
 
     /// @notice Tax configuration for a token
@@ -46,9 +44,6 @@ interface ILivoToken is IERC20 {
     /// @notice Allows the current owner to permanently renounce ownership
     function renounceOwnership() external;
 
-    /// @notice Updates the address receiving fees inside the token `feeHandler`
-    function setFeeReceiver(address newFeeReceiver) external;
-
     ////////////////// VIEW FUNCTIONS ////////////////////
 
     /// @notice Returns the tax configuration for this token
@@ -66,11 +61,7 @@ interface ILivoToken is IERC20 {
     function pair() external view returns (address);
 
     /// @notice The contract address where fees are claimed from
-    /// @dev Must implement ILivoFeeHandler interface
     function feeHandler() external view returns (address);
-
-    /// @notice The address that receives fees within the feeHandler contract
-    function feeReceiver() external view returns (address);
 
     /// @notice Owner of the token. The creator unless communityTakeOver takes place
     function owner() external view returns (address);

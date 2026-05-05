@@ -32,13 +32,13 @@ contract BuySellSimulations is Script {
             maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
         });
 
-        (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares, noSniperCfg);
-        (address TOKEN2,) = factoryV4.createToken(
+        address TOKEN1 = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares, noSniperCfg);
+        address TOKEN2 = factoryV4.createToken(
             "projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares, false, noTaxCfg, noSniperCfg
         );
         TaxConfigInit memory taxCfg =
-            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 400, taxDurationSeconds: uint32(14 days)});
-        (address TOKEN3,) = factoryV4.createToken(
+            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
+        address TOKEN3 = factoryV4.createToken(
             "projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, false, taxCfg, noSniperCfg
         );
 

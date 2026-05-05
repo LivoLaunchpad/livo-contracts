@@ -21,11 +21,11 @@ abstract contract LivoE2EBase is V4SwapHelpers, V2SwapHelpers {
     ///      splitter in the default flow.
     function _createTestToken(bytes32 salt) internal virtual returns (address token);
 
-    /// @dev Creates a token with a fee splitter (>=2 fee receivers).
+    /// @dev Creates a token with multiple fee receivers (>=2).
     function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
         internal
         virtual
-        returns (address token, address splitter);
+        returns (address token);
 
     /// @dev Creates a token while sending `ethValue` for the deployer-buy flow. `supplyShares` must
     ///      sum to 10_000.

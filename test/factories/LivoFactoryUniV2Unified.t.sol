@@ -36,7 +36,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
 
         assertEq(token, expected);
     }
@@ -47,7 +47,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _defaultAntiSniperCfg());
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _defaultAntiSniperCfg());
 
         assertEq(token, expected);
     }
@@ -64,7 +64,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg);
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg);
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
         assertEq(t.maxBuyPerTxBps(), 50);
@@ -82,7 +82,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
 
         assertEq(LivoToken(token).owner(), address(0));
     }
@@ -92,7 +92,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _defaultAntiSniperCfg());
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _defaultAntiSniperCfg());
 
         assertEq(LivoTokenSniperProtected(token).owner(), address(0));
     }

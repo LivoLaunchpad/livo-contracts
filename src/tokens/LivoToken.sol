@@ -6,8 +6,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
+import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
@@ -36,9 +35,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
-    /// @notice Address that receives fees within the fee handler
-    address public feeReceiver;
-
     /// @notice Token name
     string internal _tokenName;
 
@@ -52,7 +48,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error CannotSelfTransfer();
     error InvalidGraduator();
     error Unauthorized();
-    error InvalidFeeReceiver();
 
     //////////////////////////////////////////////////////
 
@@ -77,7 +72,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         graduator = params.graduator;
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
-        feeReceiver = params.feeReceiver;
         pair = ILivoGraduator(params.graduator).initialize(address(this));
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
@@ -130,46 +124,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit OwnershipTransferred(address(0));
     }
 
-    /// @notice Updates the fee receiver address, only callable by the token owner
-    /// @dev If this token was deployed with a direct fee receiver, rotating the receiver via this
-    ///      function silently drops the direct-fees status — the singleton handler's
-    ///      `directReceiver[token]` still points to the old address, so future deposits for the new
-    ///      receiver fall through to standard pending-claim accounting. The old address keeps any
-    ///      failed-forward residue and can recover it via `claim()`.
-    function setFeeReceiver(address newFeeReceiver) external {
-        require(msg.sender == owner, Unauthorized());
-        require(newFeeReceiver != address(0), InvalidFeeReceiver());
-
-        feeReceiver = newFeeReceiver;
-
-        emit FeeReceiverUpdated(newFeeReceiver);
-    }
-
     //////////////////////// fee accrual ////////////////////////
 
-    /// @notice Routes ETH fees to the fee handler for the token's fee receiver
+    /// @notice Routes ETH fees to the fee handler for this token
     function accrueFees() external payable {
-        ILivoFeeHandler(feeHandler).depositFees{value: msg.value}(address(this), feeReceiver);
+        ILivoMasterFeeHandler(feeHandler).depositFees{value: msg.value}(address(this));
     }
 
     //////////////////////// view functions ////////////////////////
 
     /// @notice Returns the underlying fee receiver addresses and their share in basis points
     function getFeeReceivers() external view returns (address[] memory, uint256[] memory) {
-        address feeReceiver_ = feeReceiver;
-        if (feeReceiver_.code.length > 0) {
-            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (
-                address[] memory recipients, uint256[] memory sharesBps
-            ) {
-                return (recipients, sharesBps);
-            } catch {}
-        }
-        // fallback to direct fee receiver with 100% share if the fee receiver is not a fee splitter
-        address[] memory result = new address[](1);
-        result[0] = feeReceiver_;
-        uint256[] memory shares = new uint256[](1);
-        shares[0] = 10_000;
-        return (result, shares);
+        return ILivoMasterFeeHandler(feeHandler).getRecipients(address(this));
     }
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.

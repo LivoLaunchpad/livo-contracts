@@ -20,7 +20,7 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("DF", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
 
         // Singleton handler has alice as the direct receiver for this token
@@ -58,7 +58,7 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.prank(creator);
-        (address token, address splitter) =
+        address token =
             factoryV4Unified.createToken("DFS", "DFS", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
 
         uint256 aliceBefore = alice.balance;
@@ -70,16 +70,11 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
         uint256 expectedAlice = (CREATOR_GRADUATION_COMPENSATION * 4_000) / 10_000;
         assertEq(alice.balance - aliceBefore, expectedAlice, "alice direct portion");
 
-        // bob's pending in the splitter is the remaining 60%
+        // bob's pending in the master handler is the remaining 60%
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        uint256 bobClaimable = LivoFeeSplitterRef(splitter).getClaimable(tokens, bob)[0];
+        uint256 bobClaimable = feeHandler.getClaimable(tokens, bob)[0];
         uint256 expectedBob = (CREATOR_GRADUATION_COMPENSATION * 6_000) / 10_000;
         assertApproxEqAbs(bobClaimable, expectedBob, 1, "bob claimable portion");
     }
-}
-
-/// @dev Lightweight interface — avoids importing the full LivoFeeSplitter contract for one method.
-interface LivoFeeSplitterRef {
-    function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory);
 }

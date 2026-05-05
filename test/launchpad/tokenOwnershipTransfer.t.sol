@@ -124,14 +124,4 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.expectRevert(LivoToken.Unauthorized.selector);
         ILivoToken(testToken).proposeNewOwner(alice);
     }
-
-    /// @dev setFeeReceiver reverts after ownership is renounced
-    function test_renounceOwnership_cannotSetFeeReceiverAfterRenounce() public createTestToken {
-        vm.prank(creator);
-        ILivoToken(testToken).renounceOwnership();
-
-        vm.prank(creator);
-        vm.expectRevert(LivoToken.Unauthorized.selector);
-        ILivoToken(testToken).setFeeReceiver(alice);
-    }
 }

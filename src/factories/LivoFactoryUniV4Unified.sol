@@ -44,9 +44,8 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
-    ) LivoFactoryAbstract(launchpad, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {
+        address masterFeeHandler
+    ) LivoFactoryAbstract(launchpad, bondingCurve, graduator, masterFeeHandler) {
         TOKEN_IMPL_BASE = tokenImplBase;
         TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
         TOKEN_IMPL_TAX = tokenImplTax;
@@ -68,7 +67,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         bool renounceOwnership_,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
-    ) external payable returns (address token, address feeSplitter) {
+    ) external payable returns (address token) {
         // Tax block — only validated if tax is configured. Anti-sniper validation lives inside
         // `SniperProtection._initializeSniperProtection`, called from the token's initializer.
         if (_isTaxConfigured(taxCfg)) {
@@ -76,27 +75,16 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
             require(taxCfg.taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
         }
 
-        // common validations from abstract factory
-        FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
+        _validateInputs(feeReceivers, supplyShares);
 
-        // Deploy the token and initialize the token proxy contract with specific configs (no
-        // `LAUNCHPAD.launchToken` yet). `tokenOwner` is computed inline (rather than a local) to
-        // keep the stack frame within the EVM limit without needing `via_ir`.
+        // `tokenOwner` is computed inline (rather than a local) to keep the stack frame within the
+        // EVM limit without needing `via_ir`.
         token = _dispatchAndInitialize(
-            name, symbol, salt, renounceOwnership_ ? address(0) : msg.sender, routing, taxCfg, antiSniperCfg
+            name, symbol, salt, renounceOwnership_ ? address(0) : msg.sender, taxCfg, antiSniperCfg
         );
 
-        // Register the direct fee receiver against the singleton handler before fees can flow.
-        // No-op for the splitter path (splitter manages its own direct set) or when no entry has
-        // `directFeesEnabled = true`. Done here rather than inside `_dispatchAndInitialize` to keep
-        // that helper's stack frame small enough to compile without `via_ir`.
-        _registerDirectReceivers(token, routing, feeReceivers);
-
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
-
-        // Wrapping up: Handle fee splitter deployment, creator buy, etc.
-        _finalizeCreation(token, routing, feeReceivers, supplyShares);
-        feeSplitter = routing.feeSplitter;
+        _finalizeCreation(token, feeReceivers, supplyShares);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
@@ -141,14 +129,13 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
-        FeeRouting memory routing,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         if (_isTaxConfigured(taxCfg)) {
-            token = _initializeTaxToken(name, symbol, salt, tokenOwner, routing, taxCfg, antiSniperCfg);
+            token = _initializeTaxToken(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
         } else {
-            token = _initializeNonTaxToken(name, symbol, salt, tokenOwner, routing, antiSniperCfg);
+            token = _initializeNonTaxToken(name, symbol, salt, tokenOwner, antiSniperCfg);
         }
     }
 
@@ -157,7 +144,6 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
-        FeeRouting memory routing,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
@@ -165,8 +151,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         address impl = hasAntiSniper ? TOKEN_IMPL_TAX_ANTISNIPER : TOKEN_IMPL_TAX;
 
         ILivoToken.InitializeParams memory params;
-        (token, params) =
-            _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, routing.feeHandler, routing.feeReceiver);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
 
         if (hasAntiSniper) {
             LivoTaxableTokenUniV4SniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
@@ -180,15 +165,13 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
-        FeeRouting memory routing,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
         address impl = hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
 
         ILivoToken.InitializeParams memory params;
-        (token, params) =
-            _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, routing.feeHandler, routing.feeReceiver);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
 
         if (hasAntiSniper) {
             LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);

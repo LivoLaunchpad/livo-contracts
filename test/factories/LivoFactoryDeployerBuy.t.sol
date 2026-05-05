@@ -23,7 +23,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        (address token,) = factoryV2.createToken{value: ethToSpend}(
+        address token = factoryV2.createToken{value: ethToSpend}(
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyAntiSniperCfg()
         );
 
@@ -43,8 +43,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        (address token,) =
-            factoryV2.createToken("TestToken", "TEST", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address token = factoryV2.createToken("TestToken", "TEST", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
 
         assertEq(LivoToken(token).balanceOf(creator), 0);
         assertEq(LivoToken(token).balanceOf(address(launchpad)), TOTAL_SUPPLY);
@@ -60,8 +59,9 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         ss[1] = ILivoFactory.SupplyShare({account: bob, shares: 7_000}); // 70%
 
         vm.prank(creator);
-        (address token,) =
-            factoryV2.createToken{value: ethToSpend}("TestToken", "TEST", salt, _fs(creator), ss, _emptyAntiSniperCfg());
+        address token = factoryV2.createToken{value: ethToSpend}(
+            "TestToken", "TEST", salt, _fs(creator), ss, _emptyAntiSniperCfg()
+        );
 
         uint256 aliceBal = LivoToken(token).balanceOf(alice);
         uint256 bobBal = LivoToken(token).balanceOf(bob);
@@ -87,8 +87,9 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         ss[2] = ILivoFactory.SupplyShare({account: seller, shares: 3_334});
 
         vm.prank(creator);
-        (address token,) =
-            factoryV2.createToken{value: ethToSpend}("TestToken", "TEST", salt, _fs(creator), ss, _emptyAntiSniperCfg());
+        address token = factoryV2.createToken{value: ethToSpend}(
+            "TestToken", "TEST", salt, _fs(creator), ss, _emptyAntiSniperCfg()
+        );
 
         uint256 aliceBal = LivoToken(token).balanceOf(alice);
         uint256 bobBal = LivoToken(token).balanceOf(bob);
@@ -110,7 +111,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        (address token,) = factoryV2.createToken{value: totalEthNeeded}(
+        address token = factoryV2.createToken{value: totalEthNeeded}(
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyAntiSniperCfg()
         );
 
@@ -275,7 +276,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        (address token,) = factoryV2.createToken{value: totalEthNeeded}(
+        address token = factoryV2.createToken{value: totalEthNeeded}(
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyAntiSniperCfg()
         );
 
@@ -290,7 +291,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        (address token,) = factoryV2.createToken{value: totalEthNeeded}(
+        address token = factoryV2.createToken{value: totalEthNeeded}(
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyAntiSniperCfg()
         );
 
@@ -307,7 +308,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        (address token,) = factoryTax.createToken{value: ethToSpend}(
+        address token = factoryTax.createToken{value: ethToSpend}(
             "TestToken",
             "TEST",
             salt,
@@ -329,7 +330,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        (address token,) = factoryTax.createToken(
+        address token = factoryTax.createToken(
             "TestToken",
             "TEST",
             salt,
@@ -389,7 +390,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        (address token,) = factoryTax.createToken{value: totalEthNeeded}(
+        address token = factoryTax.createToken{value: totalEthNeeded}(
             "TestToken",
             "TEST",
             salt,
@@ -411,7 +412,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        (address token,) = factoryTax.createToken{value: totalEthNeeded}(
+        address token = factoryTax.createToken{value: totalEthNeeded}(
             "TestToken",
             "TEST",
             salt,
@@ -423,42 +424,5 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         );
 
         assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
-    }
-
-    // ============ Single-recipient fee (no splitter) ============
-
-    /// @dev single fee receiver does NOT deploy a FeeSplitter
-    function test_createToken_singleFeeReceiver_noSplitterDeployed() public {
-        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
-
-        vm.prank(creator);
-        (, address feeSplitter) = factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
-            _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
-        );
-
-        assertEq(feeSplitter, address(0));
-    }
-
-    /// @dev multi-recipient fee deploys a FeeSplitter
-    function test_createToken_twoFeeReceivers_deploysSplitter() public {
-        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
-
-        ILivoFactory.FeeShare[] memory fs = new ILivoFactory.FeeShare[](2);
-        fs[0] = ILivoFactory.FeeShare({account: alice, shares: 4_000, directFeesEnabled: false});
-        fs[1] = ILivoFactory.FeeShare({account: bob, shares: 6_000, directFeesEnabled: false});
-
-        vm.prank(creator);
-        (, address feeSplitter) = factoryTax.createToken(
-            "TestToken", "TEST", salt, fs, _noSs(), false, _taxCfg(0, 400, uint32(14 days)), _emptyAntiSniperCfg()
-        );
-
-        assertTrue(feeSplitter != address(0));
     }
 }

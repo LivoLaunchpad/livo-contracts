@@ -146,7 +146,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // New owner can manually update the fee receiver
         vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
+        feeHandler.setShares(testToken, _fs(alice));
 
         // Ensure buyer has fresh tokens for a post-update sell path
         deal(buyer, 0.2 ether);

@@ -10,9 +10,8 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 
 /// @notice Abstract base for Livo token factories. Holds shared state and helper logic.
 abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
@@ -26,27 +25,20 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     ILivoGraduator public immutable GRADUATOR;
     /// @notice Bonding curve used for token pricing before graduation
     ILivoBondingCurve public immutable BONDING_CURVE;
-    /// @notice Fee handler contract for managing creator and treasury fees
-    ILivoFeeHandler public immutable FEE_HANDLER;
-    /// @notice Fee splitter implementation contract used as the clone source
-    ILivoFeeSplitter public immutable FEE_SPLITTER_IMPLEMENTATION;
+    /// @notice Master fee handler for all token fee routing
+    ILivoMasterFeeHandler public immutable MASTER_FEE_HANDLER;
 
     /// @notice Max percentage of total supply that can be purchased on token creation (applies to the aggregate, not per recipient), in basis points
     uint256 public maxBuyOnDeployBps = 1_000; // 10%
 
     /// @notice Initializes the factory with its immutable dependencies
-    constructor(
-        address launchpad,
-        address bondingCurve,
-        address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
-    ) Ownable(msg.sender) {
+    constructor(address launchpad, address bondingCurve, address graduator, address masterFeeHandler)
+        Ownable(msg.sender)
+    {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
-        FEE_HANDLER = ILivoFeeHandler(feeHandler);
-        FEE_SPLITTER_IMPLEMENTATION = ILivoFeeSplitter(feeSplitterImplementation);
+        MASTER_FEE_HANDLER = ILivoMasterFeeHandler(masterFeeHandler);
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -76,7 +68,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
-    ///      direct receivers at 1 here as a user-surface constraint; the splitter contract itself
+    ///      direct receivers at 1 here as a user-surface constraint; the master fee handler itself
     ///      is generic w.r.t. how many direct receivers it can hold.
     function _validateFeeShares(FeeShare[] calldata feeReceivers) internal pure {
         uint256 len = feeReceivers.length;
@@ -116,44 +108,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         require(total == BASIS_POINTS, InvalidShares());
     }
 
-    /// @dev Resolves the (feeHandler, feeReceiver, feeSplitter) tuple for the given feeReceivers.
-    ///      - len == 1 → (FEE_HANDLER, feeReceivers[0].account, address(0)) — no splitter deployed
-    ///      - len >= 2 → (splitter, splitter, splitter) — splitter is deployed here but not yet initialized
-    ///      Empty arrays are never accepted; belt-and-braces check since `_validateFeeShares` also
-    ///      rejects empty, but this keeps `_resolveFeeRouting` safe if called without validation.
-    function _resolveFeeRouting(FeeShare[] calldata feeReceivers, bytes32 salt)
-        internal
-        returns (address feeHandler_, address feeReceiver_, address feeSplitter)
-    {
-        uint256 len = feeReceivers.length;
-        require(len > 0, InvalidFeeReceiver());
-        if (len == 1) {
-            return (address(FEE_HANDLER), feeReceivers[0].account, address(0));
-        }
-        feeSplitter = _deployFeeSplitter(salt);
-        return (feeSplitter, feeSplitter, feeSplitter);
-    }
-
-    /// @dev Initializes a freshly-deployed FeeSplitter for `token`. Emits `FeeSplitterCreated` BEFORE
-    ///      `initialize()` so the indexer creates the splitter entity before `SharesUpdated` fires.
-    ///      The full `feeShares` array (including each entry's `directFeesEnabled` flag) is
-    ///      forwarded to the splitter, which captures the direct-receiver set itself.
-    function _initFeeSplitter(address feeSplitter, address token, FeeShare[] calldata feeShares) internal {
-        uint256 len = feeShares.length;
-        address[] memory recipients = new address[](len);
-        uint256[] memory sharesBps = new uint256[](len);
-        for (uint256 i = 0; i < len; i++) {
-            recipients[i] = feeShares[i].account;
-            sharesBps[i] = feeShares[i].shares;
-        }
-
-        // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
-        // creates the FeeSplitter entity from this event, and events emitted during initialize()
-        // (SharesUpdated) depend on the FeeSplitter entity existing.
-        emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
-        ILivoFeeSplitter(feeSplitter).initialize(token, feeShares);
-    }
-
     /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
     ///      The cap is enforced on the aggregate `tokensBought`, not per recipient. Rounding dust
     ///      goes to the last recipient so no tokens remain in the factory.
@@ -187,60 +141,20 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         emit BuyOnDeploy(token, msg.sender, msg.value, tokensBought, recipients, amounts);
     }
 
-    function _deployFeeSplitter(bytes32 salt) internal returns (address feeSplitter) {
-        // forge-lint: disable-next-line
-        bytes32 splitterSalt = keccak256(abi.encodePacked(salt, "feeSplitter"));
-        feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
-    }
-
-    /// @dev Shared preamble for every factory's `createToken`: validates fee shares, conditionally
-    ///      validates supply shares (requires empty when msg.value == 0), and resolves fee routing.
-    ///      `feeSplitter` is cloned here without emitting — `FeeSplitterCreated` is emitted later
-    ///      by `_finalizeCreation` so the indexer sees `TokenCreated` first.
-    ///      Returns a `FeeRouting` memory struct (1 stack slot) to keep caller stacks shallow.
-    function _validateInputsAndResolveFees(
-        FeeShare[] calldata feeReceivers,
-        SupplyShare[] calldata supplyShares,
-        bytes32 salt
-    ) internal returns (FeeRouting memory routing) {
+    /// @dev Shared preamble for every factory's `createToken`: validates fee and supply shares.
+    function _validateInputs(FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares) internal {
         _validateFeeShares(feeReceivers);
         if (msg.value > 0) _validateSupplyShares(supplyShares);
         else require(supplyShares.length == 0, InvalidSupplyShares());
-
-        (routing.feeHandler, routing.feeReceiver, routing.feeSplitter) = _resolveFeeRouting(feeReceivers, salt);
     }
 
-    /// @dev Registers direct-fee receivers against the singleton `LivoFeeHandler` for the
-    ///      single-receiver path. The splitter captures direct receivers internally from its init
-    ///      payload, so this is a no-op for the splitter path. No-op when no entry has
-    ///      `directFeesEnabled = true`.
-    /// @dev `_validateFeeShares` enforces at most one direct entry, so the constructed array has
-    ///      length 1. The handler accepts `address[]` for forward-compatibility with future
-    ///      multi-direct factories.
-    function _registerDirectReceivers(address token, FeeRouting memory routing, FeeShare[] calldata feeReceivers)
+    /// @dev Shared postamble: registers fee config with the master handler and performs the
+    ///      deployer buy (if any). Event order: `SharesUpdated` fires strictly after `TokenLaunched`,
+    ///      and the deployer buy events fire last.
+    function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
         internal
     {
-        if (routing.feeSplitter != address(0)) return;
-        if (feeReceivers.length != 1) return;
-        if (!feeReceivers[0].directFeesEnabled) return;
-
-        address[] memory receivers = new address[](1);
-        receivers[0] = feeReceivers[0].account;
-        FEE_HANDLER.registerDirectReceivers(token, receivers);
-    }
-
-    /// @dev Shared postamble: initializes the splitter (if any) and performs the deployer buy (if any).
-    ///      Event order: `FeeSplitterCreated` fires strictly after `TokenLaunched`, and the deployer
-    ///      buy events fire last.
-    function _finalizeCreation(
-        address token,
-        FeeRouting memory routing,
-        FeeShare[] calldata feeReceivers,
-        SupplyShare[] calldata supplyShares
-    ) internal {
-        if (routing.feeSplitter != address(0)) {
-            _initFeeSplitter(routing.feeSplitter, token, feeReceivers);
-        }
+        MASTER_FEE_HANDLER.registerToken(token, feeReceivers);
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
@@ -260,9 +174,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         string calldata name,
         string calldata symbol,
         bytes32 salt,
-        address tokenOwner,
-        address feeHandler_,
-        address feeReceiver
+        address tokenOwner
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         _validateNameSymbol(name, symbol);
 
@@ -271,7 +183,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(
-            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
+            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), address(MASTER_FEE_HANDLER)
         );
 
         params = ILivoToken.InitializeParams({
@@ -280,8 +192,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
             tokenOwner: tokenOwner,
             graduator: address(GRADUATOR),
             launchpad: address(LAUNCHPAD),
-            feeHandler: feeHandler_,
-            feeReceiver: feeReceiver
+            feeHandler: address(MASTER_FEE_HANDLER)
         });
     }
 }

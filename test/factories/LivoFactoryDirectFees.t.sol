@@ -38,7 +38,7 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken(
+        address token = factoryV4Unified.createToken(
             "DirectFees", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
@@ -51,7 +51,7 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoToken));
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("DirectFees", "DF", salt, fs, _noSs(), _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken("DirectFees", "DF", salt, fs, _noSs(), _emptyAntiSniperCfg());
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "direct receiver registered (V2)");
     }
@@ -62,25 +62,24 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("Plain", "P", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
 
         assertFalse(feeHandler.isDirectReceiver(token, creator), "no direct registration when not opted in");
     }
 
-    /// @dev when 2+ receivers and one flags direct, then no singleton registration but splitter is configured
-    function test_createToken_splitter_withDirect_doesNotRegisterSingleton() public {
+    /// @dev when 2+ receivers and one flags direct, master handler registers the direct receiver
+    function test_createToken_multiReceiver_withDirect_registersDirectOnMasterHandler() public {
         ILivoFactory.FeeShare[] memory fs = _fsTwoWithDirect(alice, 6_000, bob, 4_000, true, false);
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.prank(creator);
-        (address token, address splitter) = factoryV4Unified.createToken(
+        address token = factoryV4Unified.createToken(
             "Splitter", "S", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
-        assertFalse(feeHandler.isDirectReceiver(token, alice), "splitter path: singleton not used");
-        assertFalse(feeHandler.isDirectReceiver(token, bob), "splitter path: singleton not used");
-        assertTrue(splitter != address(0), "splitter deployed");
+        assertTrue(feeHandler.isDirectReceiver(token, alice), "alice is direct receiver");
+        assertFalse(feeHandler.isDirectReceiver(token, bob), "bob is claimable, not direct");
     }
 
     /// @dev when receiver flags direct on a V4 deployer-buy (msg.value > 0), the registration happens before launchToken
@@ -93,7 +92,7 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
         // Small buy to stay under maxBuyOnDeployBps; the trace shows registration is invoked
         // immediately after token init, before any fee can possibly flow.
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken{value: 0.05 ether}(
+        address token = factoryV4Unified.createToken{value: 0.05 ether}(
             "DirectBuy", "DB", salt, fs, ss, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 

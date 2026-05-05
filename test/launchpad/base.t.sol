@@ -24,8 +24,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
-import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
+import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
@@ -59,7 +58,7 @@ contract LaunchpadBaseTests is Test {
 
     LivoTokenSniperProtected public livoTokenSniper;
     LivoTaxableTokenUniV4SniperProtected public livoTaxTokenSniper;
-    LivoFeeHandler public feeHandler;
+    LivoMasterFeeHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -220,13 +219,11 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
-        feeHandler = new LivoFeeHandler(address(launchpad));
+        feeHandler = new LivoMasterFeeHandler(address(launchpad));
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
-
-        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
@@ -237,8 +234,7 @@ contract LaunchpadBaseTests is Test {
             address(livoTokenSniper),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
 
         factoryV4Unified = new LivoFactoryUniV4Unified(
@@ -249,8 +245,7 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxTokenSniper),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
 
         // Legacy aliases — same instance, different reference name. Kept so existing tests that
@@ -273,7 +268,7 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                (testToken,) = factoryV4Unified.createToken(
+                testToken = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
                     _nextValidSalt(address(factoryV4Unified), address(livoTaxToken)),
@@ -284,7 +279,7 @@ contract LaunchpadBaseTests is Test {
                     _emptyAntiSniperCfg()
                 );
             } else {
-                (testToken,) = factoryV4Unified.createToken(
+                testToken = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
                     _nextValidSalt(address(factoryV4Unified), address(livoToken)),
@@ -296,7 +291,7 @@ contract LaunchpadBaseTests is Test {
                 );
             }
         } else {
-            (testToken,) = factoryV2Unified.createToken(
+            testToken = factoryV2Unified.createToken(
                 "TestToken",
                 "TEST",
                 _nextValidSalt(address(factoryV2Unified), address(livoToken)),

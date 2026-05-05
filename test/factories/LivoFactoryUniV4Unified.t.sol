@@ -60,7 +60,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken(
+        address token = factoryV4Unified.createToken(
             "T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
@@ -75,7 +75,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken(
+        address token = factoryV4Unified.createToken(
             "T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _defaultAntiSniperCfg()
         );
 
@@ -90,7 +90,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
 
         assertEq(token, expected);
@@ -104,7 +104,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _defaultAntiSniperCfg());
 
         assertEq(token, expected);
@@ -123,7 +123,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), snipCfg);
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
@@ -142,7 +142,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
 
         LivoTaxableTokenUniV4 t = LivoTaxableTokenUniV4(payable(token));
@@ -161,7 +161,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, taxCfg, snipCfg);
+        address token = factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, taxCfg, snipCfg);
 
         LivoTaxableTokenUniV4SniperProtected t = LivoTaxableTokenUniV4SniperProtected(payable(token));
         assertEq(t.buyTaxBps(), 100);
@@ -182,7 +182,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), true, cfg, _emptyAntiSniperCfg());
 
         assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), address(0));
@@ -195,7 +195,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
 
         assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), creator);

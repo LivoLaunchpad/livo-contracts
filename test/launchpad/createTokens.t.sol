@@ -18,7 +18,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployLivoToken_happyPath() public {
         vm.prank(creator);
-        (address deployedToken,) = factoryV2.createToken(
+        address deployedToken = factoryV2.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -59,15 +59,14 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
                 tokenOwner: msg.sender,
                 graduator: address(graduatorV2),
                 launchpad: address(this),
-                feeHandler: address(feeHandler),
-                feeReceiver: msg.sender
+                feeHandler: address(feeHandler)
             })
         );
     }
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
         vm.prank(creator);
-        (address deployedToken,) = factoryV2.createToken(
+        address deployedToken = factoryV2.createToken(
             "Sanitator",
             "SANIT",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -108,7 +107,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function testCanCreateTokenWithDuplicateSymbol() public {
         vm.prank(creator);
-        (address token1,) = factoryV2.createToken(
+        address token1 = factoryV2.createToken(
             "TestToken1",
             "TEST",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -118,7 +117,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         );
 
         vm.prank(creator);
-        (address token2,) = factoryV2.createToken(
+        address token2 = factoryV2.createToken(
             "TestToken2",
             "TEST",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -139,7 +138,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function testCanCreateTokensWithDifferentSymbols() public {
         vm.prank(creator);
-        (address token1,) = factoryV2.createToken(
+        address token1 = factoryV2.createToken(
             "TestToken1",
             "TEST1",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -149,7 +148,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         );
 
         vm.prank(creator);
-        (address token2,) = factoryV2.createToken(
+        address token2 = factoryV2.createToken(
             "TestToken2",
             "TEST2",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -189,7 +188,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_v4_happyPath() public {
         vm.prank(creator);
-        (address deployedToken,) = factoryV4.createToken(
+        address deployedToken = factoryV4.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV4), address(livoToken)),
@@ -222,7 +221,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev when renounceOwnership=true, then tokenOwner is set to address(0)
     function test_createToken_v4_renounceOwnership_setsOwnerToZero() public {
         vm.prank(creator);
-        (address deployedToken,) = factoryV4.createToken(
+        address deployedToken = factoryV4.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV4), address(livoToken)),
@@ -238,7 +237,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev when renounceOwnership=false, then tokenOwner is msg.sender
     function test_createToken_v4_keepOwnership_setsOwnerToCaller() public {
         vm.prank(creator);
-        (address deployedToken,) = factoryV4.createToken(
+        address deployedToken = factoryV4.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV4), address(livoToken)),
@@ -290,7 +289,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         emit LivoTaxableTokenUniV4.LivoTaxableTokenInitialized(0, 400, 14 days);
 
         vm.prank(creator);
-        (address deployedToken,) = factoryTax.createToken(
+        address deployedToken = factoryTax.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
@@ -308,7 +307,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         vm.recordLogs();
 
         vm.prank(creator);
-        (address deployedToken,) = factoryTax.createToken(
+        address deployedToken = factoryTax.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),

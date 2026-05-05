@@ -6,16 +6,12 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-/// @notice Base for fee-splitter V4 tests — creates tokens with a multi-recipient `feeReceivers`
-///         (triggering splitter deployment) and overrides claim/claimable helpers to go through the splitter.
+/// @notice Base for multi-recipient V4 fee tests — creates tokens with a multi-recipient `feeReceivers`
+///         and overrides claim/claimable helpers to route through the master fee handler.
 abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
-    address public splitterAddress;
-
     address public shareholder1;
     address public shareholder2;
 
@@ -41,7 +37,7 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
         returns (address)
     {
         vm.prank(creator);
-        (address token, address splitter) = factoryV4.createToken(
+        address token = factoryV4.createToken(
             name,
             symbol,
             _nextValidSalt(address(factoryV4), address(livoToken)),
@@ -51,26 +47,24 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
             _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
-        splitterAddress = splitter;
         return token;
     }
 
-    /// @dev Override: collect fees by claiming through the splitter for shareholder1
+    /// @dev Override: collect fees by claiming through the master handler for each shareholder
     function _collectFees(address token) internal override {
         _collectFees(_singleToken(token));
     }
 
     function _collectFees(address[] memory tokens) internal override {
-        // each shareholder claims from the splitter
         vm.prank(shareholder1);
-        ILivoFeeHandler(splitterAddress).claim(tokens);
+        feeHandler.claim(tokens);
         vm.prank(shareholder2);
-        ILivoFeeHandler(splitterAddress).claim(tokens);
+        feeHandler.claim(tokens);
     }
 
-    /// @dev Override: claimable comes from the splitter
+    /// @dev Override: claimable comes from the master handler
     function _claimable(address token, address account) internal view override returns (uint256) {
-        return ILivoFeeHandler(splitterAddress).getClaimable(_singleToken(token), account)[0];
+        return feeHandler.getClaimable(_singleToken(token), account)[0];
     }
 }
 
@@ -86,12 +80,6 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
     /// @notice Graduation succeeds with fee splitter
     function test_graduation_withFeeSplitter() public createAndGraduateToken {
         assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
-    }
-
-    /// @notice token.feeHandler() returns the splitter, not the real handler
-    function test_feeHandler_isSplitter() public createAndGraduateToken {
-        assertEq(ILivoToken(testToken).feeHandler(), splitterAddress, "feeHandler should be splitter");
-        assertEq(ILivoToken(testToken).feeReceiver(), splitterAddress, "feeReceiver should be splitter");
     }
 
     /// @notice After graduation + buy swap, shareholders can claim LP fees
@@ -128,12 +116,10 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 1, "shareholder LP fees should be 0.5% of buy amount");
     }
 
-    /// @notice getClaimable on splitter returns correct values before claim
+    /// @notice getClaimable on master handler returns correct values before claim
     function test_getClaimable_splitter() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
-        // accruing shouldn't be necessary, we can claim directly
-        // claim from upstream into splitter
         vm.prank(shareholder1);
-        ILivoFeeHandler(splitterAddress).claim(_singleToken(testToken));
+        feeHandler.claim(_singleToken(testToken));
 
         // after shareholder1 claims, their claimable should be 0
         uint256 s1Claimable = _claimable(testToken, shareholder1);
@@ -149,7 +135,7 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         uint256 aliceBefore = alice.balance;
 
         vm.prank(alice);
-        ILivoFeeHandler(splitterAddress).claim(_singleToken(testToken));
+        feeHandler.claim(_singleToken(testToken));
 
         assertEq(alice.balance, aliceBefore, "non-shareholder should not receive fees");
     }
@@ -183,7 +169,7 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
         returns (address)
     {
         vm.prank(creator);
-        (address token, address splitter) = factoryTax.createToken(
+        address token = factoryTax.createToken(
             name,
             symbol,
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
@@ -193,19 +179,12 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
             _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
             _emptyAntiSniperCfg()
         );
-        splitterAddress = splitter;
         return token;
     }
 
-    /// @notice Graduation succeeds with fee splitter + tax token
+    /// @notice Graduation succeeds with multi-recipient fees + tax token
     function test_graduation_withFeeSplitter_taxToken() public createAndGraduateToken {
         assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
-    }
-
-    /// @notice token.feeHandler() returns the splitter
-    function test_feeHandler_isSplitter_taxToken() public createAndGraduateToken {
-        assertEq(ILivoToken(testToken).feeHandler(), splitterAddress, "feeHandler should be splitter");
-        assertEq(ILivoToken(testToken).feeReceiver(), splitterAddress, "feeReceiver should be splitter");
     }
 
     /// @notice Shareholders can claim LP fees from buy swaps

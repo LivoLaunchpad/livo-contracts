@@ -26,9 +26,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         address tokenImplAntiSniper,
         address bondingCurve,
         address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
-    ) LivoFactoryAbstract(launchpad, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {
+        address masterFeeHandler
+    ) LivoFactoryAbstract(launchpad, bondingCurve, graduator, masterFeeHandler) {
         TOKEN_IMPL_BASE = tokenImplBase;
         TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
     }
@@ -46,23 +45,11 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
         AntiSniperConfigs calldata antiSniperCfg
-    ) external payable returns (address token, address feeSplitter) {
-        FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
-
-        // Deploy the token and initialize the token proxy contract (no `LAUNCHPAD.launchToken` yet)
-        token = _dispatchAndInitialize(name, symbol, salt, routing, antiSniperCfg);
-
-        // Register the direct fee receiver against the singleton handler before fees can flow.
-        // No-op for the splitter path (splitter manages its own direct set) or when no entry has
-        // `directFeesEnabled = true`. Done here rather than inside `_dispatchAndInitialize` to keep
-        // that helper's stack frame small enough to compile without `via_ir`.
-        _registerDirectReceivers(token, routing, feeReceivers);
-
+    ) external payable returns (address token) {
+        _validateInputs(feeReceivers, supplyShares);
+        token = _dispatchAndInitialize(name, symbol, salt, antiSniperCfg);
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
-
-        // Wrapping up: Handle fee splitter deployment, creator buy, etc.
-        _finalizeCreation(token, routing, feeReceivers, supplyShares);
-        feeSplitter = routing.feeSplitter;
+        _finalizeCreation(token, feeReceivers, supplyShares);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
@@ -88,15 +75,13 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         string calldata name,
         string calldata symbol,
         bytes32 salt,
-        FeeRouting memory routing,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         bool antiSniper = _isAntiSniperConfigured(antiSniperCfg);
         address impl = antiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
 
         ILivoToken.InitializeParams memory initParams;
-        (token, initParams) =
-            _cloneAndCreateToken(impl, name, symbol, salt, address(0), routing.feeHandler, routing.feeReceiver);
+        (token, initParams) = _cloneAndCreateToken(impl, name, symbol, salt, address(0));
 
         if (antiSniper) {
             LivoTokenSniperProtected(token).initialize(initParams, antiSniperCfg);

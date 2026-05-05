@@ -29,7 +29,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     modifier createTestTokenWithPair() {
         vm.prank(creator);
-        (testToken,) = factoryV2.createToken(
+        testToken = factoryV2.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV2), address(livoToken)),
@@ -142,7 +142,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     ///         it later — and the deployed address must equal the precomputed address stored on the token.
     function test_pairNotDeployedAtCreation_canBePermissionlesslyDeployed() public {
         vm.prank(creator);
-        (testToken,) = factoryV2.createToken(
+        testToken = factoryV2.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV2), address(livoToken)),

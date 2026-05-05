@@ -4,11 +4,10 @@ pragma solidity 0.8.28;
 import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 
 /// @notice E2E happy paths that apply to every factory variant. Exercises the launchpad
 ///         pre-graduation buy/sell paths, the deployer-buy path through the real launchpad,
-///         and the fee-splitter (>=2 fee receivers) end-to-end.
+///         and the multi-recipient fee (>=2 fee receivers) end-to-end.
 abstract contract E2EHappyPath is LivoE2EBase {
     /// @dev Modest pre-graduation buy that stays under any sniper variant's 3% per-tx cap.
     uint256 internal constant SMALL_BUY = 0.05 ether;
@@ -59,16 +58,14 @@ abstract contract E2EHappyPath is LivoE2EBase {
         assertApproxEqRel(aliceAmt * 3, bobAmt * 7, 1e15, "alice/bob ratio should be ~70/30");
     }
 
-    function test_e2e_feeSplitter_isWiredAsFeeReceiver() public {
+    function test_e2e_multiRecipient_isWiredToMasterHandler() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         ILivoFactory.FeeShare[] memory fees = _fsTwo(alice, bob);
-        (address token, address splitter) = _createTestTokenWithSplit(salt, fees);
+        address token = _createTestTokenWithSplit(salt, fees);
 
-        assertNotEq(splitter, address(0), "splitter should be deployed");
-        assertEq(splitter.balance, 0, "splitter starts with zero ETH");
         assertNotEq(token, address(0));
 
-        (address[] memory recipients, uint256[] memory bps) = LivoFeeSplitter(payable(splitter)).getRecipients();
+        (address[] memory recipients, uint256[] memory bps) = feeHandler.getRecipients(token);
         assertEq(recipients.length, 2);
         assertEq(recipients[0], alice);
         assertEq(recipients[1], bob);

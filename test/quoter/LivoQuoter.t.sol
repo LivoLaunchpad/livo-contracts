@@ -42,7 +42,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         quoter = new LivoQuoter(address(launchpad));
 
         vm.prank(creator);
-        (sniperToken,) = factorySniper.createToken(
+        sniperToken = factorySniper.createToken(
             "SNIPER",
             "SNIPER",
             _nextValidSalt(address(factorySniper), address(livoTokenSniper)),
@@ -54,7 +54,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         );
 
         vm.prank(creator);
-        (baseToken,) = factoryV4.createToken(
+        baseToken = factoryV4.createToken(
             "BASE",
             "BASE",
             _nextValidSalt(address(factoryV4), address(livoToken)),
@@ -121,7 +121,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_consistency_buyExactEth_NONE_whitelistedBuyer() public {
         vm.prank(creator);
-        (address wlToken,) = factorySniper.createToken(
+        address wlToken = factorySniper.createToken(
             "WL",
             "WL",
             _nextValidSalt(address(factorySniper), address(livoTokenSniper)),

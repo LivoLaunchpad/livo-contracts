@@ -11,8 +11,7 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
-import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
+import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -25,7 +24,7 @@ contract LaunchpadInvariants is Test {
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoFactoryUniV2Unified public factoryV2;
     LivoFactoryUniV4Unified public factoryV4;
-    LivoFeeHandler public feeHandler;
+    LivoMasterFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
 
@@ -81,13 +80,11 @@ contract LaunchpadInvariants is Test {
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
         );
-        feeHandler = new LivoFeeHandler(address(launchpad));
+        feeHandler = new LivoMasterFeeHandler(address(launchpad));
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
-
-        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
         // The unified factories take both base and sniper-protected token impls. The invariant
         // helper only ever uses the base path (no anti-sniper, no tax), so we pass `tokenImplementation`
@@ -98,8 +95,7 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
 
         factoryV4 = new LivoFactoryUniV4Unified(
@@ -110,8 +106,7 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
 
         launchpad.whitelistFactory(address(factoryV2));

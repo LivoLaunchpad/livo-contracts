@@ -479,8 +479,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 tokenOwner: tokenOwner,
                 graduator: address(graduator),
                 launchpad: launchpad,
-                feeHandler: feeHandler,
-                feeReceiver: feeReceiver
+                feeHandler: feeHandler
             }),
             _defaultCfg()
         );
@@ -506,8 +505,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     tokenOwner: tokenOwner,
                     graduator: address(graduator),
                     launchpad: launchpad,
-                    feeHandler: feeHandler,
-                    feeReceiver: feeReceiver
+                    feeHandler: feeHandler
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -541,8 +539,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 tokenOwner: tokenOwner,
                 graduator: address(graduator),
                 launchpad: launchpad,
-                feeHandler: feeHandler,
-                feeReceiver: feeReceiver
+                feeHandler: feeHandler
             }),
             TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
@@ -569,8 +566,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     tokenOwner: tokenOwner,
                     graduator: address(graduator),
                     launchpad: launchpad,
-                    feeHandler: feeHandler,
-                    feeReceiver: feeReceiver
+                    feeHandler: feeHandler
                 }),
                 TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({
