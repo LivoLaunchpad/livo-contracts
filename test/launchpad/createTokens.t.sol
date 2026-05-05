@@ -178,7 +178,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
     function test_createToken_v4_revertsOnZeroFeeReceiver() public {
         ILivoFactory.FeeShare[] memory zeroFs = new ILivoFactory.FeeShare[](1);
-        zeroFs[0] = ILivoFactory.FeeShare({account: address(0), shares: 10_000});
+        zeroFs[0] = ILivoFactory.FeeShare({account: address(0), shares: 10_000, directFeesEnabled: false});
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));

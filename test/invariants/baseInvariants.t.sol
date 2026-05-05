@@ -81,7 +81,7 @@ contract LaunchpadInvariants is Test {
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
         );
-        feeHandler = new LivoFeeHandler();
+        feeHandler = new LivoFeeHandler(address(launchpad));
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS

@@ -451,8 +451,8 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         ILivoFactory.FeeShare[] memory fs = new ILivoFactory.FeeShare[](2);
-        fs[0] = ILivoFactory.FeeShare({account: alice, shares: 4_000});
-        fs[1] = ILivoFactory.FeeShare({account: bob, shares: 6_000});
+        fs[0] = ILivoFactory.FeeShare({account: alice, shares: 4_000, directFeesEnabled: false});
+        fs[1] = ILivoFactory.FeeShare({account: bob, shares: 6_000, directFeesEnabled: false});
 
         vm.prank(creator);
         (, address feeSplitter) = factoryTax.createToken(

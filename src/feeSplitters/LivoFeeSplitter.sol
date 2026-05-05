@@ -3,42 +3,70 @@ pragma solidity 0.8.28;
 
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
-/// @notice Splits ETH fees received from a `LivoFeeHandler` among multiple recipients according to configurable BPS shares.
-/// @dev Uses a cumulative `_ethPerBps` accumulator pattern to track each recipient's claimable amount without iterating over all recipients on every deposit.
+/// @notice Splits ETH fees received via `depositFees` / `receive()` among multiple recipients.
+/// @dev The token's `feeHandler` slot points directly at this splitter, so every accrual path
+///      (`LivoSwapHook._accrue`, V2/V4 graduation creator fee) lands here via
+///      `LivoToken.accrueFees() → feeHandler.depositFees()`. The singleton `LivoFeeHandler` is
+///      never in the path for splitter-backed tokens.
+///      Two recipient classes coexist:
+///        - **claimable** recipients accumulate ETH via the cumulative `_ethPerBps` accumulator
+///          (existing pattern, scales O(1) per deposit).
+///        - **direct** recipients have their slice forwarded synchronously on every accrual; the
+///          slice is excluded from the accumulator math entirely.
+///      The direct-receiver set is mutable via `setShares`: any address may be added, removed,
+///      promoted from claimable, or demoted to claimable. Transitions preserve every recipient's
+///      accrued/residue balance — see `setShares` natspec.
+///      Forward failures fall back to per-account pending claims so a hostile receiver cannot DoS
+///      the swap or graduation hot path.
 contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTransient {
     uint256 internal constant BPS_TOTAL = 10_000;
     uint256 internal constant PRECISION = 1e18;
 
-    /// @notice The token whose fees are being split. This splitter only supports one token
+    /// @notice The token whose fees are being split. This splitter only supports one token.
     address public token;
 
-    /// @notice List of current fee recipients. The index of each recipient corresponds to their share in `sharesBps`.
+    /// @notice Current recipients (direct + claimable). Rebuilt by every `_setShares` call.
     address[] public recipients;
 
-    /// @notice BPS shares corresponding to each recipient in `recipients`. Must sum to 10 000.
+    /// @notice BPS shares aligned with `recipients`. Sum must == 10_000.
     uint256[] public sharesBps;
 
-    /// @dev This is a UniV4 handler that manages the liquidity positions, and pending LP fees view functions, etc.
-    address public univ4FeeHandler;
+    /// @notice Sum of BPS across direct receivers — kept in storage for access in
+    ///         `_accrueBalance`. Updated whenever `setShares` runs.
+    uint256 public totalDirectBps;
 
-    /// @dev Tracks ETH already accounted for in `ethPerBps` so new deposits can be detected via `address(this).balance - _totalAccounted`.
-    /// @dev It is decreased when eth leaves the contract via claims.
-    uint256 internal _totalAccounted;
+    /// @notice Current list of direct-receiver addresses. Rebuilt by every `_setShares` call to
+    ///         mirror the new payload.
+    address[] internal _directReceivers;
 
-    /// @dev Cumulative ETH earned per basis point of share, scaled by `PRECISION`. Up-only variable.
-    uint256 internal _ethPerBps;
-
-    /// @dev BPS share assigned to each recipient.
+    /// @notice BPS share assigned to each *claimable* recipient. 0 for direct recipients (their
+    ///         BPS lives in `_directBpsOf`). The accumulator math
+    ///         `_ethPerBps * _sharesBpsOf[acc] / PRECISION` therefore naturally yields 0 for
+    ///         direct recipients.
     mapping(address => uint256) internal _sharesBpsOf;
+
+    /// @notice BPS share assigned to each *direct* recipient. 0 for claimable recipients. Used
+    ///         both for the synchronous forward in `_accrueBalance` and as a current-direct probe
+    ///         (`_directBpsOf[acc] > 0` iff `acc` is currently direct, since the wipe loop in
+    ///         `_setShares` zeroes ex-direct entries).
+    mapping(address => uint256) internal _directBpsOf;
+
+    /// @dev Tracks ETH already accounted for so new deposits are detectable via
+    ///      `address(this).balance - _totalAccountedInBalance`. Decreases on claims.
+    uint256 internal _totalAccountedInBalance;
+
+    /// @dev Cumulative ETH earned per BPS of *claimable* share, scaled by `PRECISION`. Up-only.
+    uint256 internal _ethPerBps;
 
     /// @dev Snapshot of `_ethPerBps` at the time of the recipient's last claim or share update.
     mapping(address => uint256) internal _claimedPerBps;
 
-    /// @dev Residual claimable ETH carried over after a share update for a recipient.
+    /// @dev Residual claimable ETH carried over after a share update (claimable recipients) or
+    ///      from a failed direct forward (direct recipients).
     mapping(address => uint256) internal _pendingClaims;
 
     constructor() {
@@ -48,34 +76,28 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
     /// @notice Accepts ETH deposits (e.g. from the fee handler).
     receive() external payable {}
 
-    /// @notice Initializes the splitter with a UniV4 fee handler, token, and initial share configuration.
-    /// @param univ4FeeHandler_ Address of the UniV4 `LivoFeeHandler` this splitter claims from.
-    /// @param token_ Address of the `LivoToken` whose fees are being split.
-    /// @param recipients_ Initial fee recipients.
-    /// @param sharesBps_ BPS shares for each recipient (must sum to 10 000).
-    function initialize(
-        address univ4FeeHandler_,
-        address token_,
-        address[] calldata recipients_,
-        uint256[] calldata sharesBps_
-    ) external initializer {
+    /// @notice Initializes the splitter with its token and initial fee shares.
+    function initialize(address token_, ILivoFactory.FeeShare[] calldata feeShares) external initializer {
         token = token_;
-        univ4FeeHandler = univ4FeeHandler_;
-        _setShares(recipients_, sharesBps_);
+        _setShares(feeShares);
     }
 
     ///////////// ONLY TOKEN OWNER //////////////////
 
-    /// @notice Updates the recipient list and their shares. Only callable by the token owner.
-    /// @dev Snapshots each current recipient's claimable balance into `pendingClaims` before overwriting shares.
-    /// @param recipients_ New fee recipients.
-    /// @param sharesBps_ New BPS shares (must sum to 10 000).
-    function setShares(address[] calldata recipients_, uint256[] calldata sharesBps_) external {
+    /// @notice Replaces the recipient list and per-recipient shares. The direct-receiver set is
+    ///         mutable: any address may be added, removed, promoted from claimable, or demoted
+    ///         to claimable. Snapshots claimable recipients' accrued share into `_pendingClaims`
+    ///         before overwriting so promotions and removals don't lose accumulator-credited ETH.
+    function setShares(ILivoFactory.FeeShare[] calldata feeShares) external {
         require(msg.sender == ILivoToken(token).owner(), Unauthorized());
 
-        // claims from the underlying and accrues balance
-        _claimFromSource();
+        // Fold any unaccounted ETH into the accumulator so claimable recipients' snapshot is
+        // up-to-date before we overwrite their share state.
+        _accrueBalance();
 
+        // Snapshot claimable accrual into pending for every existing recipient. For old direct
+        // recipients `_sharesBpsOf[r] == 0` makes `_getClaimableFromAccrued(r)` collapse to
+        // `_pendingClaims[r]`, so the assignment is a no-op (no need for a special case).
         uint256 len = recipients.length;
         for (uint256 i = 0; i < len; i++) {
             address r = recipients[i];
@@ -83,7 +105,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
             _claimedPerBps[r] = _ethPerBps;
         }
 
-        _setShares(recipients_, sharesBps_);
+        _setShares(feeShares);
     }
 
     ////////////////// FEE HANDLER INTERFACE /////////////////
@@ -96,8 +118,8 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
     /// @notice Claims all accrued ETH fees for `msg.sender` and transfers them.
     /// @dev The tokens parameter is ignored; the splitter knows its single token.
     function claim(address[] calldata) external nonReentrant {
-        // claim from the source and accrues the new balance
-        _claimFromSource();
+        // Fold any unaccounted ETH into the accumulator before computing the caller's claimable.
+        _accrueBalance();
 
         // claimable is now updated with the latest accrued balance
         uint256 claimable = _getClaimableFromAccrued(msg.sender);
@@ -105,7 +127,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
 
         _claimedPerBps[msg.sender] = _ethPerBps;
         _pendingClaims[msg.sender] = 0;
-        _totalAccounted -= claimable;
+        _totalAccountedInBalance -= claimable;
 
         (bool success,) = msg.sender.call{value: claimable}("");
         require(success);
@@ -139,85 +161,201 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         return (recipients, sharesBps);
     }
 
-    ///////////////////// INTERNALS //////////////////////////////
-
-    /// @dev Returns the total claimable ETH for `account`, including any unaccrued ETH in the contract and upstream pending fees.
-    function _getFullClaimable(address account) internal view returns (uint256) {
-        uint256 fromAccrued = _getClaimableFromAccrued(account);
-        uint256 unaccounted = address(this).balance - _totalAccounted;
-        uint256[] memory upstream = ILivoFeeHandler(univ4FeeHandler).getClaimable(_tokens(), address(this));
-
-        // from Accrued is already given by shareholder, but the others need to be split still
-        return fromAccrued + ((unaccounted + upstream[0]) * _sharesBpsOf[account]) / BPS_TOTAL;
+    /// @notice Returns the current list of direct-receiver addresses.
+    function getDirectReceivers() external view returns (address[] memory) {
+        return _directReceivers;
     }
 
-    /// @dev Returns the claimable ETH for `account` based on already-accrued balances only (excludes pending in fee handler).
+    ///////////////////// INTERNALS //////////////////////////////
+
+    /// @dev Returns the total claimable ETH for `account`, including any unaccrued ETH already
+    ///      sitting in the contract.
+    ///      For *current* direct recipients, only `_pendingClaims[account]` is reported
+    ///      (failed-forward residue) — the unaccrued slice will be forwarded synchronously on the
+    ///      next accrual and never reaches their claimable balance.
+    ///      For claimable recipients (and ex-direct addresses no longer in the direct set), the
+    ///      slice that would be forwarded to direct receivers is stripped off the top before the
+    ///      per-account math; addresses with `_sharesBpsOf[account] == 0` correctly receive only
+    ///      their parked `_pendingClaims` since the multiplier zeroes out the unaccounted term.
+    function _getFullClaimable(address account) internal view returns (uint256) {
+        uint256 fromAccrued = _getClaimableFromAccrued(account);
+        if (_directBpsOf[account] > 0) return fromAccrued;
+
+        uint256 unaccounted = address(this).balance - _totalAccountedInBalance;
+        uint256 claimableBpsTotal = BPS_TOTAL - totalDirectBps;
+        if (claimableBpsTotal == 0) return fromAccrued;
+
+        uint256 forClaimables = (unaccounted * claimableBpsTotal) / BPS_TOTAL;
+        return fromAccrued + (forClaimables * _sharesBpsOf[account]) / claimableBpsTotal;
+    }
+
+    /// @dev Returns the claimable ETH for `account` based on already-accrued balances only.
     function _getClaimableFromAccrued(address account) internal view returns (uint256) {
         return ((_ethPerBps - _claimedPerBps[account]) * _sharesBpsOf[account]) / PRECISION + _pendingClaims[account];
     }
 
-    /// @dev Overwrites the recipient list and shares. Clears old mappings, validates inputs, and sets new state.
-    function _setShares(address[] calldata recipients_, uint256[] calldata sharesBps_) internal {
+    /// @dev Overwrites recipients and shares, validates inputs, and emits diff-style direct-set
+    ///      events:
+    ///        - `DirectReceiverRemoved` for each address that was direct before the call and is
+    ///          not direct after (demoted or removed).
+    ///        - `DirectReceiverRegistered` for each address that is direct after the call and was
+    ///          not direct before (added or promoted from claimable).
+    ///      No event fires when the direct set is unchanged (BPS-only rebalance).
+    ///      `SharesUpdated` is emitted last to preserve the documented event-tail order.
+    function _setShares(ILivoFactory.FeeShare[] calldata feeShares) internal {
+        // Snapshot old direct set into memory BEFORE wiping storage so the diff loop below can
+        // detect removals.
+        address[] memory oldDirects = _directReceivers;
+
+        // Wipe per-account share state for previous recipients. Direct receivers had their
+        // entries in `_directBpsOf` instead of `_sharesBpsOf`; reset both to be safe.
         uint256 oldLen = recipients.length;
         for (uint256 i = 0; i < oldLen; i++) {
-            delete _sharesBpsOf[recipients[i]];
+            address r = recipients[i];
+            delete _sharesBpsOf[r];
+            delete _directBpsOf[r];
         }
+        delete _directReceivers;
 
-        uint256 len = recipients_.length;
-        require(len > 0 && len == sharesBps_.length, InvalidRecipients());
+        uint256 len = feeShares.length;
+        require(len > 0, InvalidRecipients());
 
         // duplicate address would break accounting and eth would be unrecoverable from this splitter contract
         // this check costs only 500-700 gas, which is quite an affordable one-time payment against losing funds
-        _requireNoDuplicates(recipients_);
+        _requireNoDuplicates(feeShares);
+
+        address[] memory newRecipients = new address[](len);
+        uint256[] memory newShares = new uint256[](len);
 
         uint256 total;
+        uint256 directSum;
         for (uint256 i = 0; i < len; i++) {
-            require(recipients_[i] != address(0), InvalidRecipients());
-            require(sharesBps_[i] > 0, InvalidShares());
-            total += sharesBps_[i];
+            address acc = feeShares[i].account;
+            uint256 sh = feeShares[i].shares;
+            require(acc != address(0), InvalidRecipients());
+            require(sh > 0, InvalidShares());
+
+            newRecipients[i] = acc;
+            newShares[i] = sh;
+            total += sh;
+
+            if (feeShares[i].directFeesEnabled) {
+                _directBpsOf[acc] = sh;
+                _directReceivers.push(acc);
+                directSum += sh;
+            } else {
+                _sharesBpsOf[acc] = sh;
+                // Initialize the accumulator pointer so future accruals don't credit historical eth.
+                _claimedPerBps[acc] = _ethPerBps;
+            }
         }
         require(total == BPS_TOTAL, InvalidShares());
 
-        recipients = recipients_;
-        sharesBps = sharesBps_;
+        recipients = newRecipients;
+        sharesBps = newShares;
+        totalDirectBps = directSum;
 
-        for (uint256 i = 0; i < len; i++) {
-            _sharesBpsOf[recipients_[i]] = sharesBps_[i];
-            _claimedPerBps[recipients_[i]] = _ethPerBps;
+        // Diff-style direct-set events. Cache token to avoid repeated SLOADs.
+        address tk = token;
+        uint256 oldDirectsLen = oldDirects.length;
+
+        // Removals: an old direct whose new `_directBpsOf` entry is 0 was demoted or removed.
+        for (uint256 i = 0; i < oldDirectsLen; i++) {
+            if (_directBpsOf[oldDirects[i]] == 0) {
+                emit DirectReceiverRemoved(tk, oldDirects[i]);
+            }
         }
 
-        emit SharesUpdated(recipients_, sharesBps_);
+        // Additions: a new direct that does not appear in the old snapshot was added or promoted.
+        for (uint256 i = 0; i < len; i++) {
+            if (!feeShares[i].directFeesEnabled) continue;
+            address acc = feeShares[i].account;
+            bool wasDirectBefore;
+            for (uint256 j = 0; j < oldDirectsLen; j++) {
+                if (oldDirects[j] == acc) {
+                    wasDirectBefore = true;
+                    break;
+                }
+            }
+            if (!wasDirectBefore) {
+                emit DirectReceiverRegistered(tk, acc);
+            }
+        }
+
+        emit SharesUpdated(newRecipients, newShares);
     }
 
-    /// @dev Claims pending fees from the underlying fee handler, then accrues the new ETH.
-    function _claimFromSource() internal {
-        ILivoFeeHandler(univ4FeeHandler).claim(_tokens());
-        _accrueBalance();
-    }
-
-    /// @dev Returns a single-element array containing this splitter's token address.
-    function _tokens() internal view returns (address[] memory tokens) {
-        tokens = new address[](1);
-        tokens[0] = token;
-    }
-
-    /// @dev Accounts for any new ETH that has arrived since the last accrual by updating `ethPerBps`.
-    function _accrueBalance() internal {
-        uint256 newEth = address(this).balance - _totalAccounted;
-        if (newEth == 0) return;
-
-        _totalAccounted += newEth;
-        // negligible precision loss
-        _ethPerBps += (newEth * PRECISION) / BPS_TOTAL;
-
-        emit FeesAccrued(newEth);
-    }
-
-    function _requireNoDuplicates(address[] calldata addresses) internal pure {
-        uint256 len = addresses.length;
+    /// @dev Reverts if any two `feeShares` entries share the same `account`. O(n²) but n is the
+    ///      number of fee receivers (typically ≤ 5) — cheap belt-and-braces against silent
+    ///      account collisions that would corrupt per-account accounting.
+    function _requireNoDuplicates(ILivoFactory.FeeShare[] calldata feeShares) internal pure {
+        uint256 len = feeShares.length;
         for (uint256 i = 0; i < len; i++) {
             for (uint256 j = i + 1; j < len; j++) {
-                require(addresses[i] != addresses[j], InvalidRecipients());
+                require(feeShares[i].account != feeShares[j].account, InvalidRecipients());
+            }
+        }
+    }
+
+    /// @dev Accounts for any new ETH that has arrived since the last accrual.
+    ///      Direct receivers' slices are forwarded synchronously and excluded from the
+    ///      accumulator. Forward failures fall back to per-account pending so the swap and
+    ///      graduation hot paths cannot be DoS'd. `FeesAccrued` reports the full incoming amount —
+    ///      indexers see the same event with the same payload regardless of which path each slice
+    ///      took.
+    function _accrueBalance() internal {
+        uint256 newEth = address(this).balance - _totalAccountedInBalance;
+        if (newEth == 0) return;
+
+        // FeesAccrued fires first to match the existing event-ordering contract: every non-direct
+        // path emits the "accrue" event before any "claim" event in the same trace.
+        emit FeesAccrued(newEth);
+
+        (uint256 directAmountTotal, uint256 forwardedAmount) = _forwardToDirectReceivers(newEth);
+
+        // Only the ETH still in the contract counts as "accounted". Forwarded funds left.
+        _totalAccountedInBalance += newEth - forwardedAmount;
+
+        // Accumulate the claimable shareholders' slice. We always strip `directAmountTotal` off
+        // the top regardless of forward success — failed amounts are parked under
+        // `_pendingClaims[directReceiver]`, never accumulator-credited.
+        uint256 claimableBpsTotal = BPS_TOTAL - totalDirectBps;
+        if (claimableBpsTotal > 0) {
+            uint256 toAccumulate = newEth - directAmountTotal;
+            _ethPerBps += (toAccumulate * PRECISION) / claimableBpsTotal;
+        }
+    }
+
+    /// @dev Iterates `_directReceivers`, computes each receiver's slice from `newEth`, and
+    ///      forwards it synchronously. Failed forwards are parked under `_pendingClaims[receiver]`
+    ///      so a hostile receiver cannot DoS the hot path.
+    /// @param newEth The total fresh ETH being accrued in this call.
+    /// @return directAmountTotal Sum of every direct slice computed, regardless of forward
+    ///         success. Used by the caller to strip the direct portion from the claimable
+    ///         accumulator math.
+    /// @return forwardedAmount Sum of slices that left the contract via successful forwards.
+    ///         Used by the caller to update `_totalAccountedInBalance`.
+    function _forwardToDirectReceivers(uint256 newEth)
+        internal
+        returns (uint256 directAmountTotal, uint256 forwardedAmount)
+    {
+        uint256 directLen = _directReceivers.length;
+        for (uint256 i = 0; i < directLen; i++) {
+            address directReceiver = _directReceivers[i];
+            uint256 directBps = _directBpsOf[directReceiver];
+            if (directBps == 0) continue;
+
+            uint256 directAmount = (newEth * directBps) / BPS_TOTAL;
+            directAmountTotal += directAmount;
+            if (directAmount == 0) continue;
+
+            (bool ok,) = directReceiver.call{value: directAmount}("");
+            if (ok) {
+                forwardedAmount += directAmount;
+                emit CreatorClaimed(token, directReceiver, directAmount);
+            } else {
+                // Fallback: park the failed forward as pending. Direct recipient can recover via claim().
+                _pendingClaims[directReceiver] += directAmount;
             }
         }
     }

@@ -5,9 +5,13 @@ interface ILivoFactory {
     ////////////////// Structs //////////////////////
 
     /// @notice A single fee-receiver entry: account + shares in basis points (sum must == 10 000).
+    /// @dev If `directFeesEnabled` is true, fees for this account are forwarded automatically on every
+    ///      accrual instead of being held for `claim()`. A failed forward (malicious receiver) falls back
+    ///      to the existing claimable accounting so swaps and graduation can never be DoS'd.
     struct FeeShare {
         address account;
         uint256 shares;
+        bool directFeesEnabled;
     }
 
     /// @notice A single supply-share entry: account + shares in basis points (sum must == 10 000).
@@ -62,6 +66,7 @@ interface ILivoFactory {
     error InvalidTokenAddress();
     error InvalidBuyOnDeploy();
     error InvalidMaxBuyOnDeployBps();
+    error MultipleDirectFeeReceivers();
 
     ////////////////// Views //////////////////////
 

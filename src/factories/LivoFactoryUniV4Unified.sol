@@ -79,15 +79,23 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         // common validations from abstract factory
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        // Deploy the token, call launchpad.launchToken, and initialize the token proxy contract with specific configs.
-        // `tokenOwner` is computed inline (rather than a local) to keep the stack frame within the EVM limit
-        // without needing `via_ir`.
+        // Deploy the token and initialize the token proxy contract with specific configs (no
+        // `LAUNCHPAD.launchToken` yet). `tokenOwner` is computed inline (rather than a local) to
+        // keep the stack frame within the EVM limit without needing `via_ir`.
         token = _dispatchAndInitialize(
             name, symbol, salt, renounceOwnership_ ? address(0) : msg.sender, routing, taxCfg, antiSniperCfg
         );
 
+        // Register the direct fee receiver against the singleton handler before fees can flow.
+        // No-op for the splitter path (splitter manages its own direct set) or when no entry has
+        // `directFeesEnabled = true`. Done here rather than inside `_dispatchAndInitialize` to keep
+        // that helper's stack frame small enough to compile without `via_ir`.
+        _registerDirectReceivers(token, routing, feeReceivers);
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+
         // Wrapping up: Handle fee splitter deployment, creator buy, etc.
-        _finalizeCreation(token, routing.feeSplitter, feeReceivers, supplyShares);
+        _finalizeCreation(token, routing, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;
     }
 
@@ -125,7 +133,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     }
 
     /// @dev Routes to the tax or non-tax sub-helper based on `taxCfg`. Splitting by family keeps each
-    ///      sub-helper's stack frame small enough to compile without `via_ir`.
+    ///      sub-helper's stack frame small enough to compile without `via_ir`. The caller
+    ///      (`createToken`) is responsible for invoking `_registerDirectReceivers` and
+    ///      `LAUNCHPAD.launchToken` after this returns.
     function _dispatchAndInitialize(
         string calldata name,
         string calldata symbol,
@@ -140,7 +150,6 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         } else {
             token = _initializeNonTaxToken(name, symbol, salt, tokenOwner, routing, antiSniperCfg);
         }
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
     }
 
     function _initializeTaxToken(

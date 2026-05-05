@@ -25,7 +25,7 @@ contract BuySellSimulations is Script {
         bytes32 salt = bytes32(uint256(0x123));
 
         ILivoFactory.FeeShare[] memory devFeeShare = new ILivoFactory.FeeShare[](1);
-        devFeeShare[0] = ILivoFactory.FeeShare({account: LIVODEV, shares: 10_000});
+        devFeeShare[0] = ILivoFactory.FeeShare({account: LIVODEV, shares: 10_000, directFeesEnabled: false});
         ILivoFactory.SupplyShare[] memory noSupplyShares = new ILivoFactory.SupplyShare[](0);
         TaxConfigInit memory noTaxCfg = TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
         AntiSniperConfigs memory noSniperCfg = AntiSniperConfigs({

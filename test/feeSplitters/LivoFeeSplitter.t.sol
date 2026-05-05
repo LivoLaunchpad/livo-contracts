@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
@@ -51,13 +52,13 @@ contract LivoFeeSplitterTests is Test {
     address public charlie = makeAddr("charlie");
 
     function setUp() public {
-        feeHandler = new LivoFeeHandler();
+        feeHandler = new LivoFeeHandler(address(0));
         token = new MockToken(tokenOwner, address(feeHandler));
 
         implementation = new LivoFeeSplitter();
         splitter = LivoFeeSplitter(payable(Clones.clone(address(implementation))));
 
-        splitter.initialize(address(feeHandler), address(token), _recipients(alice, bob), _shares(7000, 3000));
+        splitter.initialize(address(token), _fsArr(_recipients(alice, bob), _shares(7000, 3000)));
         token.setFeeReceiver(address(splitter));
 
         vm.deal(address(this), 100 ether);
@@ -78,7 +79,7 @@ contract LivoFeeSplitterTests is Test {
 
     modifier withSharesUpdated(address[] memory recipients_, uint256[] memory shares_) {
         vm.prank(tokenOwner);
-        splitter.setShares(recipients_, shares_);
+        splitter.setShares(_fsArr(recipients_, shares_));
         _;
     }
 
@@ -129,6 +130,19 @@ contract LivoFeeSplitterTests is Test {
         t[0] = address(token);
     }
 
+    /// @dev Build a claimable-only FeeShare[] from parallel address[] and uint256[] arrays.
+    function _fsArr(address[] memory addrs, uint256[] memory shares)
+        internal
+        pure
+        returns (ILivoFactory.FeeShare[] memory arr)
+    {
+        uint256 len = addrs.length;
+        arr = new ILivoFactory.FeeShare[](len);
+        for (uint256 i = 0; i < len; i++) {
+            arr[i] = ILivoFactory.FeeShare({account: addrs[i], shares: shares[i], directFeesEnabled: false});
+        }
+    }
+
     function _getClaimable(address account) internal view returns (uint256) {
         return splitter.getClaimable(_tokens(), account)[0];
     }
@@ -149,55 +163,48 @@ contract LivoFeeSplitterTests is Test {
     /// @dev when already initialized, then reinitialize reverts
     function test_initialize_assertRevertsOnReinitialize() public {
         vm.expectRevert();
-        splitter.initialize(address(feeHandler), address(token), _recipients(alice), _shares(10000));
+        splitter.initialize(address(token), _fsArr(_recipients(alice), _shares(10000)));
     }
 
     /// @dev when recipients array is empty, then initialize reverts with InvalidRecipients
     function test_initialize_assertRevertsOnEmptyRecipients() public {
         LivoFeeSplitter s = _newSplitter();
         vm.expectRevert(ILivoFeeSplitter.InvalidRecipients.selector);
-        s.initialize(address(feeHandler), address(token), new address[](0), new uint256[](0));
-    }
-
-    /// @dev when recipients and shares arrays have different lengths, then initialize reverts with InvalidRecipients
-    function test_initialize_assertRevertsOnLengthMismatch() public {
-        LivoFeeSplitter s = _newSplitter();
-        vm.expectRevert(ILivoFeeSplitter.InvalidRecipients.selector);
-        s.initialize(address(feeHandler), address(token), _recipients(alice, bob), _shares(10000));
+        s.initialize(address(token), new ILivoFactory.FeeShare[](0));
     }
 
     /// @dev when shares do not sum to 10000, then initialize reverts with InvalidShares
     function test_initialize_assertRevertsOnSharesNotSumTo10000() public {
         LivoFeeSplitter s = _newSplitter();
         vm.expectRevert(ILivoFeeSplitter.InvalidShares.selector);
-        s.initialize(address(feeHandler), address(token), _recipients(alice, bob), _shares(5000, 4000));
+        s.initialize(address(token), _fsArr(_recipients(alice, bob), _shares(5000, 4000)));
     }
 
     /// @dev when a recipient is address(0), then initialize reverts with InvalidRecipients
     function test_initialize_assertRevertsOnZeroRecipient() public {
         LivoFeeSplitter s = _newSplitter();
         vm.expectRevert(ILivoFeeSplitter.InvalidRecipients.selector);
-        s.initialize(address(feeHandler), address(token), _recipients(address(0)), _shares(10000));
+        s.initialize(address(token), _fsArr(_recipients(address(0)), _shares(10000)));
     }
 
     /// @dev when recipients contain duplicates, then initialize reverts with InvalidRecipients
     function test_initialize_assertRevertsOnDuplicateRecipient() public {
         LivoFeeSplitter s = _newSplitter();
         vm.expectRevert(ILivoFeeSplitter.InvalidRecipients.selector);
-        s.initialize(address(feeHandler), address(token), _recipients(alice, alice), _shares(5000, 5000));
+        s.initialize(address(token), _fsArr(_recipients(alice, alice), _shares(5000, 5000)));
     }
 
     /// @dev when a share is zero, then initialize reverts with InvalidShares
     function test_initialize_assertRevertsOnZeroShare() public {
         LivoFeeSplitter s = _newSplitter();
         vm.expectRevert(ILivoFeeSplitter.InvalidShares.selector);
-        s.initialize(address(feeHandler), address(token), _recipients(alice, bob), _shares(10000, 0));
+        s.initialize(address(token), _fsArr(_recipients(alice, bob), _shares(10000, 0)));
     }
 
     /// @dev when implementation is deployed with constructor, then it cannot be initialized
     function test_implementation_assertCannotBeInitialized() public {
         vm.expectRevert();
-        implementation.initialize(address(feeHandler), address(token), _recipients(alice), _shares(10000));
+        implementation.initialize(address(token), _fsArr(_recipients(alice), _shares(10000)));
     }
 
     // ======================== setShares ========================
@@ -205,7 +212,7 @@ contract LivoFeeSplitterTests is Test {
     /// @dev when token owner calls setShares with 3 recipients, then shares are updated correctly
     function test_setShares_assertUpdatesShares() public {
         vm.prank(tokenOwner);
-        splitter.setShares(_recipients(alice, bob, charlie), _shares(5000, 3000, 2000));
+        splitter.setShares(_fsArr(_recipients(alice, bob, charlie), _shares(5000, 3000, 2000)));
 
         (address[] memory newRecipients, uint256[] memory newShares) = splitter.getRecipients();
         assertEq(newRecipients.length, 3);
@@ -217,7 +224,7 @@ contract LivoFeeSplitterTests is Test {
     function test_setShares_assertRevertsForNonOwner() public {
         vm.prank(alice);
         vm.expectRevert(ILivoFeeSplitter.Unauthorized.selector);
-        splitter.setShares(_recipients(alice), _shares(10000));
+        splitter.setShares(_fsArr(_recipients(alice), _shares(10000)));
     }
 
     /// @dev when token owner calls setShares, then SharesUpdated event is emitted
@@ -229,7 +236,7 @@ contract LivoFeeSplitterTests is Test {
         emit ILivoFeeSplitter.SharesUpdated(r, s);
 
         vm.prank(tokenOwner);
-        splitter.setShares(r, s);
+        splitter.setShares(_fsArr(r, s));
     }
 
     // ======================== claim ========================
@@ -459,35 +466,5 @@ contract LivoFeeSplitterTests is Test {
         assertEq(receivers[0], charlie);
         assertEq(sharesBps.length, 1);
         assertEq(sharesBps[0], 10_000);
-    }
-
-    // ======================== getClaimable with upstream fees ========================
-
-    /// @dev when fees are pending in the upstream feeHandler, then getClaimable includes them
-    function test_getClaimable_assertIncludesUpstreamPendingFees() public depositFees(10 ether) {
-        // Deposit 5 ETH directly to the feeHandler as pending for the splitter
-        feeHandler.depositFees{value: 5 ether}(address(token), address(splitter));
-
-        // getClaimable should include both: 10 ETH already in splitter + 5 ETH upstream
-        assertEq(_getClaimable(alice), 10.5 ether); // 70% of 15
-        assertEq(_getClaimable(bob), 4.5 ether); // 30% of 15
-    }
-
-    /// @dev when fees are only in the upstream feeHandler (none in splitter), then getClaimable still reports them
-    function test_getClaimable_assertReportsUpstreamOnlyFees() public {
-        // Deposit 10 ETH directly to the feeHandler as pending for the splitter
-        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
-
-        assertEq(_getClaimable(alice), 7 ether); // 70% of 10
-        assertEq(_getClaimable(bob), 3 ether); // 30% of 10
-    }
-
-    /// @dev when upstream fees exist and user claims, then they receive the full amount including upstream
-    function test_claim_assertClaimsIncludeUpstreamFees() public depositFees(10 ether) {
-        feeHandler.depositFees{value: 5 ether}(address(token), address(splitter));
-
-        vm.prank(alice);
-        splitter.claim(_tokens());
-        assertEq(alice.balance, 10.5 ether); // 70% of 15
     }
 }

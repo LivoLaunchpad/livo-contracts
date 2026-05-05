@@ -30,8 +30,8 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
 
     function _feeShares() internal view returns (ILivoFactory.FeeShare[] memory arr) {
         arr = new ILivoFactory.FeeShare[](2);
-        arr[0] = ILivoFactory.FeeShare({account: shareholder1, shares: SHARE_1});
-        arr[1] = ILivoFactory.FeeShare({account: shareholder2, shares: SHARE_2});
+        arr[0] = ILivoFactory.FeeShare({account: shareholder1, shares: SHARE_1, directFeesEnabled: false});
+        arr[1] = ILivoFactory.FeeShare({account: shareholder2, shares: SHARE_2, directFeesEnabled: false});
     }
 
     function _createTokenForCreator(string memory name, string memory symbol, bytes32)

@@ -126,7 +126,7 @@ contract InvariantsHelperLaunchpad is Test {
         address token;
         ILivoFactory.SupplyShare[] memory noSs = new ILivoFactory.SupplyShare[](0);
         ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
-        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000});
+        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl);
             vm.prank(currentActor);

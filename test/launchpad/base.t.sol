@@ -127,10 +127,16 @@ contract LaunchpadBaseTests is Test {
         }
     }
 
-    /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees.
+    /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees (claimable, no direct).
     function _fs(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
         arr = new ILivoFactory.FeeShare[](1);
-        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000});
+        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: false});
+    }
+
+    /// @dev Build a single-entry FeeShare[] with `account` opted into direct fee forwarding.
+    function _fsDirect(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
+        arr = new ILivoFactory.FeeShare[](1);
+        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: true});
     }
 
     /// @dev Build an empty FeeShare[] (only valid for UniV2 factory).
@@ -214,7 +220,7 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
-        feeHandler = new LivoFeeHandler();
+        feeHandler = new LivoFeeHandler(address(launchpad));
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS

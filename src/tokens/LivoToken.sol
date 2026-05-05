@@ -131,6 +131,11 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @notice Updates the fee receiver address, only callable by the token owner
+    /// @dev If this token was deployed with a direct fee receiver, rotating the receiver via this
+    ///      function silently drops the direct-fees status — the singleton handler's
+    ///      `directReceiver[token]` still points to the old address, so future deposits for the new
+    ///      receiver fall through to standard pending-claim accounting. The old address keeps any
+    ///      failed-forward residue and can recover it via `claim()`.
     function setFeeReceiver(address newFeeReceiver) external {
         require(msg.sender == owner, Unauthorized());
         require(newFeeReceiver != address(0), InvalidFeeReceiver());

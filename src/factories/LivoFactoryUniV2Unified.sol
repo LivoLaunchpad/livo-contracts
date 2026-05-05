@@ -49,11 +49,19 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token, address feeSplitter) {
         FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
 
-        // Deploy the token, call launchpad.launchToken, and initialize the token proxy contract
+        // Deploy the token and initialize the token proxy contract (no `LAUNCHPAD.launchToken` yet)
         token = _dispatchAndInitialize(name, symbol, salt, routing, antiSniperCfg);
 
+        // Register the direct fee receiver against the singleton handler before fees can flow.
+        // No-op for the splitter path (splitter manages its own direct set) or when no entry has
+        // `directFeesEnabled = true`. Done here rather than inside `_dispatchAndInitialize` to keep
+        // that helper's stack frame small enough to compile without `via_ir`.
+        _registerDirectReceivers(token, routing, feeReceivers);
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+
         // Wrapping up: Handle fee splitter deployment, creator buy, etc.
-        _finalizeCreation(token, routing.feeSplitter, feeReceivers, supplyShares);
+        _finalizeCreation(token, routing, feeReceivers, supplyShares);
         feeSplitter = routing.feeSplitter;
     }
 
@@ -95,7 +103,5 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         } else {
             LivoToken(token).initialize(initParams);
         }
-
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
     }
 }

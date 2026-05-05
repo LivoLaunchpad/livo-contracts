@@ -40,6 +40,7 @@ now emit on the dispatch path that produces the same token variant.
 12. [`LivoFeeHandler.claim`](#12-livofeehandlerclaimaddress-tokens)
 13. [`LivoFeeSplitter.claim`](#13-livofeesplitterclaimaddress-tokens)
 14. [Anti-sniper dispatch paths](#14-sniper-protected-factory-variants-createtoken)
+15. [Direct-fees variants (auto-forwarded creator fees)](#15-direct-fees-variants-auto-forwarded-creator-fees)
 
 ---
 
@@ -334,17 +335,16 @@ Test: `test/graduators/graduationUniv4.claimFees.t.sol::test_claimFees_happyPath
 
 ## 13. `LivoFeeSplitter.claim(address[] tokens)`
 
-Entry point for fee-split recipients to withdraw their pro-rata share of ETH accumulated by the splitter. The splitter is **upstream** of `LivoFeeHandler`: on claim it first pulls its own balance from the handler (potentially emitting a `CreatorClaimed` on the handler and then a `FeesAccrued` on itself), then accrues fresh balance, then pays out per recipient.
+Entry point for fee-split recipients to withdraw their pro-rata share of ETH accumulated by the splitter. For splitter-backed tokens the token's `feeHandler` slot is the splitter itself, so all fees land here directly via `LivoToken.accrueFees() → splitter.depositFees()`. The singleton `LivoFeeHandler` is never in the path; the splitter accrues unaccounted ETH on claim, then pays out per recipient.
 
 For each `token` in the argument list (typically just one — the splitter's own):
 
-1. **`LivoFeeHandler.CreatorClaimed`** (`token, account=splitter, amount`) — **conditional**: only if the handler has a non-zero pending balance for this splitter. Happens when creator fees from bonding-curve trades or the graduation creator fee arrived via `depositFees()`.
-2. **`LivoFeeSplitter.FeesAccrued`** (`amount`) — new ETH recognized into the splitter's `_ethPerBps` accumulator.
-3. **`LivoFeeSplitter.CreatorClaimed`** (`token, account=msg.sender, amount`) — amount for the caller only.
+1. **`LivoFeeSplitter.FeesAccrued`** (`amount`) — **conditional**: only if unaccounted ETH is sitting in the splitter (e.g. from a swap accrual since the last touch). New ETH is recognized into the splitter's `_ethPerBps` accumulator.
+2. **`LivoFeeSplitter.CreatorClaimed`** (`token, account=msg.sender, amount`) — amount for the caller only.
 
-Event #3 uses the same event name as the fee handler's (intentionally, for indexer symmetry) — distinguish by emitter address.
+Event #2 uses the same event name as the fee handler's (intentionally, for indexer symmetry) — distinguish by emitter address.
 
-If `msg.sender` is not a recipient, or has already claimed since the last share change, the function returns without emitting #3. If no new ETH has arrived, #1 and #2 are both absent.
+If `msg.sender` is not a recipient, or has already claimed since the last share change, the function returns without emitting #2. If no new ETH has arrived, #1 is absent.
 
 Test: `test/feeSplitters/LivoFeeSplitter.t.sol::test_claim_assertEmitsEvents` (isolated, with a mock token) and the end-to-end `test/graduators/graduationUniv4.claimFees.splitter.t.sol::test_shareholdersCanClaimLpFees` (two `CreatorClaimed` emissions, one per shareholder).
 
@@ -425,3 +425,89 @@ These events exist in `src/` but are only emitted via out-of-scope (admin / owne
 | `OwnershipTransferred` | `LivoToken` / `LivoTaxableTokenUniV4` | `acceptTokenOwnership`, `renounceOwnership` |
 | `FeeReceiverUpdated` | `LivoToken` / `LivoTaxableTokenUniV4` | `setFeeReceiver` (token owner) |
 | `SharesUpdated` (post-init) | `LivoFeeSplitter` | `setShares` (token owner). Also emitted during `initialize()` — see §4. |
+| `DirectReceiverRegistered` (post-init) | `LivoFeeSplitter` | `setShares` (token owner) — emitted per address newly added or promoted to direct. Also emitted during `initialize()` for every initial direct receiver. |
+| `DirectReceiverRemoved` | `LivoFeeSplitter` | `setShares` (token owner) — emitted per address that was direct beforehand and is no longer direct (demoted to claimable or removed entirely). Never emitted from `initialize()`. |
+
+---
+
+## 15. Direct-fees variants (auto-forwarded creator fees)
+
+When a `FeeShare` entry passed to `createToken` has `directFeesEnabled = true`, that receiver
+opts into synchronous ETH forwarding instead of the pull-based claim flow. At most one direct
+receiver per deployment is allowed at create-time (factory enforces with
+`MultipleDirectFeeReceivers`); the splitter itself is generic w.r.t. how many direct receivers
+it can hold, and `setShares` may add more after init. The direct flag on the singleton handler
+path is bound to the slot, not the address: `LivoToken.setFeeReceiver` rotates ownership of the
+direct slot to the new receiver via `LivoFeeHandler.migrateDirectReceiver`.
+
+The on-chain effect is purely additive on the existing flows: every section above remains valid;
+direct-fees variants insert one extra `CreatorClaimed` event right after the existing accrue event
+(`CreatorFeesDeposited` for the singleton path, `FeesAccrued` for the splitter path). The accrue
+event always fires first to preserve the original event ordering.
+
+**Failure-fallback rule (applies to every entry point below):** when the direct receiver's
+`receive()` reverts, the forward is silently abandoned and the funds are credited as a normal
+pending claim — `CreatorClaimed` is **NOT** emitted in that case, and the receiver can recover
+the residue via the existing `claim()` flow. Graduations and swaps NEVER revert because of a
+hostile direct receiver.
+
+### 15.1. Singleton path: 1 receiver, `directFeesEnabled = true`
+
+The token's `feeHandler` is the singleton `LivoFeeHandler`. The factory calls
+`registerDirectReceiver(token, receiver)` between token init and `LAUNCHPAD.launchToken` (no event
+emitted from the registration itself).
+
+Wherever the existing flow has `LivoFeeHandler.CreatorFeesDeposited` (e.g. graduation step §6 #5,
+§7 #5, post-grad swap step §9 #4 / §10 #5 / §11 #5), append immediately after:
+
+- **`LivoFeeHandler.CreatorClaimed`** (`token, account=feeReceiver, amount = msg.value`) — the
+  synchronous forward. Same event signature as the existing `claim()` event; distinguish by tx
+  context (no preceding `claim()` call).
+
+### 15.2. Splitter path: ≥2 receivers, one or more with `directFeesEnabled = true`
+
+The splitter holds an arbitrary subset of its recipients as direct receivers (typically one,
+since the factory caps direct-flagged entries at 1 per deployment, but the splitter itself is
+generic). The set is **mutable** post-init: `setShares` may add, remove, promote, or demote
+any address — see §15.4 for the events emitted by those transitions. Existing splitter flow
+(§4 + §7's splitter branch) applies as-is; the direct slice is skimmed off `_accrueBalance`.
+
+Wherever the existing flow has `LivoFeeSplitter.FeesAccrued` (graduation §7 #5 conditional,
+post-grad §9-§11 conditional), append immediately after — once per direct receiver whose
+forward succeeded:
+
+- **`LivoFeeSplitter.CreatorClaimed`** (`token, account=directReceiver, amount = newEth * directBps / 10_000`) —
+  the synchronous forward to a direct receiver. Claimable shareholders' shares accumulate
+  normally in `_ethPerBps` and are unaffected.
+
+### 15.3. `setFeeReceiver` migration (singleton path only)
+
+`LivoToken.setFeeReceiver` calls `feeHandler.migrateDirectReceiver(newReceiver)` after updating
+its local field. For the singleton handler, this rewrites the `directReceiver[token]` mapping to
+the new address. Splitter-backed tokens hit a no-op implementation. No new events are emitted; only
+the existing `LivoToken.FeeReceiverUpdated` fires (already documented under §Appendix as a
+token-self-service event).
+
+### 15.4. `LivoFeeSplitter.setShares` direct-set transitions
+
+`setShares` (token-owner only) may freely change which recipients are direct. Diff-style events
+fire so indexers can keep the direct set in sync without re-reading state:
+
+- **`LivoFeeSplitter.DirectReceiverRemoved`** (`token, receiver`) — once per address that was
+  direct beforehand and is no longer direct in the new payload (demoted to claimable or removed
+  entirely). The address's parked failed-forward residue (in `_pendingClaims`) is preserved and
+  remains recoverable via `claim()`.
+- **`LivoFeeSplitter.DirectReceiverRegistered`** (`token, receiver`) — once per address that is
+  direct in the new payload and was **not** direct beforehand (newly added or promoted from
+  claimable). Same event as the one fired during `initialize()` for the initial direct set.
+- **`LivoFeeSplitter.SharesUpdated`** (`recipients, sharesBps`) — emitted last, signature
+  unchanged.
+
+When `setShares` only rebalances BPS without changing the direct set, neither
+`DirectReceiverRemoved` nor `DirectReceiverRegistered` fires — only `SharesUpdated`.
+
+Tests:
+- `test/factories/LivoFactoryDirectFees.t.sol` — factory dispatch, registration, max-1 enforcement
+- `test/feeHandlers/LivoFeeHandler.directFees.t.sol` — singleton path forwarding + revert fallback
+- `test/feeSplitters/LivoFeeSplitter.directFees.t.sol` — splitter math + mutable-set transitions
+- `test/e2e/variants/E2E_DirectFees.t.sol` — full graduation + post-grad swap with direct receiver

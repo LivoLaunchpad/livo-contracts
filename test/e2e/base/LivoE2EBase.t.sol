@@ -128,7 +128,7 @@ abstract contract LivoE2EBase is V4SwapHelpers, V2SwapHelpers {
     /// @dev Two-share fee receivers helper for splitter tests.
     function _fsTwo(address a1, address a2) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
         arr = new ILivoFactory.FeeShare[](2);
-        arr[0] = ILivoFactory.FeeShare({account: a1, shares: 6_000});
-        arr[1] = ILivoFactory.FeeShare({account: a2, shares: 4_000});
+        arr[0] = ILivoFactory.FeeShare({account: a1, shares: 6_000, directFeesEnabled: false});
+        arr[1] = ILivoFactory.FeeShare({account: a2, shares: 4_000, directFeesEnabled: false});
     }
 }

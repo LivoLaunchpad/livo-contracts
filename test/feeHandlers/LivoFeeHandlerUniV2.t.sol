@@ -45,7 +45,7 @@ contract LivoFeeHandlerBaseTests is Test {
 
     function setUp() public virtual {
         mockLaunchpad = new MockLaunchpad(treasuryAddr);
-        handler = new LivoFeeHandler();
+        handler = new LivoFeeHandler(address(mockLaunchpad));
         vm.deal(address(this), 1000 ether);
     }
 

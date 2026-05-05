@@ -74,12 +74,16 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0, sum == 10 000.
+    /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
+    ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
+    ///      direct receivers at 1 here as a user-surface constraint; the splitter contract itself
+    ///      is generic w.r.t. how many direct receivers it can hold.
     function _validateFeeShares(FeeShare[] calldata feeReceivers) internal pure {
         uint256 len = feeReceivers.length;
         require(len > 0, InvalidFeeReceiver());
 
         uint256 total;
+        uint256 directCount;
         for (uint256 i = 0; i < len; i++) {
             require(feeReceivers[i].account != address(0), InvalidFeeReceiver());
             require(feeReceivers[i].shares > 0, InvalidShares());
@@ -87,8 +91,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
                 require(feeReceivers[i].account != feeReceivers[j].account, InvalidFeeReceiver());
             }
             total += feeReceivers[i].shares;
+            if (feeReceivers[i].directFeesEnabled) {
+                directCount++;
+            }
         }
         require(total == BASIS_POINTS, InvalidShares());
+        require(directCount <= 1, MultipleDirectFeeReceivers());
     }
 
     /// @dev Validates a SupplyShare array: non-empty, no zero accounts, no duplicates, every share > 0, sum == 10 000.
@@ -128,20 +136,22 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     /// @dev Initializes a freshly-deployed FeeSplitter for `token`. Emits `FeeSplitterCreated` BEFORE
     ///      `initialize()` so the indexer creates the splitter entity before `SharesUpdated` fires.
-    function _initFeeSplitter(address feeSplitter, address token, FeeShare[] calldata feeReceivers) internal {
-        uint256 len = feeReceivers.length;
+    ///      The full `feeShares` array (including each entry's `directFeesEnabled` flag) is
+    ///      forwarded to the splitter, which captures the direct-receiver set itself.
+    function _initFeeSplitter(address feeSplitter, address token, FeeShare[] calldata feeShares) internal {
+        uint256 len = feeShares.length;
         address[] memory recipients = new address[](len);
         uint256[] memory sharesBps = new uint256[](len);
         for (uint256 i = 0; i < len; i++) {
-            recipients[i] = feeReceivers[i].account;
-            sharesBps[i] = feeReceivers[i].shares;
+            recipients[i] = feeShares[i].account;
+            sharesBps[i] = feeShares[i].shares;
         }
 
         // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
         // creates the FeeSplitter entity from this event, and events emitted during initialize()
         // (SharesUpdated) depend on the FeeSplitter entity existing.
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
-        ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
+        ILivoFeeSplitter(feeSplitter).initialize(token, feeShares);
     }
 
     /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
@@ -200,17 +210,36 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         (routing.feeHandler, routing.feeReceiver, routing.feeSplitter) = _resolveFeeRouting(feeReceivers, salt);
     }
 
+    /// @dev Registers direct-fee receivers against the singleton `LivoFeeHandler` for the
+    ///      single-receiver path. The splitter captures direct receivers internally from its init
+    ///      payload, so this is a no-op for the splitter path. No-op when no entry has
+    ///      `directFeesEnabled = true`.
+    /// @dev `_validateFeeShares` enforces at most one direct entry, so the constructed array has
+    ///      length 1. The handler accepts `address[]` for forward-compatibility with future
+    ///      multi-direct factories.
+    function _registerDirectReceivers(address token, FeeRouting memory routing, FeeShare[] calldata feeReceivers)
+        internal
+    {
+        if (routing.feeSplitter != address(0)) return;
+        if (feeReceivers.length != 1) return;
+        if (!feeReceivers[0].directFeesEnabled) return;
+
+        address[] memory receivers = new address[](1);
+        receivers[0] = feeReceivers[0].account;
+        FEE_HANDLER.registerDirectReceivers(token, receivers);
+    }
+
     /// @dev Shared postamble: initializes the splitter (if any) and performs the deployer buy (if any).
     ///      Event order: `FeeSplitterCreated` fires strictly after `TokenLaunched`, and the deployer
     ///      buy events fire last.
     function _finalizeCreation(
         address token,
-        address feeSplitter,
+        FeeRouting memory routing,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares
     ) internal {
-        if (feeSplitter != address(0)) {
-            _initFeeSplitter(feeSplitter, token, feeReceivers);
+        if (routing.feeSplitter != address(0)) {
+            _initFeeSplitter(routing.feeSplitter, token, feeReceivers);
         }
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }

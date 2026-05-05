@@ -42,7 +42,7 @@ contract LivoFeeHandlerSweepExcessTests is Test {
         tokenB = address(new MockToken(alice));
 
         vm.prank(owner);
-        handler = new LivoFeeHandler();
+        handler = new LivoFeeHandler(address(0));
     }
 
     // ======================== Helpers ========================
