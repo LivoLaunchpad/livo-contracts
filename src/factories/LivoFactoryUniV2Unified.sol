@@ -36,7 +36,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
 
     /// @notice Deploys a V2-family Livo token with ownership renounced and registers it in the launchpad.
     ///         If `antiSniperCfg.protectionWindowSeconds != 0`, deploys the sniper-protected variant.
-    ///         If `feeReceivers.length >= 2`, also deploys a `FeeSplitter` as the fee receiver.
+    ///         The per-token fee config is registered with the master fee handler at deploy time.
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
     function createToken(
         string calldata name,

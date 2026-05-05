@@ -29,6 +29,9 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
 
     uint256 internal constant BPS_TOTAL = 10_000;
     uint256 internal constant PRECISION = 1e18;
+    /// @notice Hard cap on direct receivers per token, enforced on every `_setSharesInternal` call.
+    ///         Bounds per-deposit gas in `_depositSplit` (one external `.call` per direct receiver).
+    uint256 internal constant MAX_DIRECT_RECEIVERS = 4;
 
     /// @notice Launchpad whose factory whitelist gates `registerToken`.
     ILivoLaunchpad public immutable LAUNCHPAD;
@@ -58,16 +61,16 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
 
     /// @notice Deposits ETH fees for `token`. For direct receivers the slice is forwarded
     ///         synchronously; for claimable recipients the accumulator is advanced.
-    /// @dev `CreatorFeesDeposited` is always emitted first to preserve the event-ordering
-    ///      contract for indexers. Reentrancy: the bare `.call` lands in an arbitrary receiver.
-    ///      State mutated post-forward (`_pendingClaims`) is unrelated to the in-flight deposit,
-    ///      so a re-entry into `claim()` only sees already-credited balances. Safe by construction.
-    function depositFees(address token) external payable {
+    /// @dev `CreatorFeesDeposited` is emitted before any forward attempt for non-zero deposits;
+    ///      zero-value calls are no-ops and emit nothing. The transient `nonReentrant` guard is
+    ///      shared with `setShares` and `claim` — any nested call from a direct-receiver hook
+    ///      into those functions reverts, which prevents iteration corruption in `_depositSplit`.
+    function depositFees(address token) external payable nonReentrant {
         TokenFeeConfigLib.Config storage cfg = _configs[token];
         require(cfg.registered, NotRegistered());
 
-        emit CreatorFeesDeposited(token, msg.value);
         if (msg.value == 0) return;
+        emit CreatorFeesDeposited(token, msg.value);
 
         if (!cfg.isSplit) {
             _depositSingle(token, cfg);
@@ -89,7 +92,10 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     /// @notice Replaces the fee-receiver config for `token`. Callable only by the token's current
     ///         non-zero owner. V2 tokens and V4 tokens with `renounceOwnership = true` have
     ///         `owner() == address(0)`, so `setShares` is permanently disabled for them.
-    function setShares(address token, ILivoFactory.FeeShare[] calldata feeShares) external {
+    /// @dev `nonReentrant` shares the transient guard with `depositFees` and `claim`; this
+    ///      prevents a malicious direct receiver from reentering `setShares` mid-deposit and
+    ///      corrupting `_depositSplit`'s iteration over `cfg.directReceivers`.
+    function setShares(address token, ILivoFactory.FeeShare[] calldata feeShares) external nonReentrant {
         address tokenOwner = ILivoToken(token).owner();
         require(msg.sender == tokenOwner && tokenOwner != address(0), Unauthorized());
         TokenFeeConfigLib.Config storage cfg = _configs[token];
@@ -371,6 +377,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
             }
         }
         require(total == BPS_TOTAL, InvalidShares());
+        require(cfg.directReceivers.length <= MAX_DIRECT_RECEIVERS, TooManyDirectReceivers());
         cfg.totalDirectBps = directSum;
     }
 

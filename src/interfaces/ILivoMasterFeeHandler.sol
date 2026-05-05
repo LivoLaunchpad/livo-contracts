@@ -16,6 +16,7 @@ interface ILivoMasterFeeHandler is ILivoClaims {
     error Unauthorized();
     error InvalidFeeShares();
     error InvalidShares();
+    error TooManyDirectReceivers();
 
     ////////////////// Events //////////////////
 
@@ -42,7 +43,8 @@ interface ILivoMasterFeeHandler is ILivoClaims {
     ///         path based on the token's registered config. Direct receivers are forwarded
     ///         synchronously; forward failures silently fall back to pending-claim accounting so
     ///         swap and graduation hot paths cannot be DoS'd.
-    /// @dev `CreatorFeesDeposited` is always emitted first, before any forward attempt.
+    /// @dev `CreatorFeesDeposited` is emitted before any forward attempt for non-zero deposits;
+    ///      zero-value calls are no-ops and emit nothing.
     function depositFees(address token) external payable;
 
     /// @notice Registers initial fee-receiver config for a newly-deployed token. One-shot per

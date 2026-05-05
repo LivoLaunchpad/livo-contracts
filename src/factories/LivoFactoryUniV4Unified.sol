@@ -56,7 +56,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
     /// @notice Deploys a V4-family Livo token and registers it in the launchpad.
     ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
-    ///         If `feeReceivers.length >= 2`, also deploys a `FeeSplitter` as the fee receiver.
+    ///         The per-token fee config is registered with the master fee handler at deploy time.
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
     function createToken(
         string calldata name,
@@ -122,8 +122,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
     /// @dev Routes to the tax or non-tax sub-helper based on `taxCfg`. Splitting by family keeps each
     ///      sub-helper's stack frame small enough to compile without `via_ir`. The caller
-    ///      (`createToken`) is responsible for invoking `_registerDirectReceivers` and
-    ///      `LAUNCHPAD.launchToken` after this returns.
+    ///      (`createToken`) is responsible for invoking `LAUNCHPAD.launchToken` and
+    ///      `_finalizeCreation` (which registers the token's fee config with the master handler)
+    ///      after this returns.
     function _dispatchAndInitialize(
         string calldata name,
         string calldata symbol,

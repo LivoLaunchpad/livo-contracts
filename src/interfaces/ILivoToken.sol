@@ -71,8 +71,8 @@ interface ILivoToken is IERC20 {
     function proposedOwner() external view returns (address);
 
     /// @notice Returns the underlying fee receiver addresses and their share in basis points
-    /// @dev If the fee receiver is a splitter, returns the splitter's recipients and shares.
-    ///      Otherwise, returns the single fee receiver with 10_000 bps (100%).
+    /// @dev Sourced from the master fee handler's per-token config: returns every current
+    ///      recipient (direct + claimable) with their BPS share. Sum of shares is always 10_000.
     function getFeeReceivers() external view returns (address[] memory receivers, uint256[] memory sharesBps);
 
     /// @notice Returns the maximum amount of tokens `buyer` can purchase right now on the bonding curve.

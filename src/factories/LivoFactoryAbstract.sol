@@ -68,8 +68,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
-    ///      direct receivers at 1 here as a user-surface constraint; the master fee handler itself
-    ///      is generic w.r.t. how many direct receivers it can hold.
+    ///      direct receivers at 1 here as a user-surface constraint
     function _validateFeeShares(FeeShare[] calldata feeReceivers) internal pure {
         uint256 len = feeReceivers.length;
         require(len > 0, InvalidFeeReceiver());
