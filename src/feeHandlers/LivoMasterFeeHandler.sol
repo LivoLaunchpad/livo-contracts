@@ -22,7 +22,7 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///           - **claimable** recipients accumulate ETH via a per-token cumulative accumulator
 ///             (`ethPerBps`) that scales O(1) per deposit regardless of recipient count.
 ///
-///         The direct-receiver set is mutable via `setShares` (token-owner-gated).
+///         The direct-receiver set is mutable via `setShares` (admin or token-owner gated).
 contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuardTransient {
     using TokenFeeConfigLib for TokenFeeConfigLib.Config;
 
@@ -87,17 +87,18 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
         _setSharesInternal(token, cfg, feeShares, false);
     }
 
-    /// @notice Replaces the fee-receiver config for `token`. Callable only by the token's current
-    ///         non-zero owner. V2 tokens and V4 tokens with `renounceOwnership = true` have
-    ///         `owner() == address(0)`, so `setShares` is permanently disabled for them.
+    /// @notice Replaces the fee-receiver config for `token`. Callable only by the admin or the
+    ///         token's current non-zero owner. V2 tokens and V4 tokens with `renounceOwnership = true`
+    ///         have `owner() == address(0)`, so only the admin can update their shares.
     /// @dev `nonReentrant` shares the transient guard with `depositFees` and `claim`; this
     ///      prevents a malicious direct receiver from reentering `setShares` mid-deposit and
     ///      corrupting `_depositSplit`'s iteration over `cfg.directReceivers`.
     function setShares(address token, ILivoFactory.FeeShare[] calldata feeShares) external nonReentrant {
-        address tokenOwner = ILivoToken(token).owner();
-        require(msg.sender == tokenOwner && tokenOwner != address(0), Unauthorized());
         TokenFeeConfigLib.Config storage cfg = _configs[token];
         require(cfg.registered, NotRegistered());
+
+        address tokenOwner = ILivoToken(token).owner();
+        require(msg.sender == owner() || (msg.sender == tokenOwner), Unauthorized());
 
         // Snapshot claimable accumulator into pending so no ETH is lost on transitions.
         uint256 claimableLen = cfg.claimableRecipients.length;

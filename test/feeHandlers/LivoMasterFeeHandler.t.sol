@@ -118,6 +118,87 @@ contract LivoMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithUniv4Gradua
     }
 }
 
+contract LivoMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithUniv4Graduator {
+    address internal token;
+
+    function setUp() public override {
+        super.setUp();
+
+        vm.prank(creator);
+        token = factoryV4Unified.createToken(
+            "AccessToken",
+            "ACCS",
+            _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+            _fs(creator),
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
+        );
+    }
+
+    function _assertSingleRecipient(address targetToken, address expectedRecipient) internal view {
+        (address[] memory recipients, uint256[] memory shares) = feeHandler.getRecipients(targetToken);
+        assertEq(recipients.length, 1, "recipient length");
+        assertEq(recipients[0], expectedRecipient, "recipient");
+        assertEq(shares[0], 10_000, "share");
+    }
+
+    function _createRenouncedToken() internal returns (address renouncedToken) {
+        vm.prank(creator);
+        renouncedToken = factoryV4Unified.createToken(
+            "RenouncedToken",
+            "RNCD",
+            _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+            _fs(creator),
+            _noSs(),
+            true,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
+        );
+        assertEq(ILivoToken(renouncedToken).owner(), address(0), "renounced token owner");
+    }
+
+    function test_setShares_tokenOwnerCanUpdate() public {
+        vm.prank(creator);
+        feeHandler.setShares(token, _fs(alice));
+
+        _assertSingleRecipient(token, alice);
+    }
+
+    function test_setShares_handlerOwnerCanUpdate() public {
+        assertEq(feeHandler.owner(), admin, "handler owner");
+
+        vm.prank(admin);
+        feeHandler.setShares(token, _fs(alice));
+
+        _assertSingleRecipient(token, alice);
+    }
+
+    function test_setShares_revertsForNonHandlerOwnerOrTokenOwner() public {
+        vm.prank(bob);
+        vm.expectRevert(ILivoMasterFeeHandler.Unauthorized.selector);
+        feeHandler.setShares(token, _fs(alice));
+    }
+
+    function test_setShares_handlerOwnerCanUpdateRenouncedToken() public {
+        address renouncedToken = _createRenouncedToken();
+
+        vm.prank(admin);
+        feeHandler.setShares(renouncedToken, _fs(alice));
+
+        _assertSingleRecipient(renouncedToken, alice);
+    }
+
+    function test_setShares_originalCreatorCannotUpdateRenouncedToken() public {
+        address renouncedToken = _createRenouncedToken();
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoMasterFeeHandler.Unauthorized.selector);
+        feeHandler.setShares(renouncedToken, _fs(alice));
+    }
+}
+
 contract LivoMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUniv4Graduator {
     address internal d0 = makeAddr("d0");
     address internal d1 = makeAddr("d1");

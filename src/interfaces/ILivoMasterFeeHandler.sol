@@ -51,9 +51,9 @@ interface ILivoMasterFeeHandler is ILivoClaims {
     ///         `msg.sender`.
     function registerToken(ILivoFactory.FeeShare[] calldata feeShares) external;
 
-    /// @notice Replaces the fee-receiver config for `token`. Callable only by the token's current
-    ///         non-zero owner. Snapshots claimable accrual into pending before overwriting so no
-    ///         ETH is lost on transitions. The direct-receiver set is fully mutable.
+    /// @notice Replaces the fee-receiver config for `token`. Callable only by the admin or the
+    ///         token's current non-zero owner. Snapshots claimable accrual into pending before
+    ///         overwriting so no ETH is lost on transitions. The direct-receiver set is fully mutable.
     function setShares(address token, ILivoFactory.FeeShare[] calldata feeShares) external;
 
     ////////////////// Views //////////////////
