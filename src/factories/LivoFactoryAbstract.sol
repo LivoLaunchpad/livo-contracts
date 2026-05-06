@@ -147,13 +147,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         else require(supplyShares.length == 0, InvalidSupplyShares());
     }
 
-    /// @dev Shared postamble: registers fee config with the master handler and performs the
-    ///      deployer buy (if any). Event order: `SharesUpdated` fires strictly after `TokenLaunched`,
-    ///      and the deployer buy events fire last.
+    /// @dev Shared postamble: asks the token to self-register its fee config with the master
+    ///      handler, then performs the deployer buy (if any). Event order: `SharesUpdated` fires
+    ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
     function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
         internal
     {
-        MASTER_FEE_HANDLER.registerToken(token, feeReceivers);
+        ILivoToken(token).registerFees(feeReceivers);
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 

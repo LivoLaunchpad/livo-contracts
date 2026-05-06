@@ -5,6 +5,7 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
@@ -34,6 +35,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Contract handling fees for this token
     address public feeHandler;
+
+    /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
+    address public tokenFactory;
 
     /// @notice Token name
     string internal _tokenName;
@@ -72,6 +76,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         graduator = params.graduator;
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
+        tokenFactory = msg.sender;
         pair = ILivoGraduator(params.graduator).initialize(address(this));
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
@@ -125,6 +130,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     //////////////////////// fee accrual ////////////////////////
+
+    /// @notice Registers this token's initial fee shares in the master fee handler.
+    /// @dev Callable only by the factory that initialized the token. The handler infers the token
+    ///      from `msg.sender`, so this token contract is the only address registered.
+    function registerFees(ILivoFactory.FeeShare[] calldata feeShares) external {
+        require(msg.sender == tokenFactory, Unauthorized());
+        ILivoMasterFeeHandler(feeHandler).registerToken(feeShares);
+    }
 
     /// @notice Routes ETH fees to the fee handler for this token
     function accrueFees() external payable {

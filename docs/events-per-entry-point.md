@@ -24,6 +24,15 @@ The on-chain event sequence below is **unchanged** — only the emitter contract
 back-compatibility — the events match what `LivoFactoryUniV2Unified` / `LivoFactoryUniV4Unified`
 now emit on the dispatch path that produces the same token variant.
 
+## Master fee-handler registration note
+
+Unified factories no longer call `LivoMasterFeeHandler.registerToken` directly. After
+`LivoLaunchpad.TokenLaunched`, the factory calls `LivoToken.registerFees`, and the token
+self-registers in `LivoMasterFeeHandler` (`msg.sender` is the token). This preserves the log tail
+ordering: any initial `LivoMasterFeeHandler.DirectReceiverRegistered(token, receiver)` events are
+emitted first, then `LivoMasterFeeHandler.SharesUpdated(token, recipients, sharesBps)`, and then any
+deployer-buy events.
+
 ## Table of contents
 
 1. [createToken — V2 graduator + `LivoToken` (no anti-sniper)](#1-createtoken--livofactoryuniv2-v2-graduator-livotoken)
@@ -424,9 +433,9 @@ These events exist in `src/` but are only emitted via out-of-scope (admin / owne
 | `NewOwnerProposed` | `LivoToken` / `LivoTaxableTokenUniV4` | `proposeNewOwner` (token owner) |
 | `OwnershipTransferred` | `LivoToken` / `LivoTaxableTokenUniV4` | `acceptTokenOwnership`, `renounceOwnership` |
 | `FeeReceiverUpdated` | `LivoToken` / `LivoTaxableTokenUniV4` | `setFeeReceiver` (token owner) |
-| `SharesUpdated` (post-init) | `LivoFeeSplitter` | `setShares` (token owner). Also emitted during `initialize()` — see §4. |
-| `DirectReceiverRegistered` (post-init) | `LivoFeeSplitter` | `setShares` (token owner) — emitted per address newly added or promoted to direct. Also emitted during `initialize()` for every initial direct receiver. |
-| `DirectReceiverRemoved` | `LivoFeeSplitter` | `setShares` (token owner) — emitted per address that was direct beforehand and is no longer direct (demoted to claimable or removed entirely). Never emitted from `initialize()`. |
+| `SharesUpdated` (initial registration / post-init) | `LivoMasterFeeHandler` / `LivoFeeSplitter` | Master path: emitted during create via `factory -> LivoToken.registerFees -> LivoMasterFeeHandler.registerToken`, and by `setShares` (token owner). Splitter legacy path: emitted during `initialize()` and by `setShares`. |
+| `DirectReceiverRegistered` (initial registration / post-init) | `LivoMasterFeeHandler` / `LivoFeeSplitter` | Emitted per address newly added or promoted to direct; during master initial registration this is reached via `LivoToken.registerFees`. |
+| `DirectReceiverRemoved` | `LivoMasterFeeHandler` / `LivoFeeSplitter` | `setShares` (token owner) — emitted per address that was direct beforehand and is no longer direct (demoted to claimable or removed entirely). Never emitted from initial registration. |
 
 ---
 

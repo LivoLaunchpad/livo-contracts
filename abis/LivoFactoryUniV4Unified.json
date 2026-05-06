@@ -38,12 +38,7 @@
         "internalType": "address"
       },
       {
-        "name": "feeHandler",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "feeSplitterImplementation",
+        "name": "masterFeeHandler",
         "type": "address",
         "internalType": "address"
       }
@@ -59,32 +54,6 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "FEE_HANDLER",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoFeeHandler"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "FEE_SPLITTER_IMPLEMENTATION",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoFeeSplitter"
       }
     ],
     "stateMutability": "view"
@@ -111,6 +80,19 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoLaunchpad"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MASTER_FEE_HANDLER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoMasterFeeHandler"
       }
     ],
     "stateMutability": "view"
@@ -233,6 +215,11 @@
             "name": "shares",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "directFeesEnabled",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       },
@@ -313,11 +300,6 @@
         "name": "token",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "feeSplitter",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "payable"
@@ -379,6 +361,11 @@
             "name": "shares",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "directFeesEnabled",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       },
@@ -560,37 +547,6 @@
   },
   {
     "type": "event",
-    "name": "FeeSplitterCreated",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "feeSplitter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "recipients",
-        "type": "address[]",
-        "indexed": false,
-        "internalType": "address[]"
-      },
-      {
-        "name": "sharesBps",
-        "type": "uint256[]",
-        "indexed": false,
-        "internalType": "uint256[]"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "MaxBuyOnDeployBpsUpdated",
     "inputs": [
       {
@@ -685,12 +641,6 @@
         "type": "address",
         "indexed": false,
         "internalType": "address"
-      },
-      {
-        "name": "feeReceiver",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -764,6 +714,11 @@
   {
     "type": "error",
     "name": "InvalidTokenOwner",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MultipleDirectFeeReceivers",
     "inputs": []
   },
   {

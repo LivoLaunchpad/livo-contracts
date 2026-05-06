@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {TokenFeeConfigLib} from "src/libraries/TokenFeeConfigLib.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
@@ -33,9 +32,6 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     ///         Bounds per-deposit gas in `_depositSplit` (one external `.call` per direct receiver).
     uint256 internal constant MAX_DIRECT_RECEIVERS = 4;
 
-    /// @notice Launchpad whose factory whitelist gates `registerToken`.
-    ILivoLaunchpad public immutable LAUNCHPAD;
-
     mapping(address token => TokenFeeConfigLib.Config) internal _configs;
 
     /// @notice BPS share for every recipient (direct and claimable alike). `isDirectReceiver`
@@ -53,9 +49,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     ///         (claimable recipients) or from failed direct forwards (direct recipients).
     mapping(address token => mapping(address account => uint256)) internal _pendingClaims;
 
-    constructor(address launchpad) Ownable(msg.sender) {
-        LAUNCHPAD = ILivoLaunchpad(launchpad);
-    }
+    constructor() Ownable(msg.sender) {}
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
@@ -80,9 +74,13 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     }
 
     /// @notice One-shot registration of fee-receiver config for a freshly-deployed token.
-    ///         Callable only by addresses whitelisted as factories on the launchpad.
-    function registerToken(address token, ILivoFactory.FeeShare[] calldata feeShares) external {
-        require(LAUNCHPAD.whitelistedFactories(msg.sender), OnlyWhitelistedFactory());
+    ///         Callable only by the token itself. Factories should call the token's `registerFees`,
+    ///         which then self-registers here.
+    function registerToken(ILivoFactory.FeeShare[] calldata feeShares) external {
+        address token = msg.sender;
+        require(token.code.length > 0, Unauthorized());
+        require(ILivoToken(token).feeHandler() == address(this), Unauthorized());
+
         TokenFeeConfigLib.Config storage cfg = _configs[token];
         require(!cfg.registered, AlreadyRegistered());
         cfg.registered = true;

@@ -219,7 +219,7 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
-        feeHandler = new LivoMasterFeeHandler(address(launchpad));
+        feeHandler = new LivoMasterFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS

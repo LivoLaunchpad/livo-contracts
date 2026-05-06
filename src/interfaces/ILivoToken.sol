@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 interface ILivoToken is IERC20 {
     //////////////////////// Events //////////////////////
@@ -31,6 +32,10 @@ interface ILivoToken is IERC20 {
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
 
     function markGraduated() external;
+
+    /// @notice Registers the token's initial fee receiver config in its fee handler.
+    /// @dev Callable only by the factory that initialized the token.
+    function registerFees(ILivoFactory.FeeShare[] calldata feeShares) external;
 
     /// @notice Routes ETH fees to the token's fee handler for the token's fee receiver
     function accrueFees() external payable;

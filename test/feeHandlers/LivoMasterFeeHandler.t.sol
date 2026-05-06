@@ -156,6 +156,18 @@ contract LivoMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUniv
         arr[n - 1] = ILivoFactory.FeeShare({account: directs[n - 1], shares: 10_000 - acc, directFeesEnabled: true});
     }
 
+    function test_registerToken_rejectsNonTokenCaller() public {
+        vm.prank(alice);
+        vm.expectRevert(ILivoMasterFeeHandler.Unauthorized.selector);
+        feeHandler.registerToken(_fs(alice));
+    }
+
+    function test_tokenRegisterFees_rejectsNonFactoryCaller() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoMasterFeeHandler.Unauthorized.selector);
+        ILivoToken(token).registerFees(_fs(alice));
+    }
+
     function test_setShares_acceptsFourDirectReceivers() public {
         address[] memory directs = new address[](4);
         directs[0] = d0;

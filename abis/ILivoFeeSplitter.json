@@ -38,6 +38,19 @@
   },
   {
     "type": "function",
+    "name": "getDirectReceivers",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getRecipients",
     "inputs": [],
     "outputs": [
@@ -59,24 +72,31 @@
     "name": "initialize",
     "inputs": [
       {
-        "name": "feeHandler",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "token",
         "type": "address",
         "internalType": "address"
       },
       {
-        "name": "recipients",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "sharesBps",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
+        "name": "feeShares",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.FeeShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "directFeesEnabled",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
       }
     ],
     "outputs": [],
@@ -87,14 +107,26 @@
     "name": "setShares",
     "inputs": [
       {
-        "name": "recipients",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "sharesBps",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
+        "name": "feeShares",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.FeeShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "directFeesEnabled",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
       }
     ],
     "outputs": [],
@@ -121,6 +153,44 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DirectReceiverRegistered",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DirectReceiverRemoved",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false

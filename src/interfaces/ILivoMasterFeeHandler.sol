@@ -10,7 +10,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 interface ILivoMasterFeeHandler is ILivoClaims {
     ////////////////// Errors //////////////////
 
-    error OnlyWhitelistedFactory();
     error AlreadyRegistered();
     error NotRegistered();
     error Unauthorized();
@@ -48,8 +47,9 @@ interface ILivoMasterFeeHandler is ILivoClaims {
     function depositFees(address token) external payable;
 
     /// @notice Registers initial fee-receiver config for a newly-deployed token. One-shot per
-    ///         token. Callable only by addresses whitelisted as factories on the launchpad.
-    function registerToken(address token, ILivoFactory.FeeShare[] calldata feeShares) external;
+    ///         token. Callable only by the token itself; the token address is inferred from
+    ///         `msg.sender`.
+    function registerToken(ILivoFactory.FeeShare[] calldata feeShares) external;
 
     /// @notice Replaces the fee-receiver config for `token`. Callable only by the token's current
     ///         non-zero owner. Snapshots claimable accrual into pending before overwriting so no
