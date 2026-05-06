@@ -8,12 +8,28 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 - **Double emissions** in raw traces caused by `vm.expectEmit` are collapsed to a single entry here.
 - **Reproduce**: `forge test --nmc Invariant -vvvv --mt <testName>` — the event ordering below matches the resulting trace.
 
+## Factory consolidation note
+
+The launchpad now whitelists **two unified factories** instead of six:
+
+- `LivoFactoryUniV2Unified` — V2 family. Dispatches between `LivoToken` and `LivoTokenSniperProtected`
+  based on `AntiSniperConfigs.protectionWindowSeconds != 0`.
+- `LivoFactoryUniV4Unified` — V4 family. Dispatches between `LivoToken`, `LivoTokenSniperProtected`,
+  `LivoTaxableTokenUniV4`, and `LivoTaxableTokenUniV4SniperProtected` based on whether
+  `TaxConfigInit.taxDurationSeconds != 0` and/or `AntiSniperConfigs.protectionWindowSeconds != 0`.
+
+The on-chain event sequence below is **unchanged** — only the emitter contract address changes
+(it's now the unified factory). Entry-point names below referring to old factory contracts
+(`LivoFactoryUniV2`, `LivoFactoryUniV4`, `LivoFactoryTaxToken`, etc.) are kept for indexer
+back-compatibility — the events match what `LivoFactoryUniV2Unified` / `LivoFactoryUniV4Unified`
+now emit on the dispatch path that produces the same token variant.
+
 ## Table of contents
 
-1. [createToken — `LivoFactoryUniV2` (V2 graduator, LivoToken)](#1-createtoken--livofactoryuniv2-v2-graduator-livotoken)
-2. [createToken — `LivoFactoryUniV4` (V4 graduator, LivoToken)](#2-createtoken--livofactoryuniv4-v4-graduator-livotoken)
-3. [createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax`](#3-createtoken--livofactorytaxtoken--livofactoryextendedtax-v4-graduator-livotaxabletokenuniv4)
-4. [createToken with a fee splitter — any factory](#4-createtoken-with-a-fee-splitter--any-factory)
+1. [createToken — V2 graduator + `LivoToken` (no anti-sniper)](#1-createtoken--livofactoryuniv2-v2-graduator-livotoken)
+2. [createToken — V4 graduator + `LivoToken` (no tax, no anti-sniper)](#2-createtoken--livofactoryuniv4-v4-graduator-livotoken)
+3. [createToken — V4 graduator + `LivoTaxableTokenUniV4` (tax, no anti-sniper)](#3-createtoken--livofactorytaxtoken--livofactoryextendedtax-v4-graduator-livotaxabletokenuniv4)
+4. [createToken with a fee splitter — any dispatch path](#4-createtoken-with-a-fee-splitter--any-factory)
 5. [buyTokensWithExactEth (pre-graduation)](#5-buytokenswithexacteth--pre-graduation)
 6. [buyTokensWithExactEth that triggers V2 graduation](#6-buytokenswithexacteth-that-triggers-v2-graduation)
 7. [buyTokensWithExactEth that triggers V4 graduation](#7-buytokenswithexacteth-that-triggers-v4-graduation)
@@ -23,7 +39,7 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 11. [V4 post-graduation sell](#11-v4-post-graduation-sell)
 12. [`LivoFeeHandler.claim`](#12-livofeehandlerclaimaddress-tokens)
 13. [`LivoFeeSplitter.claim`](#13-livofeesplitterclaimaddress-tokens)
-14. [Sniper-protected factory variants](#14-sniper-protected-factory-variants-createtoken)
+14. [Anti-sniper dispatch paths](#14-sniper-protected-factory-variants-createtoken)
 
 ---
 
@@ -42,11 +58,13 @@ Reference for indexers, subgraphs, monitoring and auditing: which events — bot
 
 ---
 
-## 1. createToken — `LivoFactoryUniV2` (V2 graduator, `LivoToken`)
+## 1. createToken — `LivoFactoryUniV2Unified` (V2 graduator, `LivoToken`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares)` (payable).
+Dispatched by `LivoFactoryUniV2Unified.createToken(...)` when `antiSniperCfg.protectionWindowSeconds == 0` (no anti-sniper). For the anti-sniper variant of this same factory, see §14.2.
 
-Same dispatch shape as every other factory: `feeReceivers.length == 1` → direct receiver, `>= 2` → splitter clone is deployed; `msg.value > 0` triggers a deployer buy distributed across `supplyShares`. The one V2-specific behaviour is `tokenOwner = address(0)` (ownership renounced at creation), which makes the fee receiver permanent — there is no `setFeeReceiver` path later.
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, AntiSniperConfigs antiSniperCfg)` (payable).
+
+Same dispatch shape as every other factory: `feeReceivers.length == 1` → direct receiver, `>= 2` → splitter clone is deployed; `msg.value > 0` triggers a deployer buy distributed across `supplyShares`. The one V2-specific behaviour is `tokenOwner = address(0)` (ownership always renounced at creation), which makes the fee receiver permanent — there is no `setFeeReceiver` path later.
 
 ### 1a. Single fee receiver, no deployer buy (`msg.value == 0`, `feeReceivers.length == 1`)
 
@@ -81,9 +99,11 @@ Test: `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryUniV4DeployerBuyT
 
 ---
 
-## 2. createToken — `LivoFactoryUniV4` (V4 graduator, `LivoToken`)
+## 2. createToken — `LivoFactoryUniV4Unified` (V4 graduator, `LivoToken`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership)` (payable).
+Dispatched by `LivoFactoryUniV4Unified.createToken(...)` when both `taxCfg.taxDurationSeconds == 0` and `antiSniperCfg.protectionWindowSeconds == 0`. For the tax / anti-sniper / both variants of this same factory, see §3 and §14.
+
+Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg, AntiSniperConfigs antiSniperCfg)` (payable).
 
 Differs from §1 by using the Uniswap V4 graduator: no V2 pair is created, instead a V4 pool is initialized. `tokenOwner` in the `TokenCreated` event below is `msg.sender` when `renounceOwnership == false` and `address(0)` when `renounceOwnership == true`.
 
@@ -105,11 +125,13 @@ Same as 2a plus the deployer-buy tail (same 4 events as §1b: `Transfer`, `LivoT
 
 ---
 
-## 3. createToken — `LivoFactoryTaxToken` / `LivoFactoryExtendedTax` (V4 graduator, `LivoTaxableTokenUniV4`)
+## 3. createToken — `LivoFactoryUniV4Unified` (V4 graduator, `LivoTaxableTokenUniV4`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg)` (payable). `renounceOwnership` follows the same convention as §2: `address(0)` when `true`, `msg.sender` when `false`.
+Dispatched by `LivoFactoryUniV4Unified.createToken(...)` when `taxCfg.taxDurationSeconds != 0` and `antiSniperCfg.protectionWindowSeconds == 0` (tax-only variant). For the tax + anti-sniper combo, see §14.3.
 
-Differs from §2 only by adding one extra event from the taxable-token initializer. `LivoFactoryExtendedTax` is owner-gated and lifts caps but emits the same events in the same order.
+Signature: same as §2 (full unified `createToken`). `renounceOwnership` follows the same convention as §2: `address(0)` when `true`, `msg.sender` when `false`.
+
+Differs from §2 only by adding one extra event from the taxable-token initializer.
 
 1. **`LivoFactory.TokenCreated`**.
 2. **`PoolManager.Initialize`** (external V4).
@@ -123,8 +145,7 @@ Differs from §2 only by adding one extra event from the taxable-token initializ
 With deployer buy: append the same 4-event buy tail as §1b.
 
 Tests:
-- `test/factories/LivoFactoryTaxToken.t.sol::test_createToken_assertMaxSellTaxAccepted`
-- `test/factories/LivoFactoryExtendedTax.t.sol::test_createToken_succeedsWhenCallerIsOwner`
+- `test/e2e/variants/E2E_FactoryTaxToken.t.sol`
 - `test/factories/LivoFactoryDeployerBuy.t.sol::LivoFactoryTaxTokenDeployerBuyTest::test_createToken_deployerBuy`
 
 ---
@@ -329,13 +350,13 @@ Test: `test/feeSplitters/LivoFeeSplitter.t.sol::test_claim_assertEmitsEvents` (i
 
 ---
 
-## 14. Sniper-protected factory variants (`createToken`)
+## 14. Anti-sniper dispatch paths (`createToken`)
 
-The sniper-protected factories emit the exact same sequence as their non-protected twins (§1, §2, §3) **plus one extra event** — `SniperProtectionInitialized` — fired from the token's initializer after the mint (§14.1) or after `LivoTaxableTokenInitialized` (§14.3). Everything else (splitter tail from §4, deployer-buy tail from §1c, post-event ordering of `TokenLaunched`) is unchanged.
+These are the dispatch paths of `LivoFactoryUniV2Unified.createToken` / `LivoFactoryUniV4Unified.createToken` taken when `antiSniperCfg.protectionWindowSeconds != 0`. They emit the exact same sequence as their non-protected twins (§1, §2, §3) **plus one extra event** — `SniperProtectionInitialized` — fired from the token's initializer after the mint (§14.1) or after `LivoTaxableTokenInitialized` (§14.3). Everything else (splitter tail from §4, deployer-buy tail from §1c, post-event ordering of `TokenLaunched`) is unchanged.
 
-### 14.1. `LivoFactoryUniV4SniperProtected.createToken` (V4 graduator, `LivoTokenSniperProtected`)
+### 14.1. `LivoFactoryUniV4Unified.createToken` (V4 graduator, `LivoTokenSniperProtected`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention: `address(0)` when `true`, `msg.sender` when `false`.
+Dispatch path: `taxCfg.taxDurationSeconds == 0` and `antiSniperCfg.protectionWindowSeconds != 0`. Signature is the full unified V4 `createToken` (see §2). `renounceOwnership` follows the §2 convention.
 
 Same event sequence as §2a, with `SniperProtectionInitialized` inserted between the mint and OZ `Initialized`:
 
@@ -350,11 +371,11 @@ Same event sequence as §2a, with `SniperProtectionInitialized` inserted between
 
 With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
 
-Test: `test/factories/LivoFactoryUniV4SniperProtected.t.sol::test_createToken_happyPath`.
+Test: `test/e2e/variants/E2E_FactorySniperProtected.t.sol`.
 
-### 14.2. `LivoFactoryUniV2SniperProtected.createToken` (V2 graduator, `LivoTokenSniperProtected`)
+### 14.2. `LivoFactoryUniV2Unified.createToken` (V2 graduator, `LivoTokenSniperProtected`)
 
-Signature identical to §14.1. Uses the V2 graduator (ownership renounced at creation, `tokenOwner = address(0)` in `TokenCreated`). Event sequence mirrors §1a plus `SniperProtectionInitialized`. As in §1a, the UniV2 pair is **not** deployed at this point — only its CREATE2 address is reserved; deployment happens at graduation (see §6):
+Dispatch path: `antiSniperCfg.protectionWindowSeconds != 0`. Uses the V2 graduator (ownership always renounced at creation, `tokenOwner = address(0)` in `TokenCreated`). Event sequence mirrors §1a plus `SniperProtectionInitialized`. As in §1a, the UniV2 pair is **not** deployed at this point — only its CREATE2 address is reserved; deployment happens at graduation (see §6):
 
 1. **`LivoFactory.TokenCreated`** (`tokenOwner = address(0)`).
 2. **`LivoGraduator.PairInitialized`** — precomputed CREATE2 address; pair contract not yet deployed.
@@ -363,11 +384,11 @@ Signature identical to §14.1. Uses the V2 graduator (ownership renounced at cre
 5. **`Initializable.Initialized`** (`version=1`).
 6. **`LivoLaunchpad.TokenLaunched`**.
 
-Test: `test/factories/LivoFactoryUniV2SniperProtected.t.sol::test_createToken_happyPath_ownerIsZero`.
+Test: `test/e2e/variants/E2E_FactoryUniV2SniperProtected.t.sol`.
 
-### 14.3. `LivoFactoryTaxTokenSniperProtected.createToken` (V4 graduator, `LivoTaxableTokenUniV4SniperProtected`)
+### 14.3. `LivoFactoryUniV4Unified.createToken` (V4 graduator, `LivoTaxableTokenUniV4SniperProtected`)
 
-Signature: `createToken(string name, string symbol, bytes32 salt, FeeShare[] feeReceivers, SupplyShare[] supplyShares, bool renounceOwnership, TaxConfigInit taxCfg, AntiSniperConfigs antiSniperCfg)` (payable). `renounceOwnership` follows the §2 convention.
+Dispatch path: `taxCfg.taxDurationSeconds != 0` and `antiSniperCfg.protectionWindowSeconds != 0` (tax + anti-sniper). Signature is the full unified V4 `createToken` (see §2). `renounceOwnership` follows the §2 convention.
 
 Same sequence as §3 plus `SniperProtectionInitialized` after `LivoTaxableTokenInitialized`:
 
@@ -383,7 +404,7 @@ Same sequence as §3 plus `SniperProtectionInitialized` after `LivoTaxableTokenI
 
 With splitter: append §4 tail. With deployer buy: append §1c 4-event tail.
 
-Test: `test/factories/LivoFactoryTaxTokenSniperProtected.t.sol::test_createToken_happyPath`.
+Test: `test/e2e/variants/E2E_FactoryTaxTokenSniperProtected.t.sol`.
 
 ---
 

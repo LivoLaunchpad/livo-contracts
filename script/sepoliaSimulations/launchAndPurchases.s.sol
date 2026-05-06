@@ -2,11 +2,11 @@
 pragma solidity 0.8.28;
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoFactoryUniV2} from "src/factories/LivoFactoryUniV2.sol";
-import {LivoFactoryUniV4} from "src/factories/LivoFactoryUniV4.sol";
-import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
+import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
 
 contract BuySellSimulations is Script {
@@ -14,14 +14,12 @@ contract BuySellSimulations is Script {
 
     function run() public {
         address launchpadAddress = vm.envAddress("LIVOLAUNCHPAD");
-        address factoryV2Address = vm.envAddress("FACTORY_V2");
-        address factoryV4Address = vm.envAddress("FACTORY_V4");
-        address factoryTaxAddress = vm.envAddress("FACTORY_TAX");
+        address factoryV2Address = vm.envAddress("FACTORY_UNIV2_UNIFIED");
+        address factoryV4Address = vm.envAddress("FACTORY_UNIV4_UNIFIED");
 
         LivoLaunchpad launchpad = LivoLaunchpad(launchpadAddress);
-        LivoFactoryUniV2 factoryV2 = LivoFactoryUniV2(factoryV2Address);
-        LivoFactoryUniV4 factoryV4 = LivoFactoryUniV4(factoryV4Address);
-        LivoFactoryTaxToken factoryTax = LivoFactoryTaxToken(factoryTaxAddress);
+        LivoFactoryUniV2Unified factoryV2 = LivoFactoryUniV2Unified(factoryV2Address);
+        LivoFactoryUniV4Unified factoryV4 = LivoFactoryUniV4Unified(factoryV4Address);
 
         vm.startBroadcast();
         bytes32 salt = bytes32(uint256(0x123));
@@ -29,13 +27,20 @@ contract BuySellSimulations is Script {
         ILivoFactory.FeeShare[] memory devFeeShare = new ILivoFactory.FeeShare[](1);
         devFeeShare[0] = ILivoFactory.FeeShare({account: LIVODEV, shares: 10_000});
         ILivoFactory.SupplyShare[] memory noSupplyShares = new ILivoFactory.SupplyShare[](0);
+        TaxConfigInit memory noTaxCfg = TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
+        AntiSniperConfigs memory noSniperCfg = AntiSniperConfigs({
+            maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
+        });
 
-        (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares);
-        (address TOKEN2,) = factoryV4.createToken("projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares, false);
+        (address TOKEN1,) = factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares, noSniperCfg);
+        (address TOKEN2,) = factoryV4.createToken(
+            "projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares, false, noTaxCfg, noSniperCfg
+        );
         TaxConfigInit memory taxCfg =
-            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 500, taxDurationSeconds: uint32(14 days)});
-        (address TOKEN3,) =
-            factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, false, taxCfg);
+            TaxConfigInit({buyTaxBps: 0, sellTaxBps: 400, taxDurationSeconds: uint32(14 days)});
+        (address TOKEN3,) = factoryV4.createToken(
+            "projecTaxTV4", "PROJECTAXV4", salt, devFeeShare, noSupplyShares, false, taxCfg, noSniperCfg
+        );
 
         uint256 deadline = block.timestamp + 300 days;
 

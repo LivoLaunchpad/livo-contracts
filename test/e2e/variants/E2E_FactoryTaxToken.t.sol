@@ -27,8 +27,9 @@ contract E2E_FactoryTaxToken is
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
-        (token,) =
-            factoryTax.createToken("E2E", "E2E", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(7 days)));
+        (token,) = factoryTax.createToken(
+            "E2E", "E2E", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+        );
     }
 
     function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
@@ -37,8 +38,9 @@ contract E2E_FactoryTaxToken is
         returns (address token, address splitter)
     {
         vm.prank(creator);
-        (token, splitter) =
-            factoryTax.createToken("E2E", "E2E", salt, feeReceivers, _noSs(), false, _taxCfg(0, 400, uint32(7 days)));
+        (token, splitter) = factoryTax.createToken(
+            "E2E", "E2E", salt, feeReceivers, _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+        );
     }
 
     function _createTokenWithDeployerBuy(bytes32 salt, uint256 ethValue, ILivoFactory.SupplyShare[] memory supplyShares)
@@ -49,7 +51,14 @@ contract E2E_FactoryTaxToken is
         vm.deal(creator, ethValue);
         vm.prank(creator);
         (token,) = factoryTax.createToken{value: ethValue}(
-            "E2E", "E2E", salt, _fs(creator), supplyShares, false, _taxCfg(0, 400, uint32(7 days))
+            "E2E",
+            "E2E",
+            salt,
+            _fs(creator),
+            supplyShares,
+            false,
+            _taxCfg(0, 400, uint32(7 days)),
+            _emptyAntiSniperCfg()
         );
     }
 

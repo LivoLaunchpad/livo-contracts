@@ -52,8 +52,6 @@ interface ILivoFactory {
 
     event MaxBuyOnDeployBpsUpdated(uint256 newMaxBuyOnDeployBps);
 
-    event TokenImplementationUpdated(address newTokenImplementation);
-
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();
@@ -63,7 +61,6 @@ interface ILivoFactory {
     error InvalidShares();
     error InvalidTokenAddress();
     error InvalidBuyOnDeploy();
-    error InvalidTokenImplementation();
     error InvalidMaxBuyOnDeployBps();
 
     ////////////////// Views //////////////////////

@@ -17,7 +17,14 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         // Create token with creator as msg.sender (owner), alice as feeReceiver
         vm.prank(creator);
         (testToken,) = factoryV4.createToken(
-            "TestToken", "TEST", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(alice), _noSs(), false
+            "TestToken",
+            "TEST",
+            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _fs(alice),
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
         );
 
         _graduateToken();
@@ -34,7 +41,14 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         // Create token with creator as msg.sender (owner), alice as feeReceiver
         vm.prank(creator);
         (testToken,) = factoryV4.createToken(
-            "TestToken", "TEST", _nextValidSalt(address(factoryV4), address(livoToken)), _fs(alice), _noSs(), false
+            "TestToken",
+            "TEST",
+            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _fs(alice),
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
         );
 
         _graduateToken();

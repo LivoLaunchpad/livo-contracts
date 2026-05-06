@@ -6,8 +6,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
-import {LivoToken} from "src/tokens/LivoToken.sol";
-
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
@@ -22,8 +20,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     uint256 internal constant BASIS_POINTS = 10_000;
 
-    /// @notice Token implementation contract used as the clone source
-    ILivoToken internal _tokenImplementation;
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
     /// @notice Graduator contract that handles token graduation to Uniswap
@@ -41,14 +37,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @notice Initializes the factory with its immutable dependencies
     constructor(
         address launchpad,
-        address tokenImplementation,
         address bondingCurve,
         address graduator,
         address feeHandler,
         address feeSplitterImplementation
     ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
-        _tokenImplementation = ILivoToken(tokenImplementation);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
@@ -56,20 +50,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
-
-    /// @notice Returns the token implementation contract used as the clone source
-    // forge-lint: disable-next-line(mixed-case-function)
-    function TOKEN_IMPLEMENTATION() public view returns (ILivoToken) {
-        return _tokenImplementation;
-    }
-
-    /// @notice Updates the token implementation contract used as the clone source
-    /// @param newTokenImplementation Address of the new token implementation
-    function setTokenImplementation(address newTokenImplementation) external onlyOwner {
-        require(newTokenImplementation != address(0), InvalidTokenImplementation());
-        _tokenImplementation = ILivoToken(newTokenImplementation);
-        emit TokenImplementationUpdated(newTokenImplementation);
-    }
 
     /// @notice Updates the max aggregate buy-on-deploy percentage
     /// @param newMaxBuyOnDeployBps New max in basis points (e.g. 1000 = 10%)
@@ -206,7 +186,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @dev Shared preamble for every factory's `createToken`: validates fee shares, conditionally
     ///      validates supply shares (requires empty when msg.value == 0), and resolves fee routing.
     ///      `feeSplitter` is cloned here without emitting — `FeeSplitterCreated` is emitted later
-    ///      by `_finalizeCreateToken` so the indexer sees `TokenCreated` first.
+    ///      by `_finalizeCreation` so the indexer sees `TokenCreated` first.
     ///      Returns a `FeeRouting` memory struct (1 stack slot) to keep caller stacks shallow.
     function _validateInputsAndResolveFees(
         FeeShare[] calldata feeReceivers,
@@ -223,7 +203,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @dev Shared postamble: initializes the splitter (if any) and performs the deployer buy (if any).
     ///      Event order: `FeeSplitterCreated` fires strictly after `TokenLaunched`, and the deployer
     ///      buy events fire last.
-    function _finalizeCreateToken(
+    function _finalizeCreation(
         address token,
         address feeSplitter,
         FeeShare[] calldata feeReceivers,
@@ -241,21 +221,23 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
     }
 
-    /// @dev Deploys and initializes a non-tax `LivoToken` clone. Shared by `LivoFactoryUniV4`
-    ///      (passes `msg.sender` as `tokenOwner`) and `LivoFactoryUniV2` (passes `address(0)`).
-    ///      `TokenCreated` must be emitted BEFORE `initialize()` because the indexer creates the
-    ///      TokenData entity from that event; events emitted inside `initialize()` depend on it.
-    function _createAndInitializeToken(
+    /// @dev Clones the resolved token implementation deterministically, enforces the `0x1110` vanity
+    ///      suffix, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
+    ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
+    ///      `TokenCreated` is emitted BEFORE `initialize()` because the indexer creates the TokenData
+    ///      entity from that event; events emitted inside `initialize()` depend on it.
+    function _cloneAndCreateToken(
+        address impl,
         string calldata name,
         string calldata symbol,
-        address feeHandler_,
-        address feeReceiver,
         bytes32 salt,
-        address tokenOwner
-    ) internal returns (address token) {
+        address tokenOwner,
+        address feeHandler_,
+        address feeReceiver
+    ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         _validateNameSymbol(name, symbol);
 
-        token = Clones.cloneDeterministic(address(_tokenImplementation), salt);
+        token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
@@ -263,19 +245,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
             token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
         );
 
-        LivoToken(token)
-            .initialize(
-                ILivoToken.InitializeParams({
-                    name: name,
-                    symbol: symbol,
-                    tokenOwner: tokenOwner,
-                    graduator: address(GRADUATOR),
-                    launchpad: address(LAUNCHPAD),
-                    feeHandler: feeHandler_,
-                    feeReceiver: feeReceiver
-                })
-            );
-
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+        params = ILivoToken.InitializeParams({
+            name: name,
+            symbol: symbol,
+            tokenOwner: tokenOwner,
+            graduator: address(GRADUATOR),
+            launchpad: address(LAUNCHPAD),
+            feeHandler: feeHandler_,
+            feeReceiver: feeReceiver
+        });
     }
 }

@@ -4,6 +4,16 @@
 
 The Livo factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0x1110` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
 
+Since the consolidation, the launchpad whitelists **two unified factories** instead of six:
+
+- `LivoFactoryUniV2Unified` — V2 family. Dispatches between two token implementations
+  (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`) based on whether `AntiSniperConfigs` is configured.
+- `LivoFactoryUniV4Unified` — V4 family. Dispatches between four token implementations
+  (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
+  based on whether `TaxConfigInit` and/or `AntiSniperConfigs` are configured.
+
+**Critical**: pick the right token implementation **before** mining the salt. Each factory exposes a `previewTokenImplementation(...)` view that mirrors the full `createToken` input set (minus identity fields `name`, `symbol`, `salt`) and returns the implementation address that will be cloned. Always call it first, then use that returned address as `TOKEN_IMPLEMENTATION` in the CREATE2 calculation below.
+
 ## How CREATE2 Addresses Work
 
 The deployed address is deterministic, computed as:
@@ -18,9 +28,9 @@ Three factors control the final address:
 |--------|-------|-----------|
 | `deployer` | Factory contract address | Fixed per factory |
 | `salt` | `bytes32` passed to `createToken()` | User-controlled |
-| `initcode` | ERC-1167 minimal proxy bytecode (depends on `TOKEN_IMPLEMENTATION`) | Fixed per factory |
+| `initcode` | ERC-1167 minimal proxy bytecode (depends on the dispatched token implementation) | Fixed per `(factory, dispatch path)` pair |
 
-Since `deployer` and `initcode` are fixed for a given factory deployment, **the only variable is `salt`**.
+Since `deployer` and `initcode` are fixed for a given factory + dispatch path, **the only variable is `salt`**. The dispatch path is determined by the `TaxConfigInit` and `AntiSniperConfigs` you intend to pass to `createToken` — call `previewTokenImplementation(...)` with those exact values to get the implementation address.
 
 ## The Initcode
 
@@ -28,41 +38,25 @@ The ERC-1167 minimal proxy initcode is 55 bytes, deterministic given the impleme
 
 ```
 0x3d602d80600a3d3981f3363d3d373d3d3d363d73
-  <20-byte TOKEN_IMPLEMENTATION address>
+  <20-byte token implementation address (from previewTokenImplementation)>
 0x5af43d82803e903d91602b57fd5bf3
 ```
 
 This is the bytecode that CREATE2 hashes. It comes directly from [OpenZeppelin's Clones.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/proxy/Clones.sol).
 
-### Example: `LivoFactory (V2)` on Sepolia
+### Recommended flow
 
-Using `LivoFactory (V2)` at `0x4b092C01952d8e87bd0eAEdc28737d0154619e8C` with `TOKEN_IMPLEMENTATION` (`LivoToken`) at `0xDF1F1EfFb7733fA17090aFE2A86034CED186DeEa`:
+1. Build the `createToken` arguments you want to submit (`feeReceivers`, `supplyShares`, `renounceOwnership`, `taxCfg`, `antiSniperCfg`).
+2. Call `factory.previewTokenImplementation(...)` with those same arguments (minus `name`, `symbol`, `salt`) — returns the implementation address.
+3. Compute `initcode = 0x3d…73 ++ <impl> ++ 0x5af4…5bf3` and `initcodeHash = keccak256(initcode)`.
+4. Mine `salt` against `(factory, initcodeHash)` until `last 2 bytes == 0x1110`.
+5. Submit `factory.createToken(name, symbol, salt, ...)` with the same arguments.
 
-```
-initcode (55 bytes):
-  3d602d80600a3d3981f3363d3d373d3d3d363d73   ← ERC-1167 prefix (20 bytes, fixed)
-  DF1F1EfFb7733fA17090aFE2A86034CED186DeEa   ← TOKEN_IMPLEMENTATION address (20 bytes)
-  5af43d82803e903d91602b57fd5bf3               ← ERC-1167 suffix (15 bytes, fixed)
-
-initcodeHash = keccak256(initcode)
-```
-
-Then the CREATE2 address is derived from:
-
-```
-keccak256(
-  0xff                                                               ← fixed prefix (1 byte)
-  4b092C01952d8e87bd0eAEdc28737d0154619e8C                           ← deployer: LivoFactory V2 (20 bytes)
-  <salt>                                                             ← the bytes32 salt you're brute-forcing (32 bytes)
-  keccak256(3d...73 DF1F...DeEa 5af4...5bf3)                        ← initcodeHash (32 bytes)
-)[12:]                                                               ← take last 20 bytes = address
-```
-
-For `LivoFactoryTaxToken (V4)` at `0x5ba05f2326e73D46d66bf80aF43a768CEd2e4a5d`, the same logic applies but using `LivoTaxableTokenUniV4` (`0x167a40f0C706381D5Ead24802c49cfD408B75aDd`) as the implementation — which produces a **different `initcodeHash`**.
+If steps 2 and 5 use the same arguments, the deployed address is guaranteed to match the predicted one. If you change `taxCfg` or `antiSniperCfg` between preview and submit, the dispatched implementation may differ and the salt becomes invalid (the call reverts with `InvalidTokenAddress`).
 
 ## The Constraint
 
-Both `LivoFactoryUniV4` and `LivoFactoryTaxToken` enforce:
+The unified factories enforce:
 
 ```solidity
 require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
@@ -137,7 +131,7 @@ function findValidSalt(): { salt: string; tokenAddress: string } {
 
 ## Important Notes
 
-- **`INITCODE_HASH` is constant** for a given factory — compute it once at startup, not per call.
-- **Different factories have different `TOKEN_IMPLEMENTATION` addresses**, so the initcode hash differs between `LivoFactoryUniV4` and `LivoFactoryTaxToken`. Make sure you use the right implementation address for the factory you're calling.
-- **Salt uniqueness**: each salt can only be used once per factory. If a salt has already been used (token deployed), `create2` will revert. If you need to handle retries, start iterating from a random offset.
+- **`INITCODE_HASH` is constant** for a given `(factory, dispatch path)` pair — compute it once per dispatch path at startup, not per call. If your UI lets users toggle anti-sniper / tax options, recompute the hash whenever the toggles change.
+- **Each unified factory has multiple token implementations**. `LivoFactoryUniV2Unified` has 2 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`); `LivoFactoryUniV4Unified` has 4 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`). The dispatch is fully determined by the `taxCfg` / `antiSniperCfg` you pass — always call `previewTokenImplementation(...)` with the **same arguments** you intend to submit, and use its return value as `TOKEN_IMPLEMENTATION`.
+- **Salt uniqueness**: each salt can only be used once per `(factory, implementation)` pair. If a salt has already been used (token deployed), `create2` will revert. If you need to handle retries, start iterating from a random offset.
 - **On-chain verification**: you can call `Clones.predictDeterministicAddress(implementation, salt, factory)` via a static call to double-check your off-chain computation before submitting.

@@ -10,21 +10,35 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
         factoryTax.createToken(
-            "TestToken", "TEST", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(4 days))
+            "TestToken",
+            "TEST",
+            "0x12",
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfg(0, 401, uint32(4 days)),
+            _emptyAntiSniperCfg()
         );
     }
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxDuration.selector));
         factoryTax.createToken(
-            "TestToken", "TEST", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(15 days))
+            "TestToken",
+            "TEST",
+            "0x12",
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfg(0, 400, uint32(15 days)),
+            _emptyAntiSniperCfg()
         );
     }
 

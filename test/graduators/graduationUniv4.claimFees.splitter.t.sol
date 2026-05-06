@@ -42,7 +42,14 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
     {
         vm.prank(creator);
         (address token, address splitter) = factoryV4.createToken(
-            name, symbol, _nextValidSalt(address(factoryV4), address(livoToken)), _feeShares(), _noSs(), false
+            name,
+            symbol,
+            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _feeShares(),
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
         );
         splitterAddress = splitter;
         return token;
@@ -183,7 +190,8 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
             _feeShares(),
             _noSs(),
             false,
-            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
+            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
+            _emptyAntiSniperCfg()
         );
         splitterAddress = splitter;
         return token;

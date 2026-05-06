@@ -29,15 +29,9 @@ library DeploymentsMainnet {
     address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0x5AD0311eD744fe0a43C244E44E2075758a924F36;
     address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xf8c0796B6500309f9b08163e33F16F2448254A29;
 
-    // --- Factories ---
-    address internal constant FACTORY_UNIV2 = 0x474D8aF8f3B7003BE53ad1B9266cea074060B7aF;
-    address internal constant FACTORY_UNIV4 = 0xD2c2af16c76f2640fDF1208B6fEA107059079ffc;
-    address internal constant FACTORY_TAX_TOKEN = 0x57aA990063b49cABf3EE9FeB49dca8DADc9511cD;
-
-    /// @notice Sniper-protected factories
-    address internal constant FACTORY_UNIV2_SNIPER_PROTECTED = 0xef4EE2b87A7EAb545395E3dD4bF5931f51d39A34;
-    address internal constant FACTORY_UNIV4_SNIPER_PROTECTED = 0x8f8142E3438bF05e50F8322ce159C507Cc21A577;
-    address internal constant FACTORY_TAX_TOKEN_SNIPER_PROTECTED = 0x1F630Ae795353Dbee4E8a48ce242Fb18479A9333;
+    // --- Factories (unified) ---
+    address internal constant FACTORY_UNIV2_UNIFIED = address(0);
+    address internal constant FACTORY_UNIV4_UNIFIED = address(0);
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

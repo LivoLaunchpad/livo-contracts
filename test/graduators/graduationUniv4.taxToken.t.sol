@@ -9,7 +9,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 
@@ -451,10 +451,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
         vm.prank(creator);
         factoryTax.createToken(
-            "InvalidToken", "INV", "0x003", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(14 days))
+            "InvalidToken",
+            "INV",
+            "0x003",
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfg(0, 401, uint32(14 days)),
+            _emptyAntiSniperCfg()
         );
     }
 
@@ -789,9 +796,16 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
         factoryTax.createToken(
-            "TestToken", "TEST", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(4 days))
+            "TestToken",
+            "TEST",
+            "0x12",
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfg(0, 401, uint32(4 days)),
+            _emptyAntiSniperCfg()
         );
     }
 
