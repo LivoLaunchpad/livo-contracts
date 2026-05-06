@@ -5,13 +5,12 @@ import {BaseUniswapV4FeesTests, BaseUniswapV4ClaimFeesBase} from "test/graduator
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Base for multi-recipient V4 fee tests — creates tokens with a multi-recipient `feeReceivers`
 ///         and overrides claim/claimable helpers to route through the master fee handler.
-abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
+abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
     address public shareholder1;
     address public shareholder2;
 
@@ -69,16 +68,16 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
 }
 
 // ============================================
-// V4 + FeeSplitter + LivoToken (normal)
+// V4 + multi-recipient master fee handler + LivoToken (normal)
 // ============================================
 
-contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
+contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTests {
     function setUp() public override {
         super.setUp();
     }
 
-    /// @notice Graduation succeeds with fee splitter
-    function test_graduation_withFeeSplitter() public createAndGraduateToken {
+    /// @notice Graduation succeeds with multi-recipient master fee config
+    function test_graduation_withMultiRecipientFees() public createAndGraduateToken {
         assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
     }
 
@@ -108,7 +107,7 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
 
         uint256 totalShareholderFees = (shareholder1.balance - s1Before) + (shareholder2.balance - s2Before);
 
-        // graduation compensation (0.1 ETH) is routed through the splitter to shareholders
+        // graduation compensation (0.1 ETH) is routed through the master handler to shareholders
         uint256 graduationCompensation = CREATOR_GRADUATION_COMPENSATION;
         uint256 lpFeesOnly = totalShareholderFees - graduationCompensation;
 
@@ -117,7 +116,7 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
     }
 
     /// @notice getClaimable on master handler returns correct values before claim
-    function test_getClaimable_splitter() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
+    function test_getClaimable_multiRecipient() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         vm.prank(shareholder1);
         feeHandler.claim(_singleToken(testToken));
 
@@ -142,11 +141,11 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
 }
 
 // ============================================
-// V4 + FeeSplitter + TaxToken
+// V4 + multi-recipient master fee handler + TaxToken
 // ============================================
 
-contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSplitterV4BaseTests {
-    function setUp() public override(TaxTokenUniV4BaseTests, FeeSplitterV4BaseTests) {
+contract UniswapV4ClaimFees_MultiRecipient_TaxToken is TaxTokenUniV4BaseTests, MultiRecipientV4BaseTests {
+    function setUp() public override(TaxTokenUniV4BaseTests, MultiRecipientV4BaseTests) {
         super.setUp();
         implementation = ILivoToken(address(taxTokenImpl));
         SELL_TAX_BPS = DEFAULT_SELL_TAX_BPS;
@@ -183,7 +182,7 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
     }
 
     /// @notice Graduation succeeds with multi-recipient fees + tax token
-    function test_graduation_withFeeSplitter_taxToken() public createAndGraduateToken {
+    function test_graduation_withMultiRecipientFees_taxToken() public createAndGraduateToken {
         assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
     }
 
@@ -201,8 +200,8 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
         assertGt(s2Earned, 0, "shareholder2 should earn fees");
     }
 
-    /// @notice Sell taxes are routed through the splitter and claimable by shareholders
-    function test_sellTaxes_routedThroughSplitter() public createAndGraduateToken {
+    /// @notice Sell taxes are routed through the master handler and claimable by shareholders
+    function test_sellTaxes_routedThroughMultiRecipientConfig() public createAndGraduateToken {
         deal(buyer, 10 ether);
         // buy first so buyer has tokens
         _swapBuy(buyer, 2 ether, 10e18, true);

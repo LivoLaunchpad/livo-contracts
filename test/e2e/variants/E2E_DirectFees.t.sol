@@ -49,8 +49,8 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(feeHandler.getClaimable(tokens, alice)[0], 0, "no pending: all forwarded");
     }
 
-    /// @dev Splitter mode: alice (direct) receives her share immediately, bob (claimable) accrues.
-    function test_splitterDirect_aliceImmediateBobClaimable() public {
+    /// @dev Multi-recipient mode: alice (direct) receives her share immediately, bob (claimable) accrues.
+    function test_multiRecipientDirect_aliceImmediateBobClaimable() public {
         // 40% direct to alice, 60% claimable to bob
         ILivoFactory.FeeShare[] memory fs = new ILivoFactory.FeeShare[](2);
         fs[0] = ILivoFactory.FeeShare({account: alice, shares: 4_000, directFeesEnabled: true});

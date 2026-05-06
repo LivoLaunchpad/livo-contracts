@@ -7,7 +7,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 /// @notice Factory-level coverage for the `directFeesEnabled` opt-in field on `FeeShare`:
 ///         - max-1-direct enforcement
 ///         - registration in the singleton handler when 1 receiver opts in
-///         - propagation into the splitter when 2+ receivers and one opts in
+///         - propagation into the master handler config when 2+ receivers and one opts in
 ///         - struct-level validation paths (zero address, share sums, etc.) still hold
 contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
     function _fsTwoWithDirect(address a1, uint256 s1, address a2, uint256 s2, bool a1Direct, bool a2Direct)
@@ -75,7 +75,7 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "Splitter", "S", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            "MultiReceiver", "MR", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
         assertTrue(feeHandler.isDirectReceiver(token, alice), "alice is direct receiver");

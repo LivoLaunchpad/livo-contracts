@@ -8,7 +8,6 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -28,7 +27,7 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
@@ -149,7 +148,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     }
 
     function _claimable(address token, address account) internal view virtual returns (uint256) {
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
+        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
     }
 }
 

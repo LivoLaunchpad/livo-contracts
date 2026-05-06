@@ -16,9 +16,8 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 abstract contract LivoE2EBase is V4SwapHelpers, V2SwapHelpers {
     ////////////////////////////// VIRTUAL HOOKS //////////////////////////////
 
-    /// @dev Creates a token using the variant's factory with sensible defaults (single fee receiver,
-    ///      no deployer buy, no fee splitter). Returns the token address only because there's no
-    ///      splitter in the default flow.
+    /// @dev Creates a token using the variant's factory with sensible defaults (single fee receiver
+    ///      and no deployer buy).
     function _createTestToken(bytes32 salt) internal virtual returns (address token);
 
     /// @dev Creates a token with multiple fee receivers (>=2).
@@ -125,7 +124,7 @@ abstract contract LivoE2EBase is V4SwapHelpers, V2SwapHelpers {
         arr[0] = ILivoFactory.SupplyShare({account: account, shares: 10_000});
     }
 
-    /// @dev Two-share fee receivers helper for splitter tests.
+    /// @dev Two-share fee receivers helper for multi-recipient tests.
     function _fsTwo(address a1, address a2) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
         arr = new ILivoFactory.FeeShare[](2);
         arr[0] = ILivoFactory.FeeShare({account: a1, shares: 6_000, directFeesEnabled: false});

@@ -10,8 +10,7 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
@@ -30,7 +29,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
+        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////

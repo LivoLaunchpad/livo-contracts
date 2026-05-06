@@ -17,12 +17,12 @@ import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     /// @dev Returns the fee handler for the current test token
-    function _tokenFeeHandler() internal view virtual returns (ILivoFeeHandler);
+    function _tokenFeeHandler() internal view virtual returns (ILivoClaims);
 
     /// @dev Creator graduation compensation for the active graduator. Both V2 and V4 = 0.125 ether (50/50 split).
     function _creatorCompensation() internal pure virtual returns (uint256) {
@@ -69,7 +69,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
     /// @notice creator gets the CREATOR_GRADUATION_COMPENSATION at graduation
     function test_creatorGetsGraduationCompensation() public virtual createTestToken {
-        ILivoFeeHandler tokenFeeHandler = _tokenFeeHandler();
+        ILivoClaims tokenFeeHandler = _tokenFeeHandler();
 
         address[] memory _tokens = new address[](1);
         _tokens[0] = testToken;
@@ -334,8 +334,8 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
     }
 
     /// @dev V2 tokens share the same fee handler as V4
-    function _tokenFeeHandler() internal view override returns (ILivoFeeHandler) {
-        return ILivoFeeHandler(ILivoToken(testToken).feeHandler());
+    function _tokenFeeHandler() internal view override returns (ILivoClaims) {
+        return ILivoClaims(ILivoToken(testToken).feeHandler());
     }
 
     /// @dev V2 graduator splits the graduation fee 50/50 between treasury and creator
@@ -355,7 +355,7 @@ contract UniswapV4AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
         super.setUp();
     }
 
-    function _tokenFeeHandler() internal view override returns (ILivoFeeHandler) {
-        return ILivoFeeHandler(ILivoToken(testToken).feeHandler());
+    function _tokenFeeHandler() internal view override returns (ILivoClaims) {
+        return ILivoClaims(ILivoToken(testToken).feeHandler());
     }
 }
