@@ -16,22 +16,22 @@ library DeploymentsSepolia {
     address internal constant BONDING_CURVE = 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5;
     address internal constant GRADUATOR_UNIV2 = 0x67C95f98fa373781bc09efBff3c6a6E3614FE6e6;
     address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
-    address internal constant MASTER_FEE_HANDLER = 0xC8e37Ff6bE0f3Ad39cF7481f8D5Ec89c96Bc48EF;
+    address internal constant MASTER_FEE_HANDLER = 0x1356F74A1afC1ff119e8C37174799677fD791eD9;
 
     address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
     address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x8DC0820854de7A13055D041edd859A0ce49746c7;
-    address internal constant TAXABLE_TOKEN_IMPL = 0x3102B1b7b4F7e0CC32e8e50F303dd0452e1f9323;
+    address internal constant TOKEN_IMPL = 0xe40F66e2401d740E492875bF1fdA9e4C3a1a9Da7;
+    address internal constant TAXABLE_TOKEN_IMPL = 0x700F90a75BaAFd48dCFF285a579398A6107BAC52;
 
     /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xBaFe48EeF04D06b4217d16Afea8ab13356ADC316;
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x90191ADfC2DfB4E49897C55fD797aa97f5710cD9;
+    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xC872970ae54a67b21DF46135cF49B8b46ec31107;
+    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x84954123486EDD54Ba502b76d29670FbceF6708C;
 
     // --- Factories (unified) ---
-    address internal constant FACTORY_UNIV2_UNIFIED = 0x30e5c3FD9D03C06D475413e97684A255F4A4b5fd;
-    address internal constant FACTORY_UNIV4_UNIFIED = 0x7774A2833ccC9140Ac9E3d963E64c53731695C46;
+    address internal constant FACTORY_UNIV2_UNIFIED = 0x4BC78dC4368f07671b118231eC392f1a05355D76;
+    address internal constant FACTORY_UNIV4_UNIFIED = 0x5dD663ee0F573576708B9313C4fcd39b728F0c24;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
