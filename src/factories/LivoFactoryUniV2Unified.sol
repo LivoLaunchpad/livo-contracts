@@ -47,6 +47,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
         _validateInputs(feeReceivers, supplyShares);
+        _validateAntiSniperConfig(antiSniperCfg);
         token = _dispatchAndInitialize(name, symbol, salt, antiSniperCfg);
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, feeReceivers, supplyShares);
@@ -55,13 +56,15 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
     /// @dev Mirrors the full `createToken` input set minus the identity fields (`name`, `symbol`,
     ///      `salt`) so the ABI stays stable when future features change which inputs participate in
-    ///      dispatch. Today only `antiSniperCfg.protectionWindowSeconds` matters; the other params
-    ///      are ignored. Used by frontends to compute the initcode hash before mining a salt.
+    ///      dispatch. Today only `antiSniperCfg.protectionWindowSeconds` matters for dispatch;
+    ///      disabled configs must have all other anti-sniper fields empty/zero. Used by frontends
+    ///      to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
         FeeShare[] calldata, /* feeReceivers */
         SupplyShare[] calldata, /* supplyShares */
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
+        _validateAntiSniperConfig(antiSniperCfg);
         return _isAntiSniperConfigured(antiSniperCfg) ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
     }
 

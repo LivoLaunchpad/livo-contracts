@@ -201,7 +201,38 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), creator);
     }
 
-    // ───────────── Tax validation ─────────────
+    // ───────────── Tax / anti-sniper sentinel validation ─────────────
+
+    function test_preview_revertsOnDisabledTaxWithNonZeroBps() public {
+        vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
+        factoryV4Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), false, _taxCfg(100, 0, 0), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnDisabledTaxWithNonZeroBps() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(100, 0, 0), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnTaxDurationWithoutBps() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 0, uint32(1 days)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnDisabledAntiSniperWithNonZeroFields() public {
+        AntiSniperConfigs memory cfg = _antiSniperCfg(50, 0, 0, new address[](0));
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
+        factoryV4Unified.createToken("T", "T", "0x12", _fs(creator), _noSs(), false, _emptyTaxCfg(), cfg);
+    }
 
     function test_createToken_revertsOnInvalidTaxBps() public {
         vm.prank(creator);

@@ -54,6 +54,8 @@ interface ILivoFactory {
     error InvalidBuyOnDeploy();
     error InvalidMaxBuyOnDeployBps();
     error MultipleDirectFeeReceivers();
+    error InvalidAntiSniperConfig();
+    error InvalidTaxConfig();
 
     ////////////////// Views //////////////////////
 

@@ -68,13 +68,8 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        // Tax block — only validated if tax is configured. Anti-sniper validation lives inside
-        // `SniperProtection._initializeSniperProtection`, called from the token's initializer.
-        if (_isTaxConfigured(taxCfg)) {
-            require(taxCfg.buyTaxBps <= MAX_TAX_BPS && taxCfg.sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
-            require(taxCfg.taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
-        }
-
+        _validateTaxConfig(taxCfg);
+        _validateAntiSniperConfig(antiSniperCfg);
         _validateInputs(feeReceivers, supplyShares);
 
         // `tokenOwner` is computed inline (rather than a local) to keep the stack frame within the
@@ -91,8 +86,8 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     /// @dev Mirrors the full `createToken` input set minus the identity fields (`name`, `symbol`,
     ///      `salt`) so the ABI stays stable when future features change which inputs participate in
     ///      dispatch. Today only `taxCfg.taxDurationSeconds` and `antiSniperCfg.protectionWindowSeconds`
-    ///      matter; the other params are ignored. Used by frontends to compute the initcode hash
-    ///      before mining a salt.
+    ///      matter for dispatch; disabled configs must have all other tax/anti-sniper fields
+    ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
         FeeShare[] calldata, /* feeReceivers */
         SupplyShare[] calldata, /* supplyShares */
@@ -100,10 +95,22 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
+        _validateTaxConfig(taxCfg);
+        _validateAntiSniperConfig(antiSniperCfg);
         return _resolveImpl(_isTaxConfigured(taxCfg), _isAntiSniperConfigured(antiSniperCfg));
     }
 
     /////////////////////// INTERNAL FUNCTIONS /////////////////////////
+
+    function _validateTaxConfig(TaxConfigInit calldata t) internal pure {
+        if (_isTaxConfigured(t)) {
+            require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
+            require(t.buyTaxBps <= MAX_TAX_BPS && t.sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
+            require(t.taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
+        } else {
+            require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
+        }
+    }
 
     function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {
         return t.taxDurationSeconds != 0;

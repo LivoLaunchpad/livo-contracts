@@ -12,6 +12,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @notice Abstract base for Livo token factories. Holds shared state and helper logic.
 abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
@@ -145,6 +146,16 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         _validateFeeShares(feeReceivers);
         if (msg.value > 0) _validateSupplyShares(supplyShares);
         else require(supplyShares.length == 0, InvalidSupplyShares());
+    }
+
+    /// @dev Enforces anti-sniper sentinel consistency. A zero window disables anti-sniper dispatch,
+    ///      so all other anti-sniper inputs must also be empty/zero.
+    function _validateAntiSniperConfig(AntiSniperConfigs calldata cfg) internal pure {
+        if (cfg.protectionWindowSeconds == 0) {
+            require(
+                cfg.maxBuyPerTxBps == 0 && cfg.maxWalletBps == 0 && cfg.whitelist.length == 0, InvalidAntiSniperConfig()
+            );
+        }
     }
 
     /// @dev Shared postamble: asks the token to self-register its fee config with the master

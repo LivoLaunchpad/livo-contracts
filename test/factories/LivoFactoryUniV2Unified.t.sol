@@ -75,6 +75,25 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         assertFalse(t.sniperBypass(creator));
     }
 
+    // ───────────── Anti-sniper sentinel validation ─────────────
+
+    function test_preview_revertsOnDisabledAntiSniperWithNonZeroFields() public {
+        AntiSniperConfigs memory cfg = _antiSniperCfg(50, 0, 0, new address[](0));
+
+        vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg);
+    }
+
+    function test_createToken_revertsOnDisabledAntiSniperWithWhitelist() public {
+        address[] memory wl = new address[](1);
+        wl[0] = alice;
+        AntiSniperConfigs memory cfg = _antiSniperCfg(0, 0, 0, wl);
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
+        factoryV2Unified.createToken("T", "T", "0x12", _fs(creator), _noSs(), cfg);
+    }
+
     // ───────────── Ownership: V2 always renounces ─────────────
 
     function test_createToken_alwaysRenouncesOwnership_base() public {
