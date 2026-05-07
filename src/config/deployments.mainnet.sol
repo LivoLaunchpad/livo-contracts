@@ -15,8 +15,7 @@ library DeploymentsMainnet {
     address internal constant BONDING_CURVE = 0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23;
     address internal constant GRADUATOR_UNIV2 = 0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC;
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
-    address internal constant FEE_HANDLER = 0xc18030d76573784fff4E6365309E1acD967506ff;
-    address internal constant FEE_SPLITTER_IMPL = 0x80d97b49169067f339934C39F3ae76C50ED046a6;
+    address internal constant MASTER_FEE_HANDLER = address(0);
 
     address internal constant SWAP_HOOK = 0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc;
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;

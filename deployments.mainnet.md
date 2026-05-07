@@ -8,11 +8,10 @@
 | -------------------------------------------- | -------------------------------------------- |
 | LivoLaunchpad                                | `0xd9f8bbe437a3423b725c6616C1B543775ecf1110` |
 | ConstantProductBondingCurve                  | `0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23` |
-| LivoFeeHandler                               | `0xc18030d76573784fff4E6365309E1acD967506ff` |
-| LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
 | LivoGraduatorUniswapV2                       | `0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC` |
 | LivoGraduatorUniswapV4                       | `0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944` |
-| LivoFeeSplitter (impl)                       | `0x80d97b49169067f339934C39F3ae76C50ED046a6` |
+| LivoMasterFeeHandler                         | _(not deployed)_                             |
+| LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
 | LivoQuoter                                   | `0x035693207fb473358b41A81FF09445dB1f3889D1` |
 | LivoToken (impl)                             | `0x51fD501d1D866177E209eAa357C515578Df1C766` |
 | LivoTaxableTokenUniV4 (impl)                 | `0x4AdcBa218E3F6615C642B4eDe6c22A7229330e33` |

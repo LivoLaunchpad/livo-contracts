@@ -37,11 +37,10 @@ contract ExportDeployments is Script {
         s = string.concat(s, "## Livo\n\n", _tableHeader("Contract"));
         s = string.concat(s, _row("LivoLaunchpad", DeploymentsMainnet.LAUNCHPAD));
         s = string.concat(s, _row("ConstantProductBondingCurve", DeploymentsMainnet.BONDING_CURVE));
-        s = string.concat(s, _row("LivoFeeHandler", DeploymentsMainnet.FEE_HANDLER));
-        s = string.concat(s, _row("LivoSwapHook", DeploymentsMainnet.SWAP_HOOK));
         s = string.concat(s, _row("LivoGraduatorUniswapV2", DeploymentsMainnet.GRADUATOR_UNIV2));
         s = string.concat(s, _row("LivoGraduatorUniswapV4", DeploymentsMainnet.GRADUATOR_UNIV4));
-        s = string.concat(s, _row("LivoFeeSplitter (impl)", DeploymentsMainnet.FEE_SPLITTER_IMPL));
+        s = string.concat(s, _row("LivoMasterFeeHandler", DeploymentsMainnet.MASTER_FEE_HANDLER));
+        s = string.concat(s, _row("LivoSwapHook", DeploymentsMainnet.SWAP_HOOK));
         s = string.concat(s, _row("LivoQuoter", DeploymentsMainnet.QUOTER));
         s = string.concat(s, _row("LivoToken (impl)", DeploymentsMainnet.TOKEN_IMPL));
         s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_IMPL));
@@ -76,11 +75,10 @@ contract ExportDeployments is Script {
         s = string.concat(s, "## Livo\n\n", _tableHeader("Contract"));
         s = string.concat(s, _row("LivoLaunchpad", DeploymentsSepolia.LAUNCHPAD));
         s = string.concat(s, _row("ConstantProductBondingCurve", DeploymentsSepolia.BONDING_CURVE));
-        s = string.concat(s, _row("LivoFeeHandler", DeploymentsSepolia.FEE_HANDLER));
-        s = string.concat(s, _row("LivoSwapHook", DeploymentsSepolia.SWAP_HOOK));
         s = string.concat(s, _row("LivoGraduatorUniswapV2", DeploymentsSepolia.GRADUATOR_UNIV2));
         s = string.concat(s, _row("LivoGraduatorUniswapV4", DeploymentsSepolia.GRADUATOR_UNIV4));
-        s = string.concat(s, _row("LivoFeeSplitter (impl)", DeploymentsSepolia.FEE_SPLITTER_IMPL));
+        s = string.concat(s, _row("LivoMasterFeeHandler", DeploymentsSepolia.MASTER_FEE_HANDLER));
+        s = string.concat(s, _row("LivoSwapHook", DeploymentsSepolia.SWAP_HOOK));
         s = string.concat(s, _row("LivoQuoter", DeploymentsSepolia.QUOTER));
         s = string.concat(s, _row("LivoToken (impl)", DeploymentsSepolia.TOKEN_IMPL));
         s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_IMPL));
