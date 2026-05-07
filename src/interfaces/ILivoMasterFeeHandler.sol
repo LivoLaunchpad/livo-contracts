@@ -16,6 +16,7 @@ interface ILivoMasterFeeHandler is ILivoClaims {
     error InvalidFeeShares();
     error InvalidShares();
     error TooManyDirectReceivers();
+    error TooManyFeeReceivers();
 
     ////////////////// Events //////////////////
 

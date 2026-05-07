@@ -5,7 +5,7 @@ import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TokenFeeConfigLib} from "src/libraries/TokenFeeConfigLib.sol";
-import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @title LivoMasterFeeHandler
@@ -16,14 +16,15 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///         ETH can accumulate. Every wei is attributed to a specific token at arrival.
 ///
 ///         Two recipient classes coexist:
-///           - **direct** recipients have their slice forwarded synchronously on every `depositFees`;
-///             failed forwards fall back to per-account pending claims so a hostile receiver cannot
-///             DoS swap or graduation hot paths.
+///           - **direct** recipients have their slice forwarded synchronously on every `depositFees`,
+///             with the `.call` gas-capped at `DIRECT_FORWARD_GAS` to bound griefing on swappers.
+///             Failed forwards (including out-of-gas inside the receiver) fall back to per-account
+///             pending claims so a hostile receiver cannot DoS swap or graduation hot paths.
 ///           - **claimable** recipients accumulate ETH via a per-token cumulative accumulator
 ///             (`ethPerBps`) that scales O(1) per deposit regardless of recipient count.
 ///
 ///         The direct-receiver set is mutable via `setShares` (admin or token-owner gated).
-contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuardTransient {
+contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, ReentrancyGuardTransient {
     using TokenFeeConfigLib for TokenFeeConfigLib.Config;
 
     uint256 internal constant BPS_TOTAL = 10_000;
@@ -31,6 +32,14 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     /// @notice Hard cap on direct receivers per token, enforced on every `_setSharesInternal` call.
     ///         Bounds per-deposit gas in `_depositSplit` (one external `.call` per direct receiver).
     uint256 internal constant MAX_DIRECT_RECEIVERS = 4;
+    /// @notice Hard cap on total fee receivers per token (direct + claimable). Bounds the O(n²)
+    ///         duplicate-check in `_requireNoDuplicates` and the linear loops in `_setSharesInternal`.
+    uint256 internal constant MAX_FEE_RECEIVERS = 32;
+    /// @notice Gas forwarded to a direct receiver's `.call` in `_depositSingle` / `_depositSplit`.
+    ///         Caps griefing on swappers if a malicious receiver burns gas on `receive`. Failures
+    ///         (including out-of-gas inside the receiver) fall back to per-account pending claims,
+    ///         so legitimate receivers needing more gas can still recover via `claim`.
+    uint256 internal constant DIRECT_FORWARD_GAS = 100_000;
 
     mapping(address token => TokenFeeConfigLib.Config) internal _configs;
 
@@ -56,12 +65,15 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     /// @notice Deposits ETH fees for `token`. For direct receivers the slice is forwarded
     ///         synchronously; for claimable recipients the accumulator is advanced.
     /// @dev `CreatorFeesDeposited` is emitted before any forward attempt for non-zero deposits;
-    ///      zero-value calls are no-ops and emit nothing. The transient `nonReentrant` guard is
-    ///      shared with `setShares` and `claim` — any nested call from a direct-receiver hook
-    ///      into those functions reverts, which prevents iteration corruption in `_depositSplit`.
+    ///      zero-value calls are no-ops and emit nothing. There is intentionally no explicit
+    ///      registration check on this swap-hot path: registered configs always contain at least one
+    ///      recipient, while an unregistered positive-value deposit reaches `_depositSingle` and
+    ///      reverts with Solidity's array-out-of-bounds panic when reading `claimableRecipients[0]`.
+    ///      The transient `nonReentrant` guard is shared with `setShares` and `claim` — any nested
+    ///      call from a direct-receiver hook into those functions reverts, which prevents iteration
+    ///      corruption in `_depositSplit`.
     function depositFees(address token) external payable nonReentrant {
         TokenFeeConfigLib.Config storage cfg = _configs[token];
-        require(cfg.registered, NotRegistered());
 
         if (msg.value == 0) return;
         emit CreatorFeesDeposited(token, msg.value);
@@ -82,8 +94,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
         require(ILivoToken(token).feeHandler() == address(this), Unauthorized());
 
         TokenFeeConfigLib.Config storage cfg = _configs[token];
-        require(!cfg.registered, AlreadyRegistered());
-        cfg.registered = true;
+        require(!cfg.isRegistered(), AlreadyRegistered());
         _setSharesInternal(token, cfg, feeShares, false);
     }
 
@@ -95,7 +106,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     ///      corrupting `_depositSplit`'s iteration over `cfg.directReceivers`.
     function setShares(address token, ILivoFactory.FeeShare[] calldata feeShares) external nonReentrant {
         TokenFeeConfigLib.Config storage cfg = _configs[token];
-        require(cfg.registered, NotRegistered());
+        require(cfg.isRegistered(), NotRegistered());
 
         address tokenOwner = ILivoToken(token).owner();
         require(msg.sender == owner() || (msg.sender == tokenOwner), Unauthorized());
@@ -119,7 +130,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
             TokenFeeConfigLib.Config storage cfg = _configs[token];
-            if (!cfg.registered) continue;
+            if (!cfg.isRegistered()) continue;
 
             uint256 claimable = _getAndClearClaimable(token, cfg, msg.sender);
             if (claimable == 0) continue;
@@ -142,7 +153,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
             TokenFeeConfigLib.Config storage cfg = _configs[token];
-            if (!cfg.registered) continue;
+            if (!cfg.isRegistered()) continue;
             amounts[i] = _claimableView(token, cfg, account);
         }
     }
@@ -190,7 +201,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
         }
 
         if (isDirect) {
-            (bool ok,) = receiver.call{value: msg.value}("");
+            (bool ok,) = receiver.call{value: msg.value, gas: DIRECT_FORWARD_GAS}("");
             if (ok) {
                 emit CreatorClaimed(token, receiver, msg.value);
                 return;
@@ -210,7 +221,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
             directAmountTotal += directAmount;
             if (directAmount == 0) continue;
 
-            (bool ok,) = dr.call{value: directAmount}("");
+            (bool ok,) = dr.call{value: directAmount, gas: DIRECT_FORWARD_GAS}("");
             if (ok) {
                 emit CreatorClaimed(token, dr, directAmount);
             } else {
@@ -271,6 +282,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable, ReentrancyGuard
     ) internal {
         uint256 len = feeShares.length;
         require(len > 0, InvalidFeeShares());
+        require(len <= MAX_FEE_RECEIVERS, TooManyFeeReceivers());
         _requireNoDuplicates(feeShares);
 
         address[] memory oldDirects;

@@ -276,3 +276,77 @@ contract LivoMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUniv
         feeHandler.setShares(token, _shares(directs));
     }
 }
+
+/// @notice Pins the invariant: a recipient that switches from `direct` to `claimable` does NOT
+///         retroactively earn from the pre-reclassification accumulator. Their pre-existing direct
+///         payouts were already delivered synchronously; the accumulator was advanced only for the
+///         claimable cohort, so there is no slice owed to the reclassified account.
+contract LivoMasterFeeHandlerReclassificationTest is LaunchpadBaseTestsWithUniv4Graduator {
+    address internal directRecipient = makeAddr("direct");
+    address internal claimableRecipient = makeAddr("claimable");
+    address internal token;
+
+    function setUp() public override {
+        super.setUp();
+
+        ILivoFactory.FeeShare[] memory fs = new ILivoFactory.FeeShare[](2);
+        fs[0] = ILivoFactory.FeeShare({account: directRecipient, shares: 5_000, directFeesEnabled: true});
+        fs[1] = ILivoFactory.FeeShare({account: claimableRecipient, shares: 5_000, directFeesEnabled: false});
+
+        vm.prank(creator);
+        token = factoryV4Unified.createToken(
+            "Reclass",
+            "RCL",
+            _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+            fs,
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_directBecomesClaimable_doesNotInheritAccumulatedFees() public {
+        address[] memory tokens_ = new address[](1);
+        tokens_[0] = token;
+
+        // 1) Accrue fees: direct receives synchronously, claimable accrues via accumulator.
+        uint256 deposit = 1 ether;
+        vm.deal(address(this), deposit);
+        feeHandler.depositFees{value: deposit}(token);
+
+        assertEq(directRecipient.balance, deposit / 2, "direct received synchronous slice");
+
+        uint256[] memory directPending = feeHandler.getClaimable(tokens_, directRecipient);
+        assertEq(directPending[0], 0, "direct has zero pending after successful forward");
+
+        uint256[] memory claimablePending = feeHandler.getClaimable(tokens_, claimableRecipient);
+        assertEq(claimablePending[0], deposit / 2, "claimable accrued half via accumulator");
+
+        // 2) Reclassify the previously-direct receiver as claimable (same shares).
+        ILivoFactory.FeeShare[] memory newFs = new ILivoFactory.FeeShare[](2);
+        newFs[0] = ILivoFactory.FeeShare({account: directRecipient, shares: 5_000, directFeesEnabled: false});
+        newFs[1] = ILivoFactory.FeeShare({account: claimableRecipient, shares: 5_000, directFeesEnabled: false});
+        vm.prank(creator);
+        feeHandler.setShares(token, newFs);
+
+        // 3) Critical invariant: the now-claimable receiver has ZERO claimable. Their direct slice
+        //    was paid in step 1; they were never part of the accumulator before the reconfig.
+        uint256[] memory afterReclass = feeHandler.getClaimable(tokens_, directRecipient);
+        assertEq(afterReclass[0], 0, "reclassified receiver MUST NOT inherit accumulator credit");
+
+        // 4) Sanity: original claimable's pending is preserved (snapshot moved accrual to pending).
+        uint256[] memory claimableAfter = feeHandler.getClaimable(tokens_, claimableRecipient);
+        assertEq(claimableAfter[0], deposit / 2, "original claimable slice preserved across reconfig");
+
+        // 5) New deposit splits 50/50 across both as claimables — both accrue from this point on.
+        vm.deal(address(this), deposit);
+        feeHandler.depositFees{value: deposit}(token);
+
+        uint256[] memory directPostNew = feeHandler.getClaimable(tokens_, directRecipient);
+        assertEq(directPostNew[0], deposit / 2, "now-claimable accrues only from post-reconfig deposits");
+
+        uint256[] memory claimablePostNew = feeHandler.getClaimable(tokens_, claimableRecipient);
+        assertEq(claimablePostNew[0], deposit, "original claimable: pre-reconfig pending + post-reconfig accrual");
+    }
+}

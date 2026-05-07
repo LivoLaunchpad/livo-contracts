@@ -64,10 +64,10 @@ contract LivoMasterFeeHandlerSingleRecipientTests is MasterFeeHandlerTestHelpers
         _deposit(tokenA, 1 ether);
     }
 
-    function test_depositFees_revertsForUnregisteredToken() public {
+    function test_depositFees_unregisteredPositiveValue_panicsOnEmptyConfig() public {
         MockMasterFeeToken unregistered = _newToken(creator);
 
-        vm.expectRevert(ILivoMasterFeeHandler.NotRegistered.selector);
+        vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x32));
         handler.depositFees{value: 1 ether}(address(unregistered));
     }
 

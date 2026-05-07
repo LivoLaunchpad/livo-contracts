@@ -6,7 +6,6 @@ import {
     MockMasterFeeToken,
     MasterFeeEthRejecter
 } from "test/helpers/MasterFeeHandlerTestHelpers.sol";
-import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 
 contract LivoMasterFeeHandlerNoExcessTests is MasterFeeHandlerTestHelpers {
     MockMasterFeeToken internal claimableToken;
@@ -73,11 +72,12 @@ contract LivoMasterFeeHandlerNoExcessTests is MasterFeeHandlerTestHelpers {
         assertEq(_claimable(address(token), address(hostile)), 1 ether, "residue attributed to hostile receiver");
     }
 
-    function test_depositFees_revertsForUnregisteredTokenEvenWithZeroValue() public {
+    function test_depositFees_unregisteredZeroValue_noop() public {
         MockMasterFeeToken unregistered = _newToken(creator);
 
-        vm.expectRevert(ILivoMasterFeeHandler.NotRegistered.selector);
         handler.depositFees{value: 0}(address(unregistered));
+
+        assertEq(address(handler).balance, 0, "zero-value unregistered deposit is a no-op");
     }
 
     function test_getClaimable_unregisteredTokenReturnsZero() public {

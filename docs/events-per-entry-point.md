@@ -211,7 +211,7 @@ A BPS-only rebalance with an unchanged direct set emits only `SharesUpdated`.
 
 Direct fees are configured per token through `FeeShare.directFeesEnabled` at token creation or through `LivoMasterFeeHandler.setShares`.
 
-For every non-zero `depositFees(token)`:
+For every successful non-zero `depositFees(token)` against a registered config:
 
 1. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
 2. For each direct receiver with a non-zero slice:
@@ -219,4 +219,4 @@ For every non-zero `depositFees(token)`:
    - If the ETH forward fails, no `CreatorClaimed` event is emitted for that slice; the slice is stored as pending and can later be recovered through `claim()`.
 3. Claimable recipients do not emit per-deposit claim events; they accrue through the master handler accumulator and emit `CreatorClaimed` only when they call `claim()`.
 
-Zero-value `depositFees(token)` calls are no-ops and emit no fee events, but the token must still be registered.
+Zero-value `depositFees(token)` calls are no-ops and emit no fee events, including for unregistered tokens.
