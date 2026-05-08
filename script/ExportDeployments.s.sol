@@ -54,8 +54,7 @@ contract ExportDeployments is Script {
         s = string.concat(
             s,
             _row(
-                "LivoTaxableTokenUniV2SniperProtected (impl)",
-                DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
+                "LivoTaxableTokenUniV2SniperProtected (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
             )
         );
         s = string.concat(s, _row("LivoFactoryUniV2Unified", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED));
@@ -101,8 +100,7 @@ contract ExportDeployments is Script {
         s = string.concat(
             s,
             _row(
-                "LivoTaxableTokenUniV2SniperProtected (impl)",
-                DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
+                "LivoTaxableTokenUniV2SniperProtected (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
             )
         );
         s = string.concat(s, _row("LivoFactoryUniV2Unified", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED));

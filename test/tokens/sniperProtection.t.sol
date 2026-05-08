@@ -10,7 +10,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 

@@ -18,7 +18,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 interface ISniperProtectionRead {

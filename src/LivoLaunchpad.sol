@@ -356,6 +356,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         token.safeTransfer(graduator, tokenBalance);
 
         // Graduator handles: burning, fees, compensation, liquidity
+        // IMPORTANT: for v2 taxable tokens, transfer should happen before marking the token as graduated, so that the graduator is not taxed at graduation
         ILivoGraduator(graduator).graduateToken{value: ethCollected}(tokenAddress, tokenBalance);
 
         emit TokenGraduated(tokenAddress, ethCollected, tokenBalance);

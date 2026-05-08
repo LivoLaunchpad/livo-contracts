@@ -4,8 +4,9 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
+import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV2.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
@@ -178,7 +179,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         _setupGraduatedTokenWithBuyer();
 
         vm.prank(creator);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
         taxToken.swapBack(0);
     }
 
@@ -191,17 +192,49 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertGt(contractBalBefore, 0);
 
         vm.prank(creator);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
         taxToken.swapBack(1);
 
         assertEq(IERC20(testToken).balanceOf(address(taxToken)), contractBalBefore);
+    }
+
+    function test_manualSwapBack_callableByLaunchpadOwner() public {
+        _setupGraduatedTokenWithBuyer();
+
+        // Accrue some tax balance via a sell.
+        uint256 sellerBalance = IERC20(testToken).balanceOf(buyer);
+        _swapSellV2(buyer, testToken, sellerBalance / 100, 0, true);
+
+        uint256 contractBalBefore = IERC20(testToken).balanceOf(address(taxToken));
+        assertGt(contractBalBefore, 0);
+        uint256 feeHandlerEthBefore = address(feeHandler).balance;
+
+        // launchpad.owner() (admin) is authorized even though the token itself is ownerless.
+        assertEq(taxToken.owner(), address(0));
+        assertEq(launchpad.owner(), admin);
+
+        vm.prank(admin);
+        taxToken.swapBack(1);
+
+        // Tokens drained, ETH forwarded to the master fee handler.
+        assertEq(IERC20(testToken).balanceOf(address(taxToken)), 0);
+        assertGt(address(feeHandler).balance, feeHandlerEthBefore);
+    }
+
+    function test_manualSwapBack_revertsForNonOwners() public {
+        _setupGraduatedTokenWithBuyer();
+
+        // Non-token-owner, non-launchpad-owner caller still reverts.
+        vm.prank(alice);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
+        taxToken.swapBack(0);
     }
 
     // ─────────────────────────── rescueTokens ────────────────────────────────────
 
     function test_rescueTokens_revertsWhenOwnerless() public {
         vm.prank(creator);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
         taxToken.rescueTokens(address(taxToken));
     }
 
@@ -209,7 +242,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         vm.deal(address(taxToken), 1 ether);
 
         vm.prank(creator);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
         taxToken.rescueTokens(address(0));
 
         assertEq(address(taxToken).balance, 1 ether);
@@ -217,7 +250,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
 
     function test_rescueTokens_onlyOwner() public {
         vm.prank(alice);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
         taxToken.rescueTokens(address(0));
     }
 

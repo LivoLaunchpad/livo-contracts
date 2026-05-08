@@ -5,7 +5,7 @@ import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {Vm} from "forge-std/Vm.sol";
 

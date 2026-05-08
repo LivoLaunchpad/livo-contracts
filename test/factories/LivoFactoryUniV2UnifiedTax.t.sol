@@ -6,7 +6,7 @@ import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV2.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 

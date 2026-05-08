@@ -6,7 +6,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {DeployersWhitelist} from "src/factories/DeployersWhitelist.sol";

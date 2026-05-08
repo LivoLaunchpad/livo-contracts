@@ -10,6 +10,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
@@ -302,7 +303,7 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
 contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_LivoTaxableTokenInitialized_emittedOnCreation() public {
         vm.expectEmit(true, true, true, true);
-        emit LivoTaxableTokenUniV4.LivoTaxableTokenInitialized(0, 400, 14 days);
+        emit LivoTaxableToken.LivoTaxableTokenInitialized(0, 400, 14 days);
 
         vm.prank(creator);
         address deployedToken = factoryTax.createToken(

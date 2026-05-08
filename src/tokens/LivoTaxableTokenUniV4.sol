@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoTaxableTokenUniV4, TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
-import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 
 // UniswapV4 imports for tax swap functionality
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -14,40 +13,16 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title LivoTaxableTokenUniV4
-/// @notice ERC20 token implementation with time-limited sell taxes enforced via Uniswap V4 hooks
-/// @dev Extends LivoToken to add tax configuration that is queried by LivoSwapHook
-contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
-    using SafeERC20 for IERC20;
-
+/// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
+/// @dev Extends `LivoTaxableToken` to add the V4 pool-manager pair check. All tax accounting
+///      lives outside the token itself, in `LivoSwapHook`; the token simply exposes the tax config
+///      via `getTaxConfig()`.
+contract LivoTaxableTokenUniV4 is LivoTaxableToken {
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
     /// @notice Pool manager for lock state checking
     IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddresses.UNIV4_POOL_MANAGER);
-
-    //////////////////////// potentially immutable //////////////////
-
-    /// @notice Buy tax rate in basis points (set during initialization, cannot be changed)
-    uint16 public buyTaxBps;
-
-    /// @notice Sell tax rate in basis points (set during initialization, cannot be changed)
-    uint16 public sellTaxBps;
-
-    /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
-    uint40 public taxDurationSeconds;
-
-    /////////////////////////// pure storage ///////////////////////
-
-    /// @notice Timestamp when token graduated (0 if not graduated)
-    uint40 public graduationTimestamp;
-
-    //////////////////////// Events //////////////////////
-
-    event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
-
-    //////////////////////// Errors //////////////////////
-
-    error NotTokenOwner();
 
     //////////////////////////////////////////////////////
 
@@ -59,9 +34,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
     }
 
-    /// @notice Allows contract to receive ETH from V4 Router during tax swaps
-    receive() external payable {}
-
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param params Shared token initialization parameters
     /// @param taxCfg Tax configuration (buy/sell bps and post-graduation tax duration)
@@ -70,67 +42,20 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         virtual
         initializer
     {
-        _initializeLivoTaxableTokenUniV4(params, taxCfg);
+        _initializeLivoTaxableToken(params, taxCfg);
     }
 
-    /// @dev Internal initializer body; callable from child `initializer`-gated functions.
-    function _initializeLivoTaxableTokenUniV4(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+    /// @inheritdoc LivoTaxableToken
+    /// @dev Adds the V4 pool-manager pair check after shared init. The graduator is expected to
+    ///      have set `pair == UNIV4_POOL_MANAGER` during `LivoToken._initializeLivoToken`; if not,
+    ///      revert and roll back any earlier writes (storage updates already performed are
+    ///      reverted with the rest of the tx, so ordering vs `_initializeTaxConfig` is irrelevant).
+    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
         internal
+        override
         onlyInitializing
     {
-        _initializeLivoToken(params);
+        super._initializeLivoTaxableToken(params, taxCfg);
         require(pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
-        _initializeTaxConfig(taxCfg);
-    }
-
-    /// @notice Marks the token as graduated and records the timestamp
-    /// @dev Can only be called by the pre-set graduator contract
-    /// @dev Overrides LivoToken.markGraduated() to add timestamp tracking
-    function markGraduated() external override(ILivoToken, LivoToken) {
-        require(msg.sender == graduator, OnlyGraduatorAllowed());
-
-        graduated = true;
-        graduationTimestamp = uint40(block.timestamp);
-        emit Graduated();
-    }
-
-    /// @notice allows the token owner to rescue any potential tokens/WETH/native-ETH that may be stuck in this contract
-    /// @dev pass token=address(0) to rescue native ETH
-    /// @dev This contract is not supposed to hold any balance, so any balance can be rescued
-    function rescueTokens(address token) external {
-        require(msg.sender == owner, NotTokenOwner());
-
-        if (token == address(0)) {
-            payable(msg.sender).transfer(address(this).balance);
-        } else {
-            uint256 balance = IERC20(token).balanceOf(address(this));
-            IERC20(token).safeTransfer(msg.sender, balance);
-        }
-    }
-
-    //////////////////////// VIEW FUNCTIONS //////////////////////
-
-    /// @notice Returns the tax configuration for this taxable token
-    function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        config = TaxConfig({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: sellTaxBps,
-            taxDurationSeconds: taxDurationSeconds,
-            graduationTimestamp: graduationTimestamp
-        });
-    }
-
-    ////////////////////// INTERNAL FUNCTIONS //////////////////////
-
-    /// @notice Internal helper to store tax configuration
-    /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
-        // there is no restrictions here anymore regarding sell tax an tax duration. Restrictions are enforced in the factory
-        emit LivoTaxableTokenInitialized(cfg.buyTaxBps, cfg.sellTaxBps, cfg.taxDurationSeconds);
-
-        // Store tax configuration
-        buyTaxBps = cfg.buyTaxBps;
-        sellTaxBps = cfg.sellTaxBps;
-        taxDurationSeconds = uint40(cfg.taxDurationSeconds);
     }
 }

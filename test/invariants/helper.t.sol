@@ -7,7 +7,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";

@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV2.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @title LivoTaxableTokenUniV2SniperProtected
@@ -20,7 +20,7 @@ contract LivoTaxableTokenUniV2SniperProtected is LivoTaxableTokenUniV2, SniperPr
         TaxConfigInit memory taxCfg,
         AntiSniperConfigs memory antiSniperCfg
     ) external virtual initializer {
-        _initializeLivoTaxableTokenUniV2(params, taxCfg);
+        _initializeLivoTaxableToken(params, taxCfg);
         _initializeSniperProtection(antiSniperCfg);
     }
 

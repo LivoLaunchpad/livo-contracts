@@ -8,7 +8,7 @@ import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenU
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {IDeployersWhitelist} from "src/interfaces/IDeployersWhitelist.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
