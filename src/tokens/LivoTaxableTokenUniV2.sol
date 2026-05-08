@@ -18,7 +18,9 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 ///         periodically swapped to ETH on the V2 router and pushed to the master fee handler via
 ///         the same `accrueFees` path that V4 uses.
 /// @dev Auto-swap-back fires inside `_update` on sells once the contract holds at least
-///      `SWAP_THRESHOLD` tokens. Recursion is guarded by `_inSwap`: when the router pulls tokens
+///      `SWAP_THRESHOLD` tokens, and never swaps more than `2 * SWAP_THRESHOLD` per sell so the
+///      price impact a single trader observes stays bounded; any excess balance carries to the
+///      next qualifying sell. Recursion is guarded by `_inSwap`: when the router pulls tokens
 ///      from this contract during the swap, our `_update` short-circuits to a plain transfer.
 ///      A permissioned `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap
 ///      via a private mempool to avoid sandwiches; on factory-deployed tokens the owner is
@@ -82,9 +84,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         _approve(address(this), address(UNISWAP_V2_ROUTER), type(uint256).max);
     }
 
-    /// @notice Manually triggers a swap of accumulated tax tokens for ETH and forwards the
+    /// @notice Manually triggers a swap of `swapAmount` tax tokens for ETH and forwards the
     ///         proceeds to the master fee handler. Callable by the token owner OR the launchpad
     ///         owner.
+    /// @param swapAmount Amount of tax tokens to swap. The caller is expected to size this against
+    ///        `balanceOf(address(this))` and their own price-impact budget; the auto path's
+    ///        `2 * SWAP_THRESHOLD` cap is not enforced here, so a private-mempool caller can drain
+    ///        a larger residual in one shot. The router will revert if `swapAmount` exceeds the
+    ///        contract's balance.
     /// @param amountOutMinWei Minimum ETH (in wei) the swap must yield. The caller is expected to
     ///        compute this from `router.getAmountsOut(...)` plus their own slippage budget; this
     ///        is the path used to MEV-protect a swap via a private mempool.
@@ -93,9 +100,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      inside `_update` remains the primary path regardless of caller identity. Proceeds are
     ///      forwarded to the fee handler (not the caller), so widening the caller set has no
     ///      asset-routing impact.
-    function swapBack(uint256 amountOutMinWei) external {
+    function swapBack(uint256 swapAmount, uint256 amountOutMinWei) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
-        _swapBack(amountOutMinWei);
+        _swapBack(swapAmount, amountOutMinWei);
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////
@@ -104,7 +111,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      1. If `_inSwap` (we're inside `_swapBack`), bypass everything — the router's
     ///         `transferFrom(this, pair, ...)` must be a plain transfer, otherwise we recurse.
     ///      2. Apply the inherited pre-graduation gate.
-    ///      3. On a sell with sufficient accumulated balance, fire `_swapBack(0)` (auto path).
+    ///      3. On a sell with sufficient accumulated balance, fire `_swapBack(amount, 0)` capped
+    ///         at `2 * SWAP_THRESHOLD` to bound the per-sell price impact (auto path). Any excess
+    ///         stays on the contract and is drained on the next qualifying sell.
     ///      4. If we're in the post-graduation tax window AND the transfer touches the pair AND
     ///         the source is not the graduator (which moves the initial liquidity), divert
     ///         `amount * bps / 10_000` to this contract and forward the rest.
@@ -125,8 +134,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // Auto swap-back: only on sells, and only if the contract has enough accumulated tax to
         // make the swap worthwhile. `from != address(this)` is implied by `_inSwap` already being
         // false here (the contract only ever transfers tokens during a swap-back).
-        if (to == pair && balanceOf(address(this)) >= SWAP_THRESHOLD) {
-            _swapBack(0);
+        if (to == pair) {
+            uint256 contractBalance = balanceOf(address(this));
+            if (contractBalance >= SWAP_THRESHOLD) {
+                uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
+                _swapBack(swapAmount, 0);
+            }
         }
 
         bool taxable = graduated && (from == pair || to == pair)
@@ -147,15 +160,18 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         super._update(from, to, amount);
     }
 
-    /// @dev Swaps the contract's full token balance to ETH on the V2 router and forwards the
-    ///      proceeds to the master fee handler. The `_inSwap` flag short-circuits `_update` for
-    ///      the duration of the swap so the router's `transferFrom(this, pair, ...)` is a plain
-    ///      transfer (no recursive tax, no recursive auto-trigger).
+    /// @dev Swaps `tokenAmount` of the contract's tax-token balance to ETH on the V2 router and
+    ///      forwards the proceeds to the master fee handler. The `_inSwap` flag short-circuits
+    ///      `_update` for the duration of the swap so the router's `transferFrom(this, pair, ...)`
+    ///      is a plain transfer (no recursive tax, no recursive auto-trigger).
+    /// @dev Callers are responsible for passing a valid `tokenAmount` (≤ contract balance) and
+    ///      for applying any cap (e.g. `2 * SWAP_THRESHOLD` on the auto path). Sourcing the amount
+    ///      from the caller avoids re-reading `balanceOf(address(this))` after `_update` already
+    ///      consulted it.
     /// @dev `address(this).balance` is forwarded in full (not just the swap output): any ETH that
     ///      may have arrived through `receive()` between swap-backs is treated as un-routed fees
     ///      and routed through the same path. Avoids ETH ever sitting idle in the contract.
-    function _swapBack(uint256 amountOutMinWei) internal {
-        uint256 tokenAmount = balanceOf(address(this));
+    function _swapBack(uint256 tokenAmount, uint256 amountOutMinWei) internal {
         if (tokenAmount == 0) return;
 
         _inSwap = true;

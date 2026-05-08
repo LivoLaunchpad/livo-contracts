@@ -173,6 +173,49 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertGt(address(feeHandler).balance, feeHandlerEthBefore);
     }
 
+    function test_autoSwapBack_capsAtTwiceThreshold() public {
+        _setupGraduatedTokenWithBuyer();
+
+        uint256 cap = 2 * taxToken.SWAP_THRESHOLD();
+        uint256 excess = 200_000e18;
+
+        // Seed the contract above the cap directly. Reaching this state via a single sell would
+        // require >25M tokens at the 4% rate; `deal` short-circuits the setup and the cap behavior
+        // is independent of how the balance got there.
+        deal(testToken, address(taxToken), cap + excess);
+
+        uint256 feeHandlerEthBefore = address(feeHandler).balance;
+
+        // A small sell triggers the auto-swap-back. With balance > cap, only `cap` worth of tokens
+        // should be swapped — the rest carries over to the next sell.
+        uint256 sellAmount = 500_000e18;
+        _swapSellV2(buyer, testToken, sellAmount, 0, true);
+
+        uint256 expectedResidual = excess + (sellAmount * SELL_BPS / 10_000);
+        assertEq(
+            IERC20(testToken).balanceOf(address(taxToken)),
+            expectedResidual,
+            "auto-swap should cap at 2*SWAP_THRESHOLD and leave the rest on the contract"
+        );
+        assertGt(address(feeHandler).balance, feeHandlerEthBefore);
+    }
+
+    function test_autoSwapBack_belowCapSwapsFullBalance() public {
+        _setupGraduatedTokenWithBuyer();
+
+        uint256 cap = 2 * taxToken.SWAP_THRESHOLD();
+        // Just under the cap — the whole balance should be swapped on the next sell.
+        uint256 seeded = cap - 100_000e18;
+        deal(testToken, address(taxToken), seeded);
+
+        uint256 sellAmount = 500_000e18;
+        _swapSellV2(buyer, testToken, sellAmount, 0, true);
+
+        // After the swap, the contract holds only the freshly-taxed portion of this sell.
+        uint256 expectedResidual = sellAmount * SELL_BPS / 10_000;
+        assertEq(IERC20(testToken).balanceOf(address(taxToken)), expectedResidual);
+    }
+
     // ─────────────────────────── Manual swapBack ─────────────────────────────────
 
     function test_manualSwapBack_revertsWhenOwnerless() public {
@@ -180,7 +223,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
 
         vm.prank(creator);
         vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
-        taxToken.swapBack(0);
+        taxToken.swapBack(0, 0);
     }
 
     function test_manualSwapBack_ownerlessRevertLeavesTaxBalance() public {
@@ -193,7 +236,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
 
         vm.prank(creator);
         vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
-        taxToken.swapBack(1);
+        taxToken.swapBack(contractBalBefore, 1);
 
         assertEq(IERC20(testToken).balanceOf(address(taxToken)), contractBalBefore);
     }
@@ -214,10 +257,28 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertEq(launchpad.owner(), admin);
 
         vm.prank(admin);
-        taxToken.swapBack(1);
+        taxToken.swapBack(contractBalBefore, 1);
 
         // Tokens drained, ETH forwarded to the master fee handler.
         assertEq(IERC20(testToken).balanceOf(address(taxToken)), 0);
+        assertGt(address(feeHandler).balance, feeHandlerEthBefore);
+    }
+
+    function test_manualSwapBack_partialAmount() public {
+        _setupGraduatedTokenWithBuyer();
+
+        // Seed the contract directly so we have a known balance to partialAmountly swap.
+        uint256 seeded = 1_500_000e18;
+        deal(testToken, address(taxToken), seeded);
+        uint256 feeHandlerEthBefore = address(feeHandler).balance;
+
+        // launchpad owner asks the router for a partialAmount swap. The unused remainder must stay on
+        // the contract (no implicit drain).
+        uint256 partialAmount = 600_000e18;
+        vm.prank(admin);
+        taxToken.swapBack(partialAmount, 1);
+
+        assertEq(IERC20(testToken).balanceOf(address(taxToken)), seeded - partialAmount);
         assertGt(address(feeHandler).balance, feeHandlerEthBefore);
     }
 
@@ -227,7 +288,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         // Non-token-owner, non-launchpad-owner caller still reverts.
         vm.prank(alice);
         vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
-        taxToken.swapBack(0);
+        taxToken.swapBack(0, 0);
     }
 
     // ─────────────────────────── rescueTokens ────────────────────────────────────
