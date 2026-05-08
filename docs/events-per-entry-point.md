@@ -185,8 +185,8 @@ Tax tokens deployed on V2 (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2Sniper
 
 Indexer-relevant points:
 
-- **Buy (ETH → token)** within the tax window emits an extra `Transfer(pair, address(token), buyTaxAmount)` for the tax slice in addition to `Transfer(pair, buyer, netAmount)`.
-- **Sell (token → ETH)** within the tax window emits an extra `Transfer(seller, address(token), sellTaxAmount)` for the tax slice in addition to `Transfer(seller, pair, netAmount)`. The auto-swap, if triggered, fires *before* the tax slice transfers, while `inSwap` is true.
+- **Buy (ETH → token)** within the tax window emits an extra `Transfer(pair, address(token), buyTaxAmount)` for the tax slice in addition to `Transfer(pair, buyer, netAmount)`, followed by **`LivoTaxableToken.CreatorTaxesAccrued`** (`taxAmount=buyTaxAmount`).
+- **Sell (token → ETH)** within the tax window emits an extra `Transfer(seller, address(token), sellTaxAmount)` for the tax slice in addition to `Transfer(seller, pair, netAmount)`, followed by **`LivoTaxableToken.CreatorTaxesAccrued`** (`taxAmount=sellTaxAmount`). The auto-swap, if triggered, fires *before* the tax slice transfers, while `inSwap` is true.
 - **Auto- or manual-triggered swap-back** runs `IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens` against the pair and then routes proceeds to the master fee handler. Livo event order:
   1. ERC20 transfer from `address(token)` to `pair` for the swap input.
   2. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.

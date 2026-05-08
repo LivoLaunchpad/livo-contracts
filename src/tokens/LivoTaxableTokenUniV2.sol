@@ -152,6 +152,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
                 if (taxAmount > 0) {
                     super._update(from, address(this), taxAmount);
                     super._update(from, to, amount - taxAmount);
+                    emit CreatorTaxesAccrued(taxAmount);
                     return;
                 }
             }
