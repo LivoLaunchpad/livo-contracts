@@ -187,6 +187,73 @@
   },
   {
     "type": "function",
+    "name": "initialize",
+    "inputs": [
+      {
+        "name": "params",
+        "type": "tuple",
+        "internalType": "struct ILivoToken.InitializeParams",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "tokenOwner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "graduator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "launchpad",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "feeHandler",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      },
+      {
+        "name": "taxCfg",
+        "type": "tuple",
+        "internalType": "struct TaxConfigInit",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "markGraduated",
     "inputs": [],
     "outputs": [],
@@ -384,6 +451,19 @@
       },
       {
         "name": "value",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CreatorTaxesAccrued",
+    "inputs": [
+      {
+        "name": "taxAmount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

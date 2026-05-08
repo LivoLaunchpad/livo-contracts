@@ -99,19 +99,19 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
 
     function test_preview_revertsOnTaxBpsOverMax() public {
         TaxConfigInit memory cfg = _taxCfg(501, 0, uint32(7 days));
-        vm.expectRevert(LivoFactoryUniV2Unified.InvalidTaxBps.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnSellTaxBpsOverMax() public {
         TaxConfigInit memory cfg = _taxCfg(0, 501, uint32(7 days));
-        vm.expectRevert(LivoFactoryUniV2Unified.InvalidTaxBps.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnDurationOverExtended() public {
         TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(2 * 365 days + 1));
-        vm.expectRevert(LivoFactoryUniV2Unified.InvalidTaxDuration.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
@@ -122,7 +122,7 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
 
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV2Unified.DeployerNotWhitelisted.selector);
+        vm.expectRevert(ILivoFactory.DeployerNotWhitelisted.selector);
         factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 

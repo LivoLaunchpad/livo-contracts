@@ -12,13 +12,22 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IDeployersWhitelist} from "src/interfaces/IDeployersWhitelist.sol";
+import {ILivoTaxableToken, ILivoTaxableTokenSniperProtected, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
+import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 
 /// @notice Abstract base for Livo token factories. Holds shared state and helper logic.
 abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     using SafeERC20 for IERC20;
 
     uint256 internal constant BASIS_POINTS = 10_000;
+
+    /// @notice Max configurable tax duration without deployer-whitelist approval.
+    uint256 public constant MAX_SELL_TAX_DURATION_SECONDS = 14 days;
+    /// @notice Max configurable tax duration for whitelisted deployers.
+    uint256 public constant MAX_EXTENDED_TAX_DURATION_SECONDS = 2 * 365 days;
 
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
@@ -29,17 +38,46 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @notice Master fee handler for all token fee routing
     ILivoMasterFeeHandler public immutable MASTER_FEE_HANDLER;
 
+    /// @notice Token implementation cloned when neither tax nor anti-sniper are configured.
+    address public immutable TOKEN_IMPL_BASE;
+    /// @notice Token implementation cloned when only anti-sniper protection is configured.
+    address public immutable TOKEN_IMPL_ANTISNIPER;
+    /// @notice Token implementation cloned when only tax is configured.
+    address public immutable TOKEN_IMPL_TAX;
+    /// @notice Token implementation cloned when both tax and anti-sniper are configured.
+    address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
+    /// @notice Whitelist checked when a deployer configures tax duration above 14 days.
+    IDeployersWhitelist public immutable DEPLOYERS_WHITELIST;
+
+    /// @notice Max configurable tax (buy or sell). Per-venue value supplied by the derived factory
+    ///         via `override`: V2 uses 5% (the swap-back path needs more headroom to amortise
+    ///         per-sell router gas); V4 uses 4%.
+    function MAX_TAX_BPS() public pure virtual returns (uint256);
+
     /// @notice Max percentage of total supply that can be purchased on token creation (applies to the aggregate, not per recipient), in basis points
     uint256 public maxBuyOnDeployBps = 1_000; // 10%
 
     /// @notice Initializes the factory with its immutable dependencies
-    constructor(address launchpad, address bondingCurve, address graduator, address masterFeeHandler)
-        Ownable(msg.sender)
-    {
+    constructor(
+        address launchpad,
+        address tokenImplBase,
+        address tokenImplAntiSniper,
+        address tokenImplTax,
+        address tokenImplTaxAntiSniper,
+        address bondingCurve,
+        address graduator,
+        address masterFeeHandler,
+        address deployersWhitelist
+    ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
         MASTER_FEE_HANDLER = ILivoMasterFeeHandler(masterFeeHandler);
+        TOKEN_IMPL_BASE = tokenImplBase;
+        TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
+        TOKEN_IMPL_TAX = tokenImplTax;
+        TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
+        DEPLOYERS_WHITELIST = IDeployersWhitelist(deployersWhitelist);
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -204,5 +242,107 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER)
         });
+    }
+
+    /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
+    ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, caps `taxDurationSeconds` at the
+    ///      extended ceiling, and requires whitelist approval to exceed the standard 14-day window.
+    function _validateTaxConfig(TaxConfigInit calldata t) internal view {
+        if (_isTaxConfigured(t)) {
+            require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
+            require(t.buyTaxBps <= MAX_TAX_BPS() && t.sellTaxBps <= MAX_TAX_BPS(), InvalidTaxBps());
+            require(t.taxDurationSeconds <= MAX_EXTENDED_TAX_DURATION_SECONDS, InvalidTaxDuration());
+            if (t.taxDurationSeconds > MAX_SELL_TAX_DURATION_SECONDS) {
+                require(DEPLOYERS_WHITELIST.isWhitelisted(msg.sender), DeployerNotWhitelisted());
+            }
+        } else {
+            require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
+        }
+    }
+
+    function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {
+        return t.taxDurationSeconds != 0;
+    }
+
+    function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {
+        return a.protectionWindowSeconds != 0;
+    }
+
+    /// @dev Picks the implementation address for the (tax, anti-sniper) pair. Mirrors the dispatch
+    ///      table used by `_dispatchAndInitialize` so `previewTokenImplementation` returns the same
+    ///      address that `createToken` would clone for identical inputs.
+    function _resolveImpl(bool hasTax, bool hasAntiSniper) internal view returns (address) {
+        if (hasTax) {
+            return hasAntiSniper ? TOKEN_IMPL_TAX_ANTISNIPER : TOKEN_IMPL_TAX;
+        }
+        return hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
+    }
+
+    /// @dev Routes to the tax or non-tax sub-helper based on `taxCfg`. Splitting by family keeps
+    ///      each sub-helper's stack frame small enough to compile without `via_ir`. Callers
+    ///      (`createToken` on the derived factory) are responsible for invoking
+    ///      `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers the token's fee config
+    ///      with the master handler) after this returns.
+    function _dispatchAndInitialize(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        TaxConfigInit calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
+        if (_isTaxConfigured(taxCfg)) {
+            token = _initializeTaxToken(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+        } else {
+            token = _initializeNonTaxToken(name, symbol, salt, tokenOwner, antiSniperCfg);
+        }
+    }
+
+    /// @dev Clones the appropriate tax implementation and dispatches into the 2-arg or 3-arg
+    ///      `initialize` overload through the venue-agnostic `ILivoTaxableToken[SniperProtected]`
+    ///      interfaces. The same body works for both V2 and V4 factories because the signatures
+    ///      are byte-identical on `LivoTaxableTokenUniV{2,4}` and their sniper-protected variants.
+    function _initializeTaxToken(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        TaxConfigInit calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
+        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
+        address impl = hasAntiSniper ? TOKEN_IMPL_TAX_ANTISNIPER : TOKEN_IMPL_TAX;
+
+        ILivoToken.InitializeParams memory params;
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
+
+        if (hasAntiSniper) {
+            ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
+        } else {
+            ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
+        }
+    }
+
+    /// @dev Clones the non-tax implementation (base or anti-sniper) and runs the appropriate
+    ///      `initialize` overload. Identical between V2 and V4 because both venues share the
+    ///      same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
+    function _initializeNonTaxToken(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
+        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
+        address impl = hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
+
+        ILivoToken.InitializeParams memory params;
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
+
+        if (hasAntiSniper) {
+            LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
+        } else {
+            LivoToken(token).initialize(params);
+        }
     }
 }

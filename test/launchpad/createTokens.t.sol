@@ -271,7 +271,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
 contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_cannotCreateToken_sellTaxAboveMax() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
@@ -286,7 +286,7 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
 
     function test_cannotCreateToken_taxDurationAboveMax() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxDuration.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",

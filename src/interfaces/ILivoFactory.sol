@@ -56,6 +56,9 @@ interface ILivoFactory {
     error MultipleDirectFeeReceivers();
     error InvalidAntiSniperConfig();
     error InvalidTaxConfig();
+    error InvalidTaxBps();
+    error InvalidTaxDuration();
+    error DeployerNotWhitelisted();
 
     ////////////////// Views //////////////////////
 

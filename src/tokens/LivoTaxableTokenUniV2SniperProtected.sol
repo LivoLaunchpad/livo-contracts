@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {ILivoTaxableTokenSniperProtected, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @title LivoTaxableTokenUniV2SniperProtected
@@ -14,7 +14,11 @@ import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.s
 /// @dev `_update` runs the sniper-cap check first, then delegates to
 ///      `LivoTaxableTokenUniV2._update` (tax + auto-swap). The two checks don't overlap in time:
 ///      sniper-protection is pre-graduation only, taxes are post-graduation only.
-contract LivoTaxableTokenUniV2SniperProtected is LivoTaxableTokenUniV2, SniperProtection {
+contract LivoTaxableTokenUniV2SniperProtected is
+    LivoTaxableTokenUniV2,
+    SniperProtection,
+    ILivoTaxableTokenSniperProtected
+{
     function initialize(
         ILivoToken.InitializeParams memory params,
         TaxConfigInit memory taxCfg,

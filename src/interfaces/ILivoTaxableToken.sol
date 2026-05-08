@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @notice Initialization-time tax configuration for taxable tokens.
 /// @dev Separate from `ILivoToken.TaxConfig` (which adds the post-init `graduationTimestamp`).
@@ -30,4 +31,21 @@ interface ILivoTaxableToken is ILivoToken {
 
     /// @notice Returns the graduation timestamp for this token (0 before graduation).
     function graduationTimestamp() external view returns (uint40);
+
+    /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2
+    ///         or V4 concrete tax-token implementations through a single shared type.
+    function initialize(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg) external;
+}
+
+/// @title ILivoTaxableTokenSniperProtected
+/// @notice Extension of `ILivoTaxableToken` for tax-token variants that also enforce anti-sniper
+///         caps during the post-launch protection window.
+/// @dev Used by `LivoFactoryAbstract._initializeTaxToken` to dispatch into the 3-arg `initialize`
+///      overload through a venue-agnostic type.
+interface ILivoTaxableTokenSniperProtected is ILivoTaxableToken {
+    function initialize(
+        ILivoToken.InitializeParams memory params,
+        TaxConfigInit memory taxCfg,
+        AntiSniperConfigs memory antiSniperCfg
+    ) external;
 }

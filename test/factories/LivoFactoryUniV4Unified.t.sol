@@ -236,7 +236,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_revertsOnInvalidTaxBps() public {
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxBps.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
             "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(14 days)), _emptyAntiSniperCfg()
         );
@@ -244,7 +244,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_revertsOnInvalidTaxDuration() public {
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxDuration.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
         factoryV4Unified.createToken(
             "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(730 days + 1)), _emptyAntiSniperCfg()
         );
@@ -255,7 +255,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         deployersWhitelist.setWhitelisted(creator, true);
 
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxDuration.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
         factoryV4Unified.createToken(
             "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(730 days + 1)), _emptyAntiSniperCfg()
         );
@@ -263,7 +263,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_revertsOnExtendedTaxWhenDeployerNotWhitelisted() public {
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.DeployerNotWhitelisted.selector);
+        vm.expectRevert(ILivoFactory.DeployerNotWhitelisted.selector);
         factoryV4Unified.createToken(
             "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days + 1)), _emptyAntiSniperCfg()
         );
@@ -299,7 +299,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_preview_revertsOnExtendedTaxWhenDeployerNotWhitelisted() public {
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.DeployerNotWhitelisted.selector);
+        vm.expectRevert(ILivoFactory.DeployerNotWhitelisted.selector);
         factoryV4Unified.previewTokenImplementation(
             _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(15 days)), _emptyAntiSniperCfg()
         );

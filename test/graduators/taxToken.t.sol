@@ -11,11 +11,12 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
@@ -29,7 +30,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxDuration.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",

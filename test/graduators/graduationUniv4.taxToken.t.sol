@@ -11,6 +11,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
@@ -460,7 +461,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         vm.prank(creator);
         factoryTax.createToken(
             "InvalidToken",
@@ -805,7 +806,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
