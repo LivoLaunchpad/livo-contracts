@@ -51,7 +51,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 For both unified factories, the common Livo event order is:
 
-1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad, graduator, feeHandler=LivoMasterFeeHandler`) — emitted before token initialization so indexers see the token entity before initializer-side events.
+1. **`LivoFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad, graduator, feeHandler=LivoMasterFeeHandler`) — emitted before token initialization so indexers see the token entity before initializer-side events. `LivoFactoryUniV2Unified` always emits `tokenOwner = address(0)`; `LivoFactoryUniV4Unified` emits `address(0)` only when ownership is renounced.
 2. **Graduator initialization events**:
    - V2: **`LivoGraduator.PairInitialized`** (`token, pair`) — pair address is predicted; pair deployment can happen later at graduation.
    - V4: **`LivoGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`LivoGraduatorUniswapV4.PoolIdRegistered`** (`token, poolId`).
@@ -193,7 +193,7 @@ Indexer-relevant points:
   3. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethReceived`) emitted by `depositFees`.
   4. Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
   5. **`LivoTaxableTokenUniV2.TaxSwapped`** (`tokenAmountIn, ethReceived`) — emitted last, after fee deposit completes.
-- The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger.
+- The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger only if the token has a non-zero owner. Factory-deployed V2 tokens are ownerless, so this manual path is inaccessible there.
 - Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the `TaxSwapped` path is not entered.
 
 ---

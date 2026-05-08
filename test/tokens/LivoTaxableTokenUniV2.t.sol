@@ -14,9 +14,8 @@ import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
 ///         real V2 router is available for the swap-back path. Covers:
 ///         (1) buy/sell tax math at multiple bps; (2) `inSwap` reentrancy guard; (3) graduator and
 ///         self exclusion; (4) pre-graduation gate; (5) tax-window expiry; (6) auto-trigger fires
-///         when the contract balance crosses `SWAP_THRESHOLD`; (7) `swapBack` is owner-gated and
-///         honors `amountOutMinWei`; (8) `rescueTokens` semantics (self reverts; ETH routes
-///         through fee handler).
+///         when the contract balance crosses `SWAP_THRESHOLD`; (7) factory-deployed V2 tax tokens
+///         are ownerless, so manual owner-only paths (`swapBack`, `rescueTokens`) are inaccessible.
 contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelpers {
     LivoTaxableTokenUniV2 internal taxToken;
     address internal pair;
@@ -28,16 +27,17 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
 
-        // Deploy a tax token with 1% buy / 4% sell, 7-day window, owned by creator (no renounce).
+        // Deploy a tax token with 1% buy / 4% sell and a 7-day window. V2 tokens are ownerless.
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
         TaxConfigInit memory cfg = _taxCfg(BUY_BPS, SELL_BPS, TAX_DURATION);
 
         vm.prank(creator);
         address token =
-            factoryV2Unified.createToken("Tax", "TAX", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+            factoryV2Unified.createToken("Tax", "TAX", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
 
         testToken = token;
         taxToken = LivoTaxableTokenUniV2(payable(token));
+        assertEq(taxToken.owner(), address(0));
         pair = taxToken.pair();
     }
 
@@ -174,72 +174,45 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
 
     // ─────────────────────────── Manual swapBack ─────────────────────────────────
 
-    function test_manualSwapBack_callableOnlyByOwner() public {
+    function test_manualSwapBack_revertsWhenOwnerless() public {
         _setupGraduatedTokenWithBuyer();
 
-        vm.prank(alice);
+        vm.prank(creator);
         vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
         taxToken.swapBack(0);
     }
 
-    function test_manualSwapBack_revertsOnSlippageTooTight() public {
-        _setupGraduatedTokenWithBuyer();
-
-        // Accrue some tax balance via a sell.
-        uint256 sellerBalance = IERC20(testToken).balanceOf(buyer);
-        _swapSellV2(buyer, testToken, sellerBalance / 100, 0, true);
-
-        // Owner attempts a swap with an absurdly high `amountOutMinWei` — router reverts.
-        vm.prank(creator);
-        vm.expectRevert();
-        taxToken.swapBack(1000 ether);
-    }
-
-    function test_manualSwapBack_succeedsWithLooseSlippage() public {
+    function test_manualSwapBack_ownerlessRevertLeavesTaxBalance() public {
         _setupGraduatedTokenWithBuyer();
 
         uint256 sellerBalance = IERC20(testToken).balanceOf(buyer);
         _swapSellV2(buyer, testToken, sellerBalance / 100, 0, true);
-
-        uint256 feeHandlerEthBefore = address(feeHandler).balance;
         uint256 contractBalBefore = IERC20(testToken).balanceOf(address(taxToken));
         assertGt(contractBalBefore, 0);
 
         vm.prank(creator);
-        taxToken.swapBack(1); // accept any positive output
+        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
+        taxToken.swapBack(1);
 
-        // Tokens drained, ETH forwarded.
-        assertEq(IERC20(testToken).balanceOf(address(taxToken)), 0);
-        assertGt(address(feeHandler).balance, feeHandlerEthBefore);
+        assertEq(IERC20(testToken).balanceOf(address(taxToken)), contractBalBefore);
     }
 
     // ─────────────────────────── rescueTokens ────────────────────────────────────
 
-    function test_rescueTokens_selfReverts() public {
+    function test_rescueTokens_revertsWhenOwnerless() public {
         vm.prank(creator);
-        vm.expectRevert(LivoTaxableTokenUniV2.CannotRescueSelfToken.selector);
+        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
         taxToken.rescueTokens(address(taxToken));
     }
 
-    function test_rescueTokens_ethRoutesThroughFeeHandler() public {
-        // Send some ETH to the contract (simulating stuck fees).
+    function test_rescueTokens_ownerlessCannotSweepEth() public {
         vm.deal(address(taxToken), 1 ether);
 
-        uint256 feeHandlerEthBefore = address(feeHandler).balance;
-
         vm.prank(creator);
+        vm.expectRevert(LivoTaxableTokenUniV2.NotTokenOwner.selector);
         taxToken.rescueTokens(address(0));
 
-        assertEq(address(taxToken).balance, 0);
-        // ETH lands on the fee handler (depositFees may immediately forward to direct receivers; we
-        // don't assert which receiver got it, only that it did NOT go to the owner).
-        assertEq(creator.balance > 0, true); // creator could receive via direct-fees path
-        // The fee handler's balance increases by some positive amount OR forwards directly. Either
-        // way, the owner did not receive 1 ETH outside the fee-handler path.
-        // Tighter assertion: the contract's balance is now zero (sweep complete).
-        assertEq(address(taxToken).balance, 0);
-        // (We skip equality on feeHandler.balance because direct-fees forwarding may move it on).
-        feeHandlerEthBefore; // silence unused
+        assertEq(address(taxToken).balance, 1 ether);
     }
 
     function test_rescueTokens_onlyOwner() public {

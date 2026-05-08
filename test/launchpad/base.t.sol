@@ -311,7 +311,6 @@ contract LaunchpadBaseTests is Test {
                 _nextValidSalt(address(factoryV2Unified), address(livoToken)),
                 _fs(creator),
                 _noSs(),
-                false,
                 _emptyTaxCfg(),
                 _emptyAntiSniperCfg()
             );

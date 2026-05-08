@@ -19,9 +19,7 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         Replaces `LivoFactoryUniV2` and `LivoFactoryUniV2SniperProtected`, and now also
 ///         covers the new tax variants (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2SniperProtected`).
 ///
-///         Ownership rule: tax variants accept an owner (deployer or `address(0)` per
-///         `renounceOwnership_`) so the owner can call `swapBack` and `rescueTokens`. Non-tax
-///         variants always renounce ownership at creation — they have no owner-only functions.
+///         Ownership rule: all V2-family tokens are deployed with `tokenOwner = address(0)`.
 contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     error InvalidTaxBps();
     error InvalidTaxDuration();
@@ -73,16 +71,12 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
     ///         The per-token fee config is registered with the master fee handler at deploy time.
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
-    /// @dev `renounceOwnership_` is honored only when `taxCfg` is configured. Non-tax variants
-    ///      always renounce (they have no owner-only functions); the flag is silently ignored
-    ///      in that case.
     function createToken(
         string calldata name,
         string calldata symbol,
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
-        bool renounceOwnership_,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
@@ -90,11 +84,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         _validateAntiSniperConfig(antiSniperCfg);
         _validateInputs(feeReceivers, supplyShares);
 
-        // Owner: tax variants need an owner for `swapBack` / `rescueTokens`. Non-tax variants
-        // have no owner-only paths, so they keep the historical V2 behavior of always-renounced.
-        address tokenOwner = _isTaxConfigured(taxCfg) ? (renounceOwnership_ ? address(0) : msg.sender) : address(0);
-
-        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+        token = _dispatchAndInitialize(name, symbol, salt, address(0), taxCfg, antiSniperCfg);
 
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, feeReceivers, supplyShares);
@@ -109,7 +99,6 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     function previewTokenImplementation(
         FeeShare[] calldata, /* feeReceivers */
         SupplyShare[] calldata, /* supplyShares */
-        bool, /* renounceOwnership_ */
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {

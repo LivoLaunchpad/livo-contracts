@@ -273,7 +273,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             impl = factoryV4.previewTokenImplementation(fees, supply, _renouncesOwnership(c), _taxCfg(c), sniper);
         } else {
             impl = factoryV2.previewTokenImplementation(
-                fees, supply, false, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}), sniper
+                fees, supply, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}), sniper
             );
         }
     }
@@ -336,7 +336,6 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
                 input.salt,
                 input.fees,
                 input.supply,
-                false,
                 TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}),
                 _antiSniperCfg(c)
             );

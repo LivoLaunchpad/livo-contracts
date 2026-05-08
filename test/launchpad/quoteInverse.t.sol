@@ -132,7 +132,6 @@ contract QuoteInverseTests_Univ2 is QuoteInverseTests, LaunchpadBaseTestsWithUni
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
-            false,
             _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );

@@ -33,7 +33,7 @@ contract BuySellSimulations is Script {
         });
 
         address TOKEN1 =
-            factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares, false, noTaxCfg, noSniperCfg);
+            factoryV2.createToken("MEMEV2", "MAMIV2", salt, devFeeShare, noSupplyShares, noTaxCfg, noSniperCfg);
         address TOKEN2 = factoryV4.createToken(
             "projecTV4", "PROJECTV4", salt, devFeeShare, noSupplyShares, false, noTaxCfg, noSniperCfg
         );

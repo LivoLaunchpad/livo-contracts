@@ -272,11 +272,6 @@
         ]
       },
       {
-        "name": "renounceOwnership_",
-        "type": "bool",
-        "internalType": "bool"
-      },
-      {
         "name": "taxCfg",
         "type": "tuple",
         "internalType": "struct TaxConfigInit",
@@ -416,11 +411,6 @@
             "internalType": "uint256"
           }
         ]
-      },
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
       },
       {
         "name": "taxCfg",
