@@ -179,8 +179,16 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         emit BuyOnDeploy(token, msg.sender, msg.value, tokensBought, recipients, amounts);
     }
 
-    /// @dev Shared preamble for every factory's `createToken`: validates fee and supply shares.
-    function _validateInputs(FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares) internal {
+    /// @dev Shared preamble for every factory's `createToken`: validates name/symbol and the fee
+    ///      and supply share arrays. Single source of truth so both factories' `createToken`
+    ///      have all input validation co-located at the top.
+    function _validateInputs(
+        string calldata name,
+        string calldata symbol,
+        FeeShare[] calldata feeReceivers,
+        SupplyShare[] calldata supplyShares
+    ) internal {
+        _validateNameSymbol(name, symbol);
         _validateFeeShares(feeReceivers);
         if (msg.value > 0) _validateSupplyShares(supplyShares);
         else require(supplyShares.length == 0, InvalidSupplyShares());
@@ -224,8 +232,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         bytes32 salt,
         address tokenOwner
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
-        _validateNameSymbol(name, symbol);
-
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());

@@ -62,7 +62,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         _validateTaxConfig(taxCfg);
         _validateAntiSniperConfig(antiSniperCfg);
-        _validateInputs(feeReceivers, supplyShares);
+        _validateInputs(name, symbol, feeReceivers, supplyShares);
 
         // tokenOwner is always address(0) for V2-family tokens
         token = _dispatchAndInitialize(name, symbol, salt, address(0), taxCfg, antiSniperCfg);

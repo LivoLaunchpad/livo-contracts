@@ -59,7 +59,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         _validateTaxConfig(taxCfg);
         _validateAntiSniperConfig(antiSniperCfg);
-        _validateInputs(feeReceivers, supplyShares);
+        _validateInputs(name, symbol, feeReceivers, supplyShares);
 
         // `tokenOwner` is computed inline (rather than a local) to keep the stack frame within the
         // EVM limit without needing `via_ir`.
