@@ -30,16 +30,19 @@ abis:
 
 ##################### TESTING ################################
 fast-test:
-    forge test --no-match-contract Invariants
+    forge test --no-match-contract Invariants --no-match-path "test/integration/**"
 
 gas-report:
-    forge test --no-match-contract Invariants --gas-report
+    forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report
 
 test-curves:
     forge test --match-contract Curve
 
 invariant-tests:
     forge test --match-contract Invariants
+
+integration-tests:
+    forge test --match-path "test/integration/**"
 
 # Runs a super fast version of invariants for CI.(not so reliable at all) (runs=1, depth=5)
 lean-invariants:
