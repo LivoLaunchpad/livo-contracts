@@ -246,8 +246,75 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxDuration.selector);
         factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(730 days + 1)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnInvalidTaxDurationEvenWhenWhitelisted() public {
+        vm.prank(admin);
+        deployersWhitelist.setWhitelisted(creator, true);
+
+        vm.prank(creator);
+        vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxDuration.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(730 days + 1)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnExtendedTaxWhenDeployerNotWhitelisted() public {
+        vm.prank(creator);
+        vm.expectRevert(LivoFactoryUniV4Unified.DeployerNotWhitelisted.selector);
+        factoryV4Unified.createToken(
             "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days + 1)), _emptyAntiSniperCfg()
         );
+    }
+
+    function test_createToken_allowsExtendedTaxForWhitelistedDeployer() public {
+        vm.prank(admin);
+        deployersWhitelist.setWhitelisted(creator, true);
+
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(15 days)), _emptyAntiSniperCfg()
+        );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 15 days);
+    }
+
+    function test_createToken_allowsMaxExtendedTaxForWhitelistedDeployer() public {
+        vm.prank(admin);
+        deployersWhitelist.setWhitelisted(creator, true);
+
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(730 days)), _emptyAntiSniperCfg()
+        );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 730 days);
+    }
+
+    function test_preview_revertsOnExtendedTaxWhenDeployerNotWhitelisted() public {
+        vm.prank(creator);
+        vm.expectRevert(LivoFactoryUniV4Unified.DeployerNotWhitelisted.selector);
+        factoryV4Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(15 days)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_preview_returnsTaxImplForWhitelistedExtendedTax() public {
+        vm.prank(admin);
+        deployersWhitelist.setWhitelisted(creator, true);
+
+        vm.prank(creator);
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(15 days)), _emptyAntiSniperCfg()
+        );
+
+        assertEq(impl, address(livoTaxToken));
     }
 
     // ───────────── InvalidTokenAddress on tax dispatch path ─────────────

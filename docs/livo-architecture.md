@@ -98,7 +98,7 @@ When ETH reserves reach graduation threshold:
 - Creates **Uniswap V4 Pool** via `initialize()`
 - Adds two liquidity positions (balanced + single-sided ETH)
 - Locks LP NFTs in **LiquidityLockUniv4WithFees**
-- **LivoSwapHook** enforces time-limited sell taxes (0-14 days post-graduation)
+- **LivoSwapHook** enforces time-limited sell taxes (0-14 days post-graduation by default; up to 2 years for deployers approved in `DeployersWhitelist`)
 
 ### 4. Post-Graduation Fee Collection (V4 only)
 - **Creator** calls `collectEthFees()` on graduator

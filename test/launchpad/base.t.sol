@@ -9,6 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {DeployersWhitelist} from "src/factories/DeployersWhitelist.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -44,6 +45,7 @@ contract LaunchpadBaseTests is Test {
     // `TaxConfigInit`/`AntiSniperConfigs` sentinels.
     LivoFactoryUniV2Unified public factoryV2Unified;
     LivoFactoryUniV4Unified public factoryV4Unified;
+    DeployersWhitelist public deployersWhitelist;
 
     // Legacy aliases (read-only). The pre-consolidation factories (`LivoFactoryUniV2`,
     // `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV2SniperProtected`,
@@ -227,6 +229,8 @@ contract LaunchpadBaseTests is Test {
 
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
+        deployersWhitelist = new DeployersWhitelist();
+        deployersWhitelist.setAdmin(admin, true);
 
         factoryV2Unified = new LivoFactoryUniV2Unified(
             address(launchpad),
@@ -245,7 +249,8 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxTokenSniper),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler)
+            address(feeHandler),
+            address(deployersWhitelist)
         );
 
         // Legacy aliases — same instance, different reference name. Kept so existing tests that

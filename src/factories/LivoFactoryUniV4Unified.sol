@@ -9,6 +9,7 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {IDeployersWhitelist} from "src/interfaces/IDeployersWhitelist.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Unified factory for the Uniswap V4 token family. Dispatches between four token
@@ -20,12 +21,15 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     error InvalidTaxBps();
     error InvalidTaxDuration();
+    error DeployerNotWhitelisted();
 
     /// @notice max configurable tax (buy or sell)
     uint256 public constant MAX_TAX_BPS = 400;
 
-    /// @notice max configurable sell tax duration
+    /// @notice max configurable tax duration without deployer whitelist approval
     uint256 public constant MAX_SELL_TAX_DURATION_SECONDS = 14 days;
+    /// @notice max configurable tax duration for whitelisted deployers
+    uint256 public constant MAX_EXTENDED_TAX_DURATION_SECONDS = 2 * 365 days;
 
     /// @notice Token implementation cloned when neither tax nor anti-sniper are configured.
     address public immutable TOKEN_IMPL_BASE;
@@ -35,6 +39,8 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     address public immutable TOKEN_IMPL_TAX;
     /// @notice Token implementation cloned when both tax and anti-sniper are configured.
     address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
+    /// @notice Whitelist checked when a deployer configures tax duration above 14 days.
+    IDeployersWhitelist public immutable DEPLOYERS_WHITELIST;
 
     constructor(
         address launchpad,
@@ -44,12 +50,14 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address masterFeeHandler
+        address masterFeeHandler,
+        address deployersWhitelist
     ) LivoFactoryAbstract(launchpad, bondingCurve, graduator, masterFeeHandler) {
         TOKEN_IMPL_BASE = tokenImplBase;
         TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
         TOKEN_IMPL_TAX = tokenImplTax;
         TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
+        DEPLOYERS_WHITELIST = IDeployersWhitelist(deployersWhitelist);
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -102,11 +110,14 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
     /////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    function _validateTaxConfig(TaxConfigInit calldata t) internal pure {
+    function _validateTaxConfig(TaxConfigInit calldata t) internal view {
         if (_isTaxConfigured(t)) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             require(t.buyTaxBps <= MAX_TAX_BPS && t.sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
-            require(t.taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
+            require(t.taxDurationSeconds <= MAX_EXTENDED_TAX_DURATION_SECONDS, InvalidTaxDuration());
+            if (t.taxDurationSeconds > MAX_SELL_TAX_DURATION_SECONDS) {
+                require(DEPLOYERS_WHITELIST.isWhitelisted(msg.sender), DeployerNotWhitelisted());
+            }
         } else {
             require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
         }

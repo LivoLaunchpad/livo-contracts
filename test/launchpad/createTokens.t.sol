@@ -277,7 +277,7 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
             _fs(creator),
             _noSs(),
             false,
-            _taxCfg(0, 400, uint32(14 days + 1)),
+            _taxCfg(0, 400, uint32(730 days + 1)),
             _emptyAntiSniperCfg()
         );
     }

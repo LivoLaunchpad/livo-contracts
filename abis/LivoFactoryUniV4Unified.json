@@ -41,6 +41,11 @@
         "name": "masterFeeHandler",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "deployersWhitelist",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -54,6 +59,19 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "DEPLOYERS_WHITELIST",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IDeployersWhitelist"
       }
     ],
     "stateMutability": "view"
@@ -93,6 +111,19 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoMasterFeeHandler"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_EXTENDED_TAX_DURATION_SECONDS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -647,6 +678,11 @@
   },
   {
     "type": "error",
+    "name": "DeployerNotWhitelisted",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "FailedDeployment",
     "inputs": []
   },
@@ -665,6 +701,11 @@
         "internalType": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidAntiSniperConfig",
+    "inputs": []
   },
   {
     "type": "error",
@@ -699,6 +740,11 @@
   {
     "type": "error",
     "name": "InvalidTaxBps",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTaxConfig",
     "inputs": []
   },
   {

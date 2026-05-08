@@ -9,6 +9,7 @@ import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol"
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {DeployersWhitelist} from "src/factories/DeployersWhitelist.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
@@ -25,6 +26,7 @@ contract LaunchpadInvariants is Test {
     LivoFactoryUniV2Unified public factoryV2;
     LivoFactoryUniV4Unified public factoryV4;
     LivoMasterFeeHandler public feeHandler;
+    DeployersWhitelist public deployersWhitelist;
 
     InvariantsHelperLaunchpad public helper;
 
@@ -81,6 +83,8 @@ contract LaunchpadInvariants is Test {
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
         );
         feeHandler = new LivoMasterFeeHandler();
+        deployersWhitelist = new DeployersWhitelist();
+        deployersWhitelist.setAdmin(admin, true);
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
@@ -106,7 +110,8 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler)
+            address(feeHandler),
+            address(deployersWhitelist)
         );
 
         launchpad.whitelistFactory(address(factoryV2));

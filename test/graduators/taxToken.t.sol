@@ -37,7 +37,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             _fs(creator),
             _noSs(),
             false,
-            _taxCfg(0, 400, uint32(15 days)),
+            _taxCfg(0, 400, uint32(730 days + 1)),
             _emptyAntiSniperCfg()
         );
     }

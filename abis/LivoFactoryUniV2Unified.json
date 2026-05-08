@@ -552,6 +552,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidAntiSniperConfig",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidBuyOnDeploy",
     "inputs": []
   },
@@ -578,6 +583,11 @@
   {
     "type": "error",
     "name": "InvalidSupplyShares",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTaxConfig",
     "inputs": []
   },
   {
