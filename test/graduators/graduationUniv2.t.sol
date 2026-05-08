@@ -685,10 +685,10 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
 
         _graduateAs(eoa);
 
-        // EOA balance: started at 0, was funded with `missing`, spent all `missing` on the buy, then received 0.002 from the graduator
-        assertEq(eoa.balance, TRIGGERER_GRADUATION_COMPENSATION, "triggerer should net +0.002 ether");
+        // EOA balance: started at 0, was funded with `missing`, spent all `missing` on the buy, then received 0.005 from the graduator
+        assertEq(eoa.balance, TRIGGERER_GRADUATION_COMPENSATION, "triggerer should net +0.005 ether");
 
-        // Treasury delta = trading fee + 0.123 (treasury graduation share after the triggerer carve-out)
+        // Treasury delta = trading fee + 0.120 (treasury graduation share after the triggerer carve-out)
         uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD);
         uint256 expectedTradingFee = (missing * BASE_BUY_FEE_BPS) / 10000;
         uint256 expectedTreasuryGraduationShare =
@@ -696,7 +696,7 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
         assertEq(
             treasury.balance - treasuryBalanceBefore,
             expectedTradingFee + expectedTreasuryGraduationShare,
-            "treasury should receive trading fee + 0.123 ether (treasury share after triggerer carve-out)"
+            "treasury should receive trading fee + 0.120 ether (treasury share after triggerer carve-out)"
         );
     }
 
@@ -717,7 +717,7 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
         // Triggerer can't receive ETH, ends at exactly zero (started at 0, was funded with `missing`, spent all of it on the buy)
         assertEq(triggererAddr.balance, 0, "non-receiver triggerer must not gain ETH");
 
-        // Treasury collects: trading fee + 0.123 (TreasuryGraduationFeeCollected push) + 0.002 (sweep) = trading fee + 0.125
+        // Treasury collects: trading fee + 0.120 (TreasuryGraduationFeeCollected push) + 0.005 (sweep) = trading fee + 0.125
         uint256 treasuryDelta = treasury.balance - treasuryBalanceBefore;
         uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD);
         uint256 expectedTradingFee = (missing * BASE_BUY_FEE_BPS) / 10000;
@@ -731,8 +731,8 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
     function test_triggerer_compensationConstantValue() public view {
         assertEq(
             LivoGraduatorUniswapV2(address(graduator)).TRIGGERER_GRADUATION_COMPENSATION(),
-            0.002 ether,
-            "constant should equal 0.002 ether"
+            0.005 ether,
+            "constant should equal 0.005 ether"
         );
         // Sum invariant on the carve-out: creator + triggerer + treasury == GRADUATION_ETH_FEE
         assertEq(

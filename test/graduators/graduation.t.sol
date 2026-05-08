@@ -29,7 +29,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         return CREATOR_GRADUATION_COMPENSATION;
     }
 
-    /// @dev Triggerer compensation taken from the graduation fee. V2 = 0.002 ether, V4 = 0.
+    /// @dev Triggerer compensation taken from the graduation fee. V2 = 0.005 ether, V4 = 0.
     function _triggererCompensation() internal pure virtual returns (uint256) {
         return 0;
     }
@@ -343,7 +343,7 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
         return GRADUATION_FEE / 2;
     }
 
-    /// @dev V2 graduator pays out 0.002 ether to the graduation triggerer (`tx.origin`)
+    /// @dev V2 graduator pays out 0.005 ether to the graduation triggerer (`tx.origin`)
     function _triggererCompensation() internal pure override returns (uint256) {
         return TRIGGERER_GRADUATION_COMPENSATION;
     }

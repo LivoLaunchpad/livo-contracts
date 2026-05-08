@@ -21,7 +21,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     /// @notice ETH compensation paid to `tx.origin` for triggering graduation, to offset the
     ///         extra gas spent deploying the UniswapV2 pair lazily inside `graduateToken()`.
-    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.002 ether;
+    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.005 ether;
 
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
