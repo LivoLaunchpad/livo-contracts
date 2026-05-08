@@ -18,6 +18,8 @@
 | LivoTaxableTokenUniV4 (impl)                 | `0x4AdcBa218E3F6615C642B4eDe6c22A7229330e33` |
 | LivoTokenSniperProtected (impl)              | `0x5AD0311eD744fe0a43C244E44E2075758a924F36` |
 | LivoTaxableTokenUniV4SniperProtected (impl)  | `0xf8c0796B6500309f9b08163e33F16F2448254A29` |
+| LivoTaxableTokenUniV2 (impl)                 | _(not deployed)_                             |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | _(not deployed)_                             |
 | LivoFactoryUniV2Unified                      | _(not deployed)_                             |
 | LivoFactoryUniV4Unified                      | _(not deployed)_                             |
 

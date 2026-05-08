@@ -22,7 +22,7 @@ Unified factories register fee config automatically during token creation:
 
 - `LivoFactoryUniV2Unified` / `LivoFactoryUniV4Unified`
 - `LivoLaunchpad`
-- `LivoToken` / `LivoTaxableTokenUniV4` / sniper-protected variants
+- `LivoToken` / `LivoTaxableTokenUniV4` / `LivoTaxableTokenUniV2` / sniper-protected variants
 - `LivoGraduatorUniswapV2` / `LivoGraduatorUniswapV4`
 - `LivoMasterFeeHandler`
 - `LivoSwapHook`
@@ -178,6 +178,23 @@ Livo event order:
    - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
 4. Treasury LP share is sent directly via native ETH call.
 5. **`LivoSwapHook.LivoSwapSell`** (`token, txOrigin, tokensIn, ethOut, ethFees`).
+
+### 6.3 V2 post-graduation swaps on tax variants
+
+Tax tokens deployed on V2 (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2SniperProtected`) take taxes intrinsically inside `_update`. There is no V2 hook; the token contract diverts a portion of every pair-touching transfer into its own balance, then auto-swaps the accumulated tokens to ETH on a sell once the contract balance crosses `SWAP_THRESHOLD = TOTAL_SUPPLY / 2000` (= 500_000e18).
+
+Indexer-relevant points:
+
+- **Buy (ETH → token)** within the tax window emits an extra `Transfer(pair, address(token), buyTaxAmount)` for the tax slice in addition to `Transfer(pair, buyer, netAmount)`.
+- **Sell (token → ETH)** within the tax window emits an extra `Transfer(seller, address(token), sellTaxAmount)` for the tax slice in addition to `Transfer(seller, pair, netAmount)`. The auto-swap, if triggered, fires *before* the tax slice transfers, while `inSwap` is true.
+- **Auto- or manual-triggered swap-back** runs `IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens` against the pair and then routes proceeds to the master fee handler. Livo event order:
+  1. ERC20 transfer from `address(token)` to `pair` for the swap input.
+  2. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
+  3. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethReceived`) emitted by `depositFees`.
+  4. Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
+  5. **`LivoTaxableTokenUniV2.TaxSwapped`** (`tokenAmountIn, ethReceived`) — emitted last, after fee deposit completes.
+- The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger.
+- Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the `TaxSwapped` path is not entered.
 
 ---
 

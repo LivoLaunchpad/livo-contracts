@@ -30,6 +30,10 @@ library DeploymentsSepolia {
     address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xC872970ae54a67b21DF46135cF49B8b46ec31107;
     address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x84954123486EDD54Ba502b76d29670FbceF6708C;
 
+    /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
+    address internal constant TAXABLE_TOKEN_V2_IMPL = address(0);
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = address(0);
+
     // --- Factories (unified) ---
     address internal constant FACTORY_UNIV2_UNIFIED = 0x4BC78dC4368f07671b118231eC392f1a05355D76;
     address internal constant FACTORY_UNIV4_UNIFIED = 0x5dD663ee0F573576708B9313C4fcd39b728F0c24;

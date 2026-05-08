@@ -130,7 +130,9 @@ contract InvariantsHelperLaunchpad is Test {
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl);
             vm.prank(currentActor);
-            token = factoryV2.createToken("TestToken", "TEST", salt, creatorFs, noSs, _emptyAntiSniperCfg());
+            token = factoryV2.createToken(
+                "TestToken", "TEST", salt, creatorFs, noSs, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            );
         } else {
             bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl);
             vm.prank(currentActor);

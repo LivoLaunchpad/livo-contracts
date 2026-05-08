@@ -24,6 +24,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
@@ -72,6 +74,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
@@ -82,13 +86,15 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testCannotCreateTokenWithEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("", "TEST", "0x12", _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        factoryV2.createToken("", "TEST", "0x12", _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
     }
 
     function testCannotCreateTokenWithEmptySymbol() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("TestToken", "", "0x0", _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        factoryV2.createToken(
+            "TestToken", "", "0x0", _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
     }
 
     function testCannotCreateTokenWithWrongEnding() public {
@@ -97,11 +103,20 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.startPrank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenAddress.selector));
         factoryV2.createToken(
-            "TestToken1", "TEST", bytes32(uint256(correctSalt) + 1), _fs(creator), _noSs(), _emptyAntiSniperCfg()
+            "TestToken1",
+            "TEST",
+            bytes32(uint256(correctSalt) + 1),
+            _fs(creator),
+            _noSs(),
+            false,
+            _emptyTaxCfg(),
+            _emptyAntiSniperCfg()
         );
 
         // with correct salt it should succeed
-        factoryV2.createToken("TestToken1", "TEST", correctSalt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        factoryV2.createToken(
+            "TestToken1", "TEST", correctSalt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
         vm.stopPrank();
     }
 
@@ -113,6 +128,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
@@ -123,6 +140,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
@@ -144,6 +163,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
@@ -154,6 +175,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
@@ -169,7 +192,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         string memory longSymbol = "TESTTESTTESTTESTTESTTESTTESTESESD";
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("TestToken", longSymbol, "0x12", _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        factoryV2.createToken(
+            "TestToken", longSymbol, "0x12", _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
     }
 }
 

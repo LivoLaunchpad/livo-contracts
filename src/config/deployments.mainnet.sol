@@ -29,6 +29,10 @@ library DeploymentsMainnet {
     address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0x5AD0311eD744fe0a43C244E44E2075758a924F36;
     address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xf8c0796B6500309f9b08163e33F16F2448254A29;
 
+    /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
+    address internal constant TAXABLE_TOKEN_V2_IMPL = address(0);
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = address(0);
+
     // --- Factories (unified) ---
     address internal constant FACTORY_UNIV2_UNIFIED = address(0);
     address internal constant FACTORY_UNIV4_UNIFIED = address(0);

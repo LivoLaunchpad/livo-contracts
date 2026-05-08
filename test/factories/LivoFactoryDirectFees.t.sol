@@ -51,7 +51,9 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoToken));
         vm.prank(creator);
-        address token = factoryV2Unified.createToken("DirectFees", "DF", salt, fs, _noSs(), _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            "DirectFees", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+        );
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "direct receiver registered (V2)");
     }

@@ -11,6 +11,8 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
+import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 
@@ -51,6 +53,8 @@ contract DeploymentsUnifiedFactories is Script {
         address tokenSniperImpl;
         address taxTokenImpl;
         address taxTokenSniperImpl;
+        address taxTokenV2Impl;
+        address taxTokenV2SniperImpl;
         address factoryV2;
         address factoryV4;
     }
@@ -125,14 +129,23 @@ contract DeploymentsUnifiedFactories is Script {
         fresh.taxTokenSniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
         console.log("| LivoTaxableTokenUniV4SniperProtected (impl) |", fresh.taxTokenSniperImpl);
 
+        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
+        console.log("| LivoTaxableTokenUniV2 (impl)          |", fresh.taxTokenV2Impl);
+
+        fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
+        console.log("| LivoTaxableTokenUniV2SniperProtected (impl) |", fresh.taxTokenV2SniperImpl);
+
         fresh.factoryV2 = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
                 fresh.tokenImpl,
                 fresh.tokenSniperImpl,
+                fresh.taxTokenV2Impl,
+                fresh.taxTokenV2SniperImpl,
                 d.bondingCurve,
                 d.graduatorV2,
-                fresh.masterFeeHandler
+                fresh.masterFeeHandler,
+                fresh.deployersWhitelist
             )
         );
         console.log("| LivoFactoryUniV2Unified               |", fresh.factoryV2);

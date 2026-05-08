@@ -35,6 +35,8 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
         // Pair contract is not deployed at token creation; only the CREATE2 address is reserved
@@ -148,6 +150,8 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            false,
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 

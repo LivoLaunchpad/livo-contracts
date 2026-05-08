@@ -301,6 +301,8 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
                 _nextValidSalt(address(factoryV2), address(livoToken)),
                 _fs(creator),
                 _noSs(),
+                false,
+                _emptyTaxCfg(),
                 _emptyAntiSniperCfg()
             );
         } else {

@@ -11,6 +11,8 @@ import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {DeployersWhitelist} from "src/factories/DeployersWhitelist.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
+import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
@@ -32,6 +34,8 @@ contract LaunchpadBaseTests is Test {
 
     LivoToken public livoToken;
     LivoTaxableTokenUniV4 public livoTaxToken;
+    LivoTaxableTokenUniV2 public livoTaxTokenV2;
+    LivoTaxableTokenUniV2SniperProtected public livoTaxTokenV2Sniper;
 
     ILivoToken public implementation;
 
@@ -229,6 +233,8 @@ contract LaunchpadBaseTests is Test {
 
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
+        livoTaxTokenV2 = new LivoTaxableTokenUniV2();
+        livoTaxTokenV2Sniper = new LivoTaxableTokenUniV2SniperProtected();
         deployersWhitelist = new DeployersWhitelist();
         deployersWhitelist.setAdmin(admin, true);
 
@@ -236,9 +242,12 @@ contract LaunchpadBaseTests is Test {
             address(launchpad),
             address(livoToken),
             address(livoTokenSniper),
+            address(livoTaxTokenV2),
+            address(livoTaxTokenV2Sniper),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler)
+            address(feeHandler),
+            address(deployersWhitelist)
         );
 
         factoryV4Unified = new LivoFactoryUniV4Unified(
@@ -302,6 +311,8 @@ contract LaunchpadBaseTests is Test {
                 _nextValidSalt(address(factoryV2Unified), address(livoToken)),
                 _fs(creator),
                 _noSs(),
+                false,
+                _emptyTaxCfg(),
                 _emptyAntiSniperCfg()
             );
         }

@@ -97,9 +97,12 @@ contract LaunchpadInvariants is Test {
             address(launchpad),
             address(tokenImplementation),
             address(tokenImplementation),
+            address(tokenImplementation),
+            address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler)
+            address(feeHandler),
+            address(deployersWhitelist)
         );
 
         factoryV4 = new LivoFactoryUniV4Unified(

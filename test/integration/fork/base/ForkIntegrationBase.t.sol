@@ -272,7 +272,9 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         if (_isV4(c)) {
             impl = factoryV4.previewTokenImplementation(fees, supply, _renouncesOwnership(c), _taxCfg(c), sniper);
         } else {
-            impl = factoryV2.previewTokenImplementation(fees, supply, sniper);
+            impl = factoryV2.previewTokenImplementation(
+                fees, supply, false, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}), sniper
+            );
         }
     }
 
@@ -329,7 +331,14 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             );
         } else {
             token = factoryV2.createToken{value: input.ethValue}(
-                "Livo Integration", "LIVOI", input.salt, input.fees, input.supply, _antiSniperCfg(c)
+                "Livo Integration",
+                "LIVOI",
+                input.salt,
+                input.fees,
+                input.supply,
+                false,
+                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}),
+                _antiSniperCfg(c)
             );
         }
     }

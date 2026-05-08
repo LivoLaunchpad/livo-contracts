@@ -50,6 +50,14 @@ contract ExportDeployments is Script {
             s,
             _row("LivoTaxableTokenUniV4SniperProtected (impl)", DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL)
         );
+        s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL));
+        s = string.concat(
+            s,
+            _row(
+                "LivoTaxableTokenUniV2SniperProtected (impl)",
+                DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
+            )
+        );
         s = string.concat(s, _row("LivoFactoryUniV2Unified", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV4Unified", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED));
 
@@ -88,6 +96,14 @@ contract ExportDeployments is Script {
         s = string.concat(
             s,
             _row("LivoTaxableTokenUniV4SniperProtected (impl)", DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL)
+        );
+        s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL));
+        s = string.concat(
+            s,
+            _row(
+                "LivoTaxableTokenUniV2SniperProtected (impl)",
+                DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
+            )
         );
         s = string.concat(s, _row("LivoFactoryUniV2Unified", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV4Unified", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED));
