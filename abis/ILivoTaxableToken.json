@@ -302,19 +302,6 @@
   },
   {
     "type": "function",
-    "name": "swapBack",
-    "inputs": [
-      {
-        "name": "amountOutMinWei",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "totalSupply",
     "inputs": [],
     "outputs": [
