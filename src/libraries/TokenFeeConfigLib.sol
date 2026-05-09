@@ -5,8 +5,9 @@ library TokenFeeConfigLib {
     uint256 internal constant BPS_TOTAL = 10_000;
 
     struct Config {
+        // Packed into slot 0: bool (1 byte) + uint16 (2 bytes), 29 bytes free.
         bool isSplit;
-        uint256 totalDirectBps;
+        uint16 totalDirectBps; // bounded by BPS_TOTAL = 10_000, fits in uint16.
         uint256 ethPerBps;
         address[] directReceivers;
         address[] claimableRecipients;

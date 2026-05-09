@@ -111,14 +111,8 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
         address tokenOwner = ILivoToken(token).owner();
         require(msg.sender == owner() || (msg.sender == tokenOwner), Unauthorized());
 
-        // Snapshot claimable accumulator into pending so no ETH is lost on transitions.
-        uint256 claimableLen = cfg.claimableRecipients.length;
-        for (uint256 i = 0; i < claimableLen; i++) {
-            address r = cfg.claimableRecipients[i];
-            _pendingClaims[token][r] += _accruedClaimableFor(token, cfg, r);
-            _claimedPerBps[token][r] = cfg.ethPerBps;
-        }
-
+        // Snapshotting of accumulated claimable ETH happens inside `_setSharesInternal`'s
+        // claimable wipe loop, so no ETH is lost on transitions.
         _setSharesInternal(token, cfg, feeShares, true);
     }
 
@@ -190,24 +184,20 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
     ///////////////////////// INTERNAL //////////////////////////
 
     /// @dev Single-receiver deposit path. Either forwards directly or credits pending claims.
+    ///      Branches on `totalDirectBps` (warm slot — packed with `isSplit` already read in
+    ///      `depositFees`) instead of `directReceivers.length` to avoid a cold SLOAD.
     function _depositSingle(address token, TokenFeeConfigLib.Config storage cfg) internal {
-        address receiver;
-        bool isDirect;
-        if (cfg.directReceivers.length > 0) {
-            receiver = cfg.directReceivers[0];
-            isDirect = true;
-        } else {
-            receiver = cfg.claimableRecipients[0];
-        }
-
-        if (isDirect) {
+        if (cfg.totalDirectBps > 0) {
+            address receiver = cfg.directReceivers[0];
             (bool ok,) = receiver.call{value: msg.value, gas: DIRECT_FORWARD_GAS}("");
             if (ok) {
                 emit CreatorClaimed(token, receiver, msg.value);
                 return;
             }
+            _pendingClaims[token][receiver] += msg.value;
+        } else {
+            _pendingClaims[token][cfg.claimableRecipients[0]] += msg.value;
         }
-        _pendingClaims[token][receiver] += msg.value;
     }
 
     /// @dev Multi-receiver deposit path. Forwards direct slices and accumulates the rest.
@@ -291,10 +281,15 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
             // Capture old direct set for diff events before wiping.
             oldDirects = cfg.directReceivers;
 
-            // Wipe claimable per-account state (pending preserved — removals keep their residue).
+            // Wipe claimable per-account state, snapshotting accumulator-based accrual into pending
+            // first so removals keep their residue (and re-registered recipients don't double-earn).
+            // `cfg.ethPerBps` is cached once outside the loop to avoid re-reading the storage slot.
+            uint256 cachedEthPerBps = cfg.ethPerBps;
             uint256 oldClaimableLen = cfg.claimableRecipients.length;
             for (uint256 i = 0; i < oldClaimableLen; i++) {
                 address r = cfg.claimableRecipients[i];
+                _pendingClaims[token][r] += (cachedEthPerBps - _claimedPerBps[token][r]) * _sharesBpsOf[token][r]
+                    / PRECISION;
                 delete _sharesBpsOf[token][r];
                 // _claimedPerBps[token][r] is stale but harmless: sharesBps==0 zeroes the accumulator term.
             }
@@ -365,6 +360,10 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
         shares = new uint256[](len);
         uint256 total;
         uint256 directSum;
+        // Cache `cfg.ethPerBps` once: read N times by the loop otherwise. Also lets us skip the
+        // SSTORE entirely when zero (which is always the case at `registerToken`, and avoids a
+        // wasted cold 0→0 write per claimable on init).
+        uint256 cachedEthPerBps = cfg.ethPerBps;
 
         for (uint256 i = 0; i < len; i++) {
             address acc = feeShares[i].account;
@@ -384,12 +383,15 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
                 directSum += sh;
             } else {
                 cfg.claimableRecipients.push(acc);
-                _claimedPerBps[token][acc] = cfg.ethPerBps;
+                if (cachedEthPerBps != 0) {
+                    _claimedPerBps[token][acc] = cachedEthPerBps;
+                }
             }
         }
         require(total == BPS_TOTAL, InvalidShares());
         require(cfg.directReceivers.length <= MAX_DIRECT_RECEIVERS, TooManyDirectReceivers());
-        cfg.totalDirectBps = directSum;
+        // Safe cast: `directSum <= total == BPS_TOTAL == 10_000`, fits in uint16.
+        cfg.totalDirectBps = uint16(directSum);
     }
 
     /// @dev Reverts if any two `feeShares` entries share the same `account`.
