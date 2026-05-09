@@ -214,7 +214,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
-    /// @dev Shared name/symbol validation. Duplicated in every token-init path.
+    /// @dev Shared name/symbol validation. Single source of truth — called once from `_validateInputs`
+    ///      for both V2 and V4 factories.
     function _validateNameSymbol(string calldata name, string calldata symbol) internal pure {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
