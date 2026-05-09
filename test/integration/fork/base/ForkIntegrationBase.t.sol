@@ -270,7 +270,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     ) internal view returns (address impl) {
         AntiSniperConfigs memory sniper = _antiSniperCfg(c);
         if (_isV4(c)) {
-            impl = factoryV4.previewTokenImplementation(fees, supply, _renouncesOwnership(c), _taxCfg(c), sniper);
+            impl = factoryV4.previewTokenImplementation(fees, supply, _taxCfg(c), sniper);
         } else {
             impl = factoryV2.previewTokenImplementation(
                 fees, supply, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}), sniper
