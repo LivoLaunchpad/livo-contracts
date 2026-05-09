@@ -44,8 +44,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
     /// @dev Re-entrancy guard for the swap-back path. When true, `_update` short-circuits the
     ///      tax + auto-trigger logic so the router's `transferFrom(this, pair, ...)` is a plain
-    ///      ERC20 transfer.
-    bool internal _inSwap;
+    ///      ERC20 transfer. Lives in transient storage — auto-clears at end of tx, no SSTORE cost.
+    bool internal transient _inSwap;
 
     //////////////////////// Events //////////////////////
 
