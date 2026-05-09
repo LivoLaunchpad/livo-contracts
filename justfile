@@ -21,6 +21,7 @@ abis:
     @jq '.abi' out/LivoFactoryUniV2Unified.sol/LivoFactoryUniV2Unified.json > abis/LivoFactoryUniV2Unified.json
     @jq '.abi' out/LivoFactoryUniV4Unified.sol/LivoFactoryUniV4Unified.json > abis/LivoFactoryUniV4Unified.json
     @jq '.abi' out/DeployersWhitelist.sol/DeployersWhitelist.json > abis/DeployersWhitelist.json
+    @jq '.abi' out/IDeployersWhitelist.sol/IDeployersWhitelist.json > abis/IDeployersWhitelist.json
     @jq '.abi' out/ILivoFeeSplitter.sol/ILivoFeeSplitter.json > abis/ILivoFeeSplitter.json
     @jq '.abi' out/ILivoTaxableToken.sol/ILivoTaxableToken.json > abis/ILivoTaxableToken.json
     @echo "✔ ABIs copied to abis/ directory"
