@@ -50,8 +50,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     //////////////////////// Events //////////////////////
 
     /// @notice Emitted whenever the contract auto- or manually-swaps accumulated tax tokens to ETH
-    ///         and forwards the proceeds to the master fee handler.
-    event TaxSwapped(uint256 tokenAmountIn, uint256 ethReceived);
+    ///         and forwards the proceeds to the master fee handler. `ethAmount` is the ETH
+    ///         routed through `feeHandler.depositFees` for this swap-back, i.e. the tax
+    ///         actually accrued to the creator (and any direct receivers) for the swap window
+    ///         covered by this back-swap.
+    event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
 
     //////////////////////////////////////////////////////
 
@@ -152,7 +155,6 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
                 if (taxAmount > 0) {
                     super._update(from, address(this), taxAmount);
                     super._update(from, to, amount - taxAmount);
-                    emit CreatorTaxesAccrued(taxAmount);
                     return;
                 }
             }
@@ -188,10 +190,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         _inSwap = false;
 
         uint256 ethBalance = address(this).balance;
+        emit CreatorTaxSwapback(tokenAmount, ethBalance);
+
         if (ethBalance > 0) {
             ILivoMasterFeeHandler(feeHandler).depositFees{value: ethBalance}(address(this));
         }
-
-        emit TaxSwapped(tokenAmount, ethBalance);
     }
 }

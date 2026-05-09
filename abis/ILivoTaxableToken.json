@@ -460,19 +460,6 @@
   },
   {
     "type": "event",
-    "name": "CreatorTaxesAccrued",
-    "inputs": [
-      {
-        "name": "taxAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "Graduated",
     "inputs": [],
     "anonymous": false
