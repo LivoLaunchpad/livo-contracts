@@ -146,7 +146,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // Auto swap-back: only on sells, and only if the contract has enough accumulated tax to
         // make the swap worthwhile. `from != address(this)` is implied by `_inSwap` already being
         // false here (the contract only ever transfers tokens during a swap-back).
-        if (isSell) {
+        // `from != graduator` is load-bearing: the graduator's initial `addLiquidityETH` call
+        // produces a `_update(graduator, pair, ...)` while the pair still has zero reserves, so
+        // firing `_swapBack` against it would revert the entire graduation tx. Anyone could grief
+        // graduation by pre-funding `address(this)` with `>= SWAP_THRESHOLD` tokens before it.
+        if (isSell && from != graduator) {
             uint256 contractBalance = balanceOf(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
