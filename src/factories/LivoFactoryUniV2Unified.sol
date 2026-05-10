@@ -85,6 +85,6 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external view returns (address) {
         _validateTaxConfig(taxCfg);
         _validateAntiSniperConfig(antiSniperCfg);
-        return _resolveImpl(_isTaxConfigured(taxCfg), _isAntiSniperConfigured(antiSniperCfg));
+        return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 }

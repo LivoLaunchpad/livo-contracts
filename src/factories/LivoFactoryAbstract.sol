@@ -292,21 +292,29 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         return a.protectionWindowSeconds != 0;
     }
 
-    /// @dev Picks the implementation address for the (tax, anti-sniper) pair. Mirrors the dispatch
-    ///      table used by `_dispatchAndInitialize` so `previewTokenImplementation` returns the same
-    ///      address that `createToken` would clone for identical inputs.
-    function _resolveImpl(bool hasTax, bool hasAntiSniper) internal view returns (address) {
+    /// @dev Single source of truth for which implementation `createToken` will clone for a given
+    ///      `(taxCfg, antiSniperCfg)` pair. Both the public `previewTokenImplementation` (used by
+    ///      frontends to mine a `0x1110`-suffixed salt) and `_dispatchAndInitialize` (the path
+    ///      that actually clones the impl) read from this function — so a salt that previews to
+    ///      a vanity-suffixed address is guaranteed to also produce one at create time.
+    function _previewTokenImplementation(TaxConfigInit calldata taxCfg, AntiSniperConfigs calldata antiSniperCfg)
+        internal
+        view
+        returns (address)
+    {
+        bool hasTax = _isTaxConfigured(taxCfg);
+        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
         if (hasTax) {
             return hasAntiSniper ? TOKEN_IMPL_TAX_ANTISNIPER : TOKEN_IMPL_TAX;
         }
         return hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
     }
 
-    /// @dev Routes to the tax or non-tax sub-helper based on `taxCfg`. Splitting by family keeps
-    ///      each sub-helper's stack frame small enough to compile without `via_ir`. Callers
-    ///      (`createToken` on the derived factory) are responsible for invoking
-    ///      `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers the token's fee config
-    ///      with the master handler) after this returns.
+    /// @dev Resolves the implementation via `_previewTokenImplementation` and then routes to the
+    ///      tax or non-tax sub-helper. Splitting by family keeps each sub-helper's stack frame
+    ///      small enough to compile without `via_ir`. Callers (`createToken` on the derived
+    ///      factory) are responsible for invoking `LAUNCHPAD.launchToken` and `_finalizeCreation`
+    ///      (which registers the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(
         string calldata name,
         string calldata symbol,
@@ -315,18 +323,20 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
+        address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            token = _initializeTaxToken(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+            token = _initializeTaxToken(impl, name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
         } else {
-            token = _initializeNonTaxToken(name, symbol, salt, tokenOwner, antiSniperCfg);
+            token = _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, antiSniperCfg);
         }
     }
 
-    /// @dev Clones the appropriate tax implementation and dispatches into the 2-arg or 3-arg
-    ///      `initialize` overload through the venue-agnostic `ILivoTaxableToken[SniperProtected]`
-    ///      interfaces. The same body works for both V2 and V4 factories because the signatures
-    ///      are byte-identical on `LivoTaxableTokenUniV{2,4}` and their sniper-protected variants.
+    /// @dev Clones the resolved tax implementation (passed in by `_dispatchAndInitialize` so the
+    ///      preview/create dispatch share a single source of truth) and dispatches into the 2-arg
+    ///      or 3-arg `initialize` overload through the venue-agnostic
+    ///      `ILivoTaxableToken[SniperProtected]` interfaces.
     function _initializeTaxToken(
+        address impl,
         string calldata name,
         string calldata symbol,
         bytes32 salt,
@@ -334,36 +344,31 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
-        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
-        address impl = hasAntiSniper ? TOKEN_IMPL_TAX_ANTISNIPER : TOKEN_IMPL_TAX;
-
         ILivoToken.InitializeParams memory params;
         (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
 
-        if (hasAntiSniper) {
+        if (_isAntiSniperConfigured(antiSniperCfg)) {
             ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
         } else {
             ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
         }
     }
 
-    /// @dev Clones the non-tax implementation (base or anti-sniper) and runs the appropriate
-    ///      `initialize` overload. Identical between V2 and V4 because both venues share the
-    ///      same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
+    /// @dev Clones the resolved non-tax implementation (passed in by `_dispatchAndInitialize`) and
+    ///      runs the appropriate `initialize` overload. Identical between V2 and V4 because both
+    ///      venues share the same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
     function _initializeNonTaxToken(
+        address impl,
         string calldata name,
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
-        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
-        address impl = hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
-
         ILivoToken.InitializeParams memory params;
         (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
 
-        if (hasAntiSniper) {
+        if (_isAntiSniperConfigured(antiSniperCfg)) {
             LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
         } else {
             LivoToken(token).initialize(params);
