@@ -54,7 +54,7 @@ error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
 taxtokenaddresses:
-    sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
+    sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
 
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>
