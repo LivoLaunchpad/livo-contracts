@@ -114,15 +114,21 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
         uint256 total;
         uint256 directCount;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len;) {
             require(feeReceivers[i].account != address(0), InvalidFeeReceiver());
             require(feeReceivers[i].shares > 0, InvalidShares());
-            for (uint256 j = i + 1; j < len; j++) {
+            for (uint256 j = i + 1; j < len;) {
                 require(feeReceivers[i].account != feeReceivers[j].account, InvalidFeeReceiver());
+                unchecked {
+                    ++j;
+                }
             }
             total += feeReceivers[i].shares;
             if (feeReceivers[i].directFeesEnabled) {
                 directCount++;
+            }
+            unchecked {
+                ++i;
             }
         }
         require(total == BASIS_POINTS, InvalidShares());
@@ -135,13 +141,19 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         require(len > 0, InvalidSupplyShares());
 
         uint256 total;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len;) {
             require(supplyShares[i].account != address(0), InvalidSupplyShares());
             require(supplyShares[i].shares > 0, InvalidShares());
-            for (uint256 j = i + 1; j < len; j++) {
+            for (uint256 j = i + 1; j < len;) {
                 require(supplyShares[i].account != supplyShares[j].account, InvalidSupplyShares());
+                unchecked {
+                    ++j;
+                }
             }
             total += supplyShares[i].shares;
+            unchecked {
+                ++i;
+            }
         }
         require(total == BASIS_POINTS, InvalidShares());
     }
@@ -162,19 +174,23 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         address[] memory recipients = new address[](len);
         uint256[] memory amounts = new uint256[](len);
 
+        uint256 lastIdx = len - 1;
         uint256 distributed;
-        for (uint256 i = 0; i < len - 1; i++) {
+        for (uint256 i = 0; i < lastIdx;) {
             uint256 amount = tokensBought * supplyShares[i].shares / BASIS_POINTS;
             recipients[i] = supplyShares[i].account;
             amounts[i] = amount;
             distributed += amount;
             IERC20(token).safeTransfer(supplyShares[i].account, amount);
+            unchecked {
+                ++i;
+            }
         }
         // last recipient absorbs rounding dust
         uint256 lastAmount = tokensBought - distributed;
-        recipients[len - 1] = supplyShares[len - 1].account;
-        amounts[len - 1] = lastAmount;
-        IERC20(token).safeTransfer(supplyShares[len - 1].account, lastAmount);
+        recipients[lastIdx] = supplyShares[lastIdx].account;
+        amounts[lastIdx] = lastAmount;
+        IERC20(token).safeTransfer(supplyShares[lastIdx].account, lastAmount);
 
         emit BuyOnDeploy(token, msg.sender, msg.value, tokensBought, recipients, amounts);
     }
@@ -257,7 +273,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     function _validateTaxConfig(TaxConfigInit calldata t) internal view {
         if (_isTaxConfigured(t)) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
-            require(t.buyTaxBps <= MAX_TAX_BPS() && t.sellTaxBps <= MAX_TAX_BPS(), InvalidTaxBps());
+            uint256 maxTaxBps = MAX_TAX_BPS();
+            require(t.buyTaxBps <= maxTaxBps && t.sellTaxBps <= maxTaxBps, InvalidTaxBps());
             require(t.taxDurationSeconds <= MAX_EXTENDED_TAX_DURATION_SECONDS, InvalidTaxDuration());
             if (t.taxDurationSeconds > MAX_SELL_TAX_DURATION_SECONDS) {
                 require(DEPLOYERS_WHITELIST.isWhitelisted(msg.sender), DeployerNotWhitelisted());
