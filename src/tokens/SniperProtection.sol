@@ -55,10 +55,6 @@ abstract contract SniperProtection {
     /// @notice Anchor for the protection window. Set once by `_initializeSniperProtection`.
     uint40 public launchTimestamp;
 
-    /// @notice Factory that deployed this token (captured as `msg.sender` at `_initializeSniperProtection`).
-    /// @dev Used to exempt the deployer-buy path's launchpad → factory hop from the caps.
-    address internal factory;
-
     /// @notice Dev-supplied addresses that bypass the caps during the protection window.
     mapping(address account => bool isWhitelisted) public sniperBypass;
 
@@ -93,7 +89,6 @@ abstract contract SniperProtection {
         maxWalletBps = cfg.maxWalletBps;
         protectionWindowSeconds = cfg.protectionWindowSeconds;
         launchTimestamp = uint40(block.timestamp);
-        factory = msg.sender;
 
         uint256 n = cfg.whitelist.length;
         for (uint256 i; i < n; ++i) {
@@ -110,6 +105,11 @@ abstract contract SniperProtection {
     /// @param amount Transfer amount.
     /// @param launchpadAddr Address of the launchpad (the bonding-curve counterparty).
     /// @param factoryAddr Address of the factory that deployed this token (deployer-buy recipient).
+    ///        Sourced by the caller from the host token's `tokenFactory` (transient): non-zero
+    ///        only inside the same tx that initialized the token, which is the only window in
+    ///        which the launchpad → factory hop happens. After that tx it reads `address(0)`,
+    ///        which never appears as a `to` in real transfers — so the exemption naturally
+    ///        applies once and only once.
     /// @param graduatorAddr Address of the graduator (graduation-reserve recipient).
     /// @param graduated True if the token has already graduated.
     /// @param toBalance Recipient's balance BEFORE this transfer is applied (`balanceOf(to)`).
@@ -131,10 +131,9 @@ abstract contract SniperProtection {
         bool graduated,
         uint256 toBalance
     ) internal view {
-        if (
-            !graduated && from != address(0) && from == launchpadAddr
-                && block.timestamp < launchTimestamp + protectionWindowSeconds
-        ) {
+        // `from == launchpadAddr` already excludes mints (where `from == 0`), so no explicit
+        // `from != address(0)` check is needed: the launchpad address is never zero.
+        if (!graduated && from == launchpadAddr && block.timestamp < launchTimestamp + protectionWindowSeconds) {
             if (to == factoryAddr) return;
             if (to == graduatorAddr) return;
             if (sniperBypass[to]) return;

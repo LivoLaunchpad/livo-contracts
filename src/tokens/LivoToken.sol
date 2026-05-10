@@ -24,11 +24,13 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
+    /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
+    /// @dev Packed with `graduated` so the hot-path read of both fields in `_update` costs a
+    ///      single SLOAD.
+    address public pair;
+
     /// @notice Whether the token has graduated already or not
     bool public graduated;
-
-    /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
-    address public pair;
 
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
@@ -37,7 +39,30 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     address public feeHandler;
 
     /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
-    address public tokenFactory;
+    /// @dev Lives in transient storage: the factory calls `initialize` and `registerFees` in the
+    ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
+    ///      end of tx, so a second `registerFees` attempt from any future tx finds it zeroed
+    ///      and reverts on the `msg.sender == 0` check.
+    /// @dev SECURITY ASSUMPTION (sniper-protected variants): `SniperProtection._checkSniperProtection`
+    ///      reads this slot to exempt the launchpad → factory deployer-buy hop from the per-tx /
+    ///      per-wallet caps. Outside the deploy tx the slot reads `address(0)`, so the exemption
+    ///      check effectively becomes `if (to == address(0)) return;`. This is currently safe
+    ///      ONLY because OZ ERC20 v5's `transfer` / `transferFrom` revert with
+    ///      `ERC20InvalidReceiver` before reaching `_update` whenever `to == address(0)`, which
+    ///      makes a sniper-checked transfer with a zero recipient unreachable in practice.
+    /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `from == launchpad`
+    ///      and `to == address(0)` would silently bypass the sniper caps. Concrete cases to
+    ///      watch out for:
+    ///        - a `LaunchpadV2` that exposes a buyer-supplied `receiver` parameter and forwards
+    ///          it to the token without rejecting `address(0)`;
+    ///        - a custom token transfer override (or alternate ERC20 base) that drops the
+    ///          zero-recipient guard;
+    ///        - any new internal call site that issues `_update(launchpad, address(0), x)`
+    ///          directly (e.g. a "burn from launchpad" admin path).
+    ///      If any such path is introduced, harden the exemption: pass a non-zero sentinel
+    ///      for the cleared state, or have `_checkSniperProtection` add an explicit
+    ///      `factoryAddr != address(0)` guard around the `to == factoryAddr` short-circuit.
+    address internal transient tokenFactory;
 
     /// @notice Token name
     string internal _tokenName;
@@ -50,7 +75,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error OnlyGraduatorAllowed();
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
-    error InvalidGraduator();
     error Unauthorized();
 
     //////////////////////////////////////////////////////
@@ -68,9 +92,10 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @dev Internal initializer body; callable from child `initializer`-gated functions.
+    /// @dev `params.graduator` is not explicitly checked for `address(0)`; the call to
+    ///      `ILivoGraduator(params.graduator).initialize(address(this))` below would revert in
+    ///      that case anyway (no code at the zero address).
     function _initializeLivoToken(ILivoToken.InitializeParams memory params) internal onlyInitializing {
-        require(params.graduator != address(0), InvalidGraduator());
-
         _tokenName = params.name;
         _tokenSymbol = params.symbol;
         graduator = params.graduator;

@@ -6,9 +6,6 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 
-// UniswapV4 imports for tax swap functionality
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
 import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
@@ -22,7 +19,7 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken {
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
     /// @notice Pool manager for lock state checking
-    IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddresses.UNIV4_POOL_MANAGER);
+    address public constant UNIV4_POOL_MANAGER = DeploymentAddresses.UNIV4_POOL_MANAGER;
 
     //////////////////////////////////////////////////////
 
@@ -56,6 +53,6 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken {
         onlyInitializing
     {
         super._initializeLivoTaxableToken(params, taxCfg);
-        require(pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
+        require(pair == UNIV4_POOL_MANAGER, "Invalid pair address");
     }
 }

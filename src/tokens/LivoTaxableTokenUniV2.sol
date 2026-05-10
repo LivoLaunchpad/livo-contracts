@@ -130,14 +130,23 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
             return;
         }
 
-        if ((!graduated) && (to == pair)) {
+        // Cache `pair` and `graduated` once. Both are packed in the same storage slot in
+        // `LivoToken`, so this is a single SLOAD; the locals also let the buy/sell branches
+        // below avoid re-reading them.
+        address _pair = pair;
+        bool _graduated = graduated;
+
+        if ((!_graduated) && (to == _pair)) {
             revert TransferToPairBeforeGraduationNotAllowed();
         }
+
+        bool isSell = (to == _pair);
+        bool isBuy = (from == _pair);
 
         // Auto swap-back: only on sells, and only if the contract has enough accumulated tax to
         // make the swap worthwhile. `from != address(this)` is implied by `_inSwap` already being
         // false here (the contract only ever transfers tokens during a swap-back).
-        if (to == pair) {
+        if (isSell) {
             uint256 contractBalance = balanceOf(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
@@ -145,11 +154,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
             }
         }
 
-        bool taxable = graduated && (from == pair || to == pair)
-            && (block.timestamp <= uint256(graduationTimestamp) + taxDurationSeconds) && (from != graduator);
-
-        if (taxable) {
-            uint16 bps = (from == pair) ? buyTaxBps : sellTaxBps;
+        if (
+            _graduated && (isBuy || isSell) && block.timestamp <= uint256(graduationTimestamp) + taxDurationSeconds
+                && from != graduator
+        ) {
+            uint16 bps = isBuy ? buyTaxBps : sellTaxBps;
             if (bps > 0) {
                 uint256 taxAmount = amount * bps / 10_000;
                 if (taxAmount > 0) {

@@ -27,7 +27,7 @@ contract LivoTaxableTokenUniV4SniperProtected is
 
     function _update(address from, address to, uint256 amount) internal override {
         _checkSniperProtection(
-            from, to, amount, address(launchpad), factory, address(graduator), graduated, balanceOf(to)
+            from, to, amount, address(launchpad), tokenFactory, address(graduator), graduated, balanceOf(to)
         );
         super._update(from, to, amount);
     }
