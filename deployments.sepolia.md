@@ -10,18 +10,18 @@
 | ConstantProductBondingCurve                  | `0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5` |
 | LivoGraduatorUniswapV2                       | `0x67C95f98fa373781bc09efBff3c6a6E3614FE6e6` |
 | LivoGraduatorUniswapV4                       | `0x85fE2051413a4b80b904f05841d1142FeF7f789c` |
-| LivoMasterFeeHandler                         | `0x1356F74A1afC1ff119e8C37174799677fD791eD9` |
-| DeployersWhitelist                           | _(not deployed)_                             |
+| LivoMasterFeeHandler                         | `0x53110c743BD7Df466F071A77B5b2cfe767F7c5B9` |
+| DeployersWhitelist                           | `0xa22A3246e86B7dc841D09A0475E78Cc48A22e74c` |
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
 | LivoQuoter                                   | `0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438` |
-| LivoToken (impl)                             | `0xe40F66e2401d740E492875bF1fdA9e4C3a1a9Da7` |
-| LivoTaxableTokenUniV4 (impl)                 | `0x700F90a75BaAFd48dCFF285a579398A6107BAC52` |
-| LivoTokenSniperProtected (impl)              | `0xC872970ae54a67b21DF46135cF49B8b46ec31107` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0x84954123486EDD54Ba502b76d29670FbceF6708C` |
-| LivoTaxableTokenUniV2 (impl)                 | _(not deployed)_                             |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | _(not deployed)_                             |
-| LivoFactoryUniV2Unified                      | `0x4BC78dC4368f07671b118231eC392f1a05355D76` |
-| LivoFactoryUniV4Unified                      | `0x5dD663ee0F573576708B9313C4fcd39b728F0c24` |
+| LivoToken (impl)                             | `0x658b6973Ef7a35D55C3aa27d39bFcF0347f0296B` |
+| LivoTaxableTokenUniV4 (impl)                 | `0xd4b5963497426799433d6fa12Eb593A85Eab6B80` |
+| LivoTokenSniperProtected (impl)              | `0x0c8d9185d1b3DF1Ef91225AF9Af8aca33eeD70B2` |
+| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xBdB87abC0cf6dD723030B2f548152BA9d6af8cD8` |
+| LivoTaxableTokenUniV2 (impl)                 | `0x80897a1CbB8F77AFf71602D8068696415A7dDf65` |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xdE465597425dd643b497F7C7dEcC3Dfec0bd9C24` |
+| LivoFactoryUniV2Unified                      | `0x0B21e0A2Da0aB53cE1149144b77603a0F1d7C1a6` |
+| LivoFactoryUniV4Unified                      | `0x635Bd5f3e4f464036d9eE697737FB89996f75249` |
 
 ## Accounts
 
