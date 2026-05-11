@@ -14,7 +14,7 @@ library DeploymentsSepolia {
     // --- Core ---
     address internal constant LAUNCHPAD = 0xd9f8bbe437a3423b725c6616C1B543775ecf1110;
     address internal constant BONDING_CURVE = 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5;
-    address internal constant GRADUATOR_UNIV2 = 0x67C95f98fa373781bc09efBff3c6a6E3614FE6e6;
+    address internal constant GRADUATOR_UNIV2 = 0x973B8F3b1e52244E79ecb86591C8FdA6E2D0e691;
     address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
     address internal constant MASTER_FEE_HANDLER = 0x53110c743BD7Df466F071A77B5b2cfe767F7c5B9;
     address internal constant DEPLOYERS_WHITELIST = 0xa22A3246e86B7dc841D09A0475E78Cc48A22e74c;
@@ -35,7 +35,7 @@ library DeploymentsSepolia {
     address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0xdE465597425dd643b497F7C7dEcC3Dfec0bd9C24;
 
     // --- Factories (unified) ---
-    address internal constant FACTORY_UNIV2_UNIFIED = 0x0B21e0A2Da0aB53cE1149144b77603a0F1d7C1a6;
+    address internal constant FACTORY_UNIV2_UNIFIED = 0xef8a59E8462c93EFf1d08d2A866eD56ea70A344c;
     address internal constant FACTORY_UNIV4_UNIFIED = 0x635Bd5f3e4f464036d9eE697737FB89996f75249;
 
     // --- Accounts ---
