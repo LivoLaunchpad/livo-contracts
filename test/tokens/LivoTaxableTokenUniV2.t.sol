@@ -79,6 +79,21 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertEq(uint256(taxToken.graduationTimestamp()), block.timestamp);
     }
 
+    function test_pairMatchesUniV2FactoryPairAfterGraduationLiquidityDeployed() public {
+        address predictedPair = taxToken.pair();
+        assertEq(predictedPair, pair, "cached pair mismatch");
+        assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), address(0), "pair exists before graduation");
+        assertEq(predictedPair.code.length, 0, "pair code exists before graduation");
+
+        _graduateToken();
+
+        address deployedPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
+        assertEq(deployedPair, predictedPair, "token.pair must match deployed UniV2 pair");
+        assertGt(deployedPair.code.length, 0, "pair contract not deployed");
+        assertGt(IERC20(testToken).balanceOf(deployedPair), 0, "pair missing token liquidity");
+        assertGt(WETH.balanceOf(deployedPair), 0, "pair missing WETH liquidity");
+    }
+
     // ─────────────────────────── Sell tax math ───────────────────────────────────
 
     function test_sellTax_takesExpectedAmount() public {
