@@ -18,10 +18,13 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 ///         periodically swapped to ETH on the V2 router and pushed to the master fee handler via
 ///         the same `accrueFees` path that V4 uses.
 /// @dev Auto-swap-back fires inside `_update` on sells once the contract holds at least
-///      `SWAP_THRESHOLD` tokens, and never swaps more than `2 * SWAP_THRESHOLD` per sell so the
-///      price impact a single trader observes stays bounded; any excess balance carries to the
-///      next qualifying sell. Recursion is guarded by `_inSwap`: when the router pulls tokens
-///      from this contract during the swap, our `_update` short-circuits to a plain transfer.
+///      `SWAP_THRESHOLD` tokens — or, after the tax window expires, any non-zero residual — and
+///      never swaps more than `2 * SWAP_THRESHOLD` per sell so the price impact a single trader
+///      observes stays bounded; any excess balance carries to the next qualifying sell. The
+///      post-window drain handles the case where leftover tax tokens stuck below `SWAP_THRESHOLD`
+///      would otherwise never accrue enough fresh tax to cross it, since no new tax accrues once
+///      the window expires. Recursion is guarded by `_inSwap`: when the router pulls tokens from
+///      this contract during the swap, our `_update` short-circuits to a plain transfer.
 ///      A permissioned `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap
 ///      via a private mempool to avoid sandwiches; on factory-deployed tokens the owner is
 ///      `address(0)`, so this entry point always reverts and the auto-trigger is the live path.
@@ -114,9 +117,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      1. If `_inSwap` (we're inside `_swapBack`), bypass everything — the router's
     ///         `transferFrom(this, pair, ...)` must be a plain transfer, otherwise we recurse.
     ///      2. Apply the inherited pre-graduation gate.
-    ///      3. On a sell with sufficient accumulated balance, fire `_swapBack(amount, 0)` capped
-    ///         at `2 * SWAP_THRESHOLD` to bound the per-sell price impact (auto path). Any excess
-    ///         stays on the contract and is drained on the next qualifying sell.
+    ///      3. On a sell with accumulated balance, fire `_swapBack(amount, 0)` capped at
+    ///         `2 * SWAP_THRESHOLD` to bound the per-sell price impact (auto path). Trigger fires
+    ///         when `balance >= SWAP_THRESHOLD`, OR — after the tax window expires — when any
+    ///         non-zero balance remains, so a sub-threshold residual gets drained on the next sell
+    ///         instead of stranding forever (no new tax accrues post-window to push it across).
+    ///         Any excess stays on the contract and is drained on the next qualifying sell.
     ///      4. If we're in the post-graduation tax window AND the transfer touches the pair AND
     ///         the source is not the graduator (which moves the initial liquidity), divert
     ///         `amount * bps / 10_000` to this contract and forward the rest.
@@ -155,9 +161,17 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
                 _swapBack(swapAmount, 0);
+            } else if (contractBalance > 0 && block.timestamp > uint256(graduationTimestamp) + taxDurationSeconds) {
+                // Post-window drain: window's closed, no fresh tax will ever flow in, so a residual
+                // stuck below SWAP_THRESHOLD would otherwise sit forever. The cheap balance check
+                // short-circuits before this branch's SLOAD, so the common zero-balance sell pays
+                // nothing extra. No 2*SWAP_THRESHOLD cap needed: this branch only fires when
+                // contractBalance < SWAP_THRESHOLD, so the swap is already small.
+                _swapBack(contractBalance, 0);
             }
         }
 
+        // charging the tax: only if graduated, only on pair-touching transfers
         if (
             _graduated && (isBuy || isSell) && block.timestamp <= uint256(graduationTimestamp) + taxDurationSeconds
                 && from != graduator

@@ -215,6 +215,35 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertGt(address(feeHandler).balance, feeHandlerEthBefore);
     }
 
+    function test_autoSwapBack_postWindowDrainsSubThresholdResidual() public {
+        // Scenario: a small sell accrues a sub-threshold tax balance during the window. The window
+        // then closes — no new tax will ever flow in, so the residual would normally sit forever
+        // until someone manually swaps it back. Post-window, the next sell must auto-drain it.
+        _setupGraduatedTokenWithBuyer();
+
+        // Accrue a small balance — well below SWAP_THRESHOLD — so the in-window auto-trigger does
+        // not fire on this first sell.
+        uint256 sellerBalance = IERC20(testToken).balanceOf(buyer);
+        uint256 smallSell = sellerBalance / 1000; // tax = 0.04% of seller bal → ≪ SWAP_THRESHOLD
+        _swapSellV2(buyer, testToken, smallSell, 0, true);
+
+        uint256 residual = IERC20(testToken).balanceOf(address(taxToken));
+        assertGt(residual, 0, "residual should accrue during window");
+        assertLt(residual, taxToken.SWAP_THRESHOLD(), "residual must be below threshold for this scenario");
+
+        // Close the tax window.
+        vm.warp(uint256(taxToken.graduationTimestamp()) + TAX_DURATION + 1);
+
+        uint256 feeHandlerEthBefore = address(feeHandler).balance;
+
+        // Trigger any sell post-window — the residual must be auto-drained even though it is
+        // below SWAP_THRESHOLD, and the post-window sell itself accrues no fresh tax.
+        _swapSellV2(buyer, testToken, smallSell, 0, true);
+
+        assertEq(IERC20(testToken).balanceOf(address(taxToken)), 0, "sub-threshold residual must drain post-window");
+        assertGt(address(feeHandler).balance, feeHandlerEthBefore, "ETH proceeds must reach the fee handler");
+    }
+
     function test_autoSwapBack_belowCapSwapsFullBalance() public {
         _setupGraduatedTokenWithBuyer();
 
