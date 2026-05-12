@@ -118,7 +118,7 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
     // ───────────── Deployer-whitelist gating for extended duration ─────────────
 
     function test_createToken_revertsForExtendedDurationWithoutWhitelist() public {
-        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(15 days)); // > 14 days
+        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(180 days + 1)); // > 180 days
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
 
         vm.prank(creator);
