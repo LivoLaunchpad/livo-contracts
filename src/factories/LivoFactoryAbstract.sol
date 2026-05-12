@@ -25,7 +25,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     uint256 internal constant BASIS_POINTS = 10_000;
 
     /// @notice Max configurable tax duration without deployer-whitelist approval.
-    uint256 public constant MAX_TAX_DURATION_SECONDS = 180 days;
+    uint256 public constant MAX_TAX_DURATION_SECONDS = 365 days;
     /// @notice Max configurable tax duration for whitelisted deployers.
     uint256 public constant MAX_EXTENDED_TAX_DURATION_SECONDS = 2 * 365 days;
 
@@ -46,7 +46,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     address public immutable TOKEN_IMPL_TAX;
     /// @notice Token implementation cloned when both tax and anti-sniper are configured.
     address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
-    /// @notice Whitelist checked when a deployer configures tax duration above 180 days.
+    /// @notice Whitelist checked when a deployer configures tax duration above 365 days.
     IDeployersWhitelist public immutable DEPLOYERS_WHITELIST;
 
     /// @notice Max configurable tax (buy or sell). Per-venue value supplied by the derived factory
@@ -269,7 +269,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
     ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, caps `taxDurationSeconds` at the
-    ///      extended ceiling, and requires whitelist approval to exceed the standard 180-day window.
+    ///      extended ceiling, and requires whitelist approval to exceed the standard 365-day window.
     function _validateTaxConfig(TaxConfigInit calldata t) internal view {
         if (_isTaxConfigured(t)) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());

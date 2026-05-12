@@ -253,7 +253,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.DeployerNotWhitelisted.selector);
         factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(180 days + 1)), _emptyAntiSniperCfg()
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
     }
 
@@ -265,10 +265,10 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(180 days + 1)), _emptyAntiSniperCfg()
+            "T", "T", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
 
-        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 180 days + 1);
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
     }
 
     function test_createToken_allowsMaxExtendedTaxForWhitelistedDeployer() public {
@@ -289,7 +289,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.DeployerNotWhitelisted.selector);
         factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(180 days + 1)), _emptyAntiSniperCfg()
+            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
     }
 
@@ -299,7 +299,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(180 days + 1)), _emptyAntiSniperCfg()
+            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
 
         assertEq(impl, address(livoTaxToken));
