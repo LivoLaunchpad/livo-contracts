@@ -10,17 +10,17 @@
 | ConstantProductBondingCurve                  | `0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5` |
 | LivoGraduatorUniswapV2                       | `0x973B8F3b1e52244E79ecb86591C8FdA6E2D0e691` |
 | LivoGraduatorUniswapV4                       | `0x85fE2051413a4b80b904f05841d1142FeF7f789c` |
-| LivoMasterFeeHandler                         | `0x53110c743BD7Df466F071A77B5b2cfe767F7c5B9` |
+| LivoMasterFeeHandler                         | `0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f` |
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
 | LivoQuoter                                   | `0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438` |
-| LivoToken (impl)                             | `0x658b6973Ef7a35D55C3aa27d39bFcF0347f0296B` |
-| LivoTaxableTokenUniV4 (impl)                 | `0xd4b5963497426799433d6fa12Eb593A85Eab6B80` |
-| LivoTokenSniperProtected (impl)              | `0x0c8d9185d1b3DF1Ef91225AF9Af8aca33eeD70B2` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xBdB87abC0cf6dD723030B2f548152BA9d6af8cD8` |
-| LivoTaxableTokenUniV2 (impl)                 | `0xfDA101FE8d90fF17C5248D50F3848d007f294E54` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xE37c1eB83D41837Af14627398AA5870aC1ea2e65` |
-| LivoFactoryUniV2Unified                      | `0x566570B67ACc54d9a3550434774F0383D550DaBC` |
-| LivoFactoryUniV4Unified                      | `0x635Bd5f3e4f464036d9eE697737FB89996f75249` |
+| LivoToken (impl)                             | `0x2C0a167A0f83E7969cA22B386Fe72BA608af9B4a` |
+| LivoTaxableTokenUniV4 (impl)                 | `0xCcc99765d31A6023E279b98f19e3dFB8430D401f` |
+| LivoTokenSniperProtected (impl)              | `0x237EB36efFBc522a19FD8A5581e74661C484Dfe0` |
+| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xfe587A3397e43a92C5bacEBE4bED4bF1e9f8344F` |
+| LivoTaxableTokenUniV2 (impl)                 | `0x3D98c7902d664458015666a92826cb638a015527` |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xd853e420ab0beF122633374ECb6846ABAeCBD143` |
+| LivoFactoryUniV2Unified                      | `0x4D8d61Ab475B62fA94209339e5033dCb652b6563` |
+| LivoFactoryUniV4Unified                      | `0xc79A0c341B50e6Ca62c2C534d94F1A9d8293A4E5` |
 
 ## Accounts
 
