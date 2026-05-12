@@ -41,11 +41,6 @@
         "name": "masterFeeHandler",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "deployersWhitelist",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -59,19 +54,6 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "DEPLOYERS_WHITELIST",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IDeployersWhitelist"
       }
     ],
     "stateMutability": "view"
@@ -117,7 +99,7 @@
   },
   {
     "type": "function",
-    "name": "MAX_EXTENDED_TAX_DURATION_SECONDS",
+    "name": "MAX_CHARITY_TAX_DURATION_SECONDS",
     "inputs": [],
     "outputs": [
       {
@@ -379,7 +361,7 @@
     "name": "previewTokenImplementation",
     "inputs": [
       {
-        "name": "",
+        "name": "feeReceivers",
         "type": "tuple[]",
         "internalType": "struct ILivoFactory.FeeShare[]",
         "components": [
@@ -673,7 +655,12 @@
   },
   {
     "type": "error",
-    "name": "DeployerNotWhitelisted",
+    "name": "CharityModeFeeReceiverInvalid",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CharityModeOwnerNotRenounced",
     "inputs": []
   },
   {
