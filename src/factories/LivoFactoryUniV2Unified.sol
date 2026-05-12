@@ -24,8 +24,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address masterFeeHandler,
-        address deployersWhitelist
+        address masterFeeHandler
     )
         LivoFactoryAbstract(
             launchpad,
@@ -35,8 +34,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
             tokenImplTaxAntiSniper,
             bondingCurve,
             graduator,
-            masterFeeHandler,
-            deployersWhitelist
+            masterFeeHandler
         )
     {}
 
@@ -60,12 +58,15 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        _validateTaxConfig(taxCfg);
-        _validateAntiSniperConfig(antiSniperCfg);
-        _validateInputs(name, symbol, feeReceivers, supplyShares);
+        // V2-family tokens are always deployed ownerless. The renounced-ownership invariant for
+        // charity-mode tax durations is therefore satisfied by default on this venue.
+        address tokenOwner = address(0);
 
-        // tokenOwner is always address(0) for V2-family tokens
-        token = _dispatchAndInitialize(name, symbol, salt, address(0), taxCfg, antiSniperCfg);
+        _validateInputs(name, symbol, feeReceivers, supplyShares);
+        _validateAntiSniperConfig(antiSniperCfg);
+        _validateTaxConfig(taxCfg, feeReceivers, tokenOwner);
+
+        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
 
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, feeReceivers, supplyShares);
@@ -78,13 +79,14 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///      matter for dispatch; disabled configs must have all other tax/anti-sniper fields
     ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
-        FeeShare[] calldata, /* feeReceivers */
+        FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata, /* supplyShares */
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
-        _validateTaxConfig(taxCfg);
         _validateAntiSniperConfig(antiSniperCfg);
+        // V2 tokens are always deployed ownerless, so the preview's `tokenOwner` is `address(0)`.
+        _validateTaxConfig(taxCfg, feeReceivers, address(0));
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 }

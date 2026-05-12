@@ -9,7 +9,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {DeployersWhitelist} from "src/factories/DeployersWhitelist.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
@@ -49,7 +48,6 @@ contract LaunchpadBaseTests is Test {
     // `TaxConfigInit`/`AntiSniperConfigs` sentinels.
     LivoFactoryUniV2Unified public factoryV2Unified;
     LivoFactoryUniV4Unified public factoryV4Unified;
-    DeployersWhitelist public deployersWhitelist;
 
     // Legacy aliases (read-only). The pre-consolidation factories (`LivoFactoryUniV2`,
     // `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV2SniperProtected`,
@@ -235,8 +233,6 @@ contract LaunchpadBaseTests is Test {
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
         livoTaxTokenV2 = new LivoTaxableTokenUniV2();
         livoTaxTokenV2Sniper = new LivoTaxableTokenUniV2SniperProtected();
-        deployersWhitelist = new DeployersWhitelist();
-        deployersWhitelist.setAdmin(admin, true);
 
         factoryV2Unified = new LivoFactoryUniV2Unified(
             address(launchpad),
@@ -246,8 +242,7 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxTokenV2Sniper),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler),
-            address(deployersWhitelist)
+            address(feeHandler)
         );
 
         factoryV4Unified = new LivoFactoryUniV4Unified(
@@ -258,8 +253,7 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxTokenSniper),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler),
-            address(deployersWhitelist)
+            address(feeHandler)
         );
 
         // Legacy aliases — same instance, different reference name. Kept so existing tests that

@@ -58,7 +58,17 @@ interface ILivoFactory {
     error InvalidTaxConfig();
     error InvalidTaxBps();
     error InvalidTaxDuration();
-    error DeployerNotWhitelisted();
+    /// @notice A tax duration above the standard cap requires "charity mode": a single fee
+    ///         receiver that is not the deployer.
+    /// @dev We do NOT verify on-chain that the receiver is a real charity. Deployers can fake
+    ///      it by passing any non-deployer address (including addresses they control). The
+    ///      only on-chain invariants we enforce for extended durations are this rule and
+    ///      `CharityModeOwnerNotRenounced()`. Off-chain UI / curation is responsible for
+    ///      surfacing the social trust signal.
+    error CharityModeFeeReceiverInvalid();
+    /// @notice A tax duration above the standard cap requires the deployed token to be
+    ///         ownerless (`tokenOwner == address(0)`), i.e. ownership renounced at creation.
+    error CharityModeOwnerNotRenounced();
 
     ////////////////// Views //////////////////////
 

@@ -26,7 +26,6 @@ Unified factories register fee config automatically during token creation:
 - `LivoGraduatorUniswapV2` / `LivoGraduatorUniswapV4`
 - `LivoMasterFeeHandler`
 - `LivoSwapHook`
-- `DeployersWhitelist`
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Livo-owned events and notes the main external-operation points.
 
@@ -41,7 +40,6 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 7. [`LivoMasterFeeHandler.claim`](#7-livomasterfeehandlerclaimaddress-tokens)
 8. [`LivoMasterFeeHandler.setShares`](#8-livomasterfeehandlersetsharesaddress-token-feeshare-feeshares)
 9. [Direct-fee behavior](#9-direct-fee-behavior)
-10. [`DeployersWhitelist` admin updates](#10-deployerswhitelist-admin-updates)
 
 ---
 
@@ -239,17 +237,3 @@ For every successful non-zero `depositFees(token)` against a registered config:
 3. Claimable recipients do not emit per-deposit claim events; they accrue through the master handler accumulator and emit `CreatorClaimed` only when they call `claim()`.
 
 Zero-value `depositFees(token)` calls are no-ops and emit no fee events, including for unregistered tokens.
-
----
-
-## 10. `DeployersWhitelist` admin updates
-
-`DeployersWhitelist.setAdmin(address admin, bool enabled)` is owner-only and emits:
-
-1. **`DeployersWhitelist.AdminUpdated`** (`admin, enabled`).
-
-`DeployersWhitelist.setWhitelisted(address deployer, bool enabled)` is admin-only and emits:
-
-1. **`DeployersWhitelist.DeployerWhitelistUpdated`** (`deployer, enabled`).
-
-Factory `createToken` calls only read `isWhitelisted(deployer)` for tax durations above 14 days, so no whitelist events are emitted during token creation.

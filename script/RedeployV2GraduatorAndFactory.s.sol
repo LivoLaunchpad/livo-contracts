@@ -16,8 +16,8 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         apply the new value to future tokens is a fresh deployment. The unified V2 factory
 ///         in turn stores `GRADUATOR` as `immutable`, so it must be redeployed pointing at the
 ///         new graduator. Every other live contract on Sepolia (launchpad, bonding curve,
-///         master fee handler, deployers whitelist, all token implementations, the V4
-///         factory/graduator) keeps its current address.
+///         master fee handler, all token implementations, the V4 factory/graduator) keeps its
+///         current address.
 ///
 /// @dev    Mainnet is supported for completeness but mainnet's existing graduator already
 ///         carries the correct (canonical) hash, so re-running there is normally unnecessary.
@@ -30,7 +30,6 @@ contract RedeployV2GraduatorAndFactory is Script {
         address launchpad;
         address bondingCurve;
         address masterFeeHandler;
-        address deployersWhitelist;
         address tokenImpl;
         address tokenSniperImpl;
         address taxTokenV2Impl;
@@ -49,7 +48,6 @@ contract RedeployV2GraduatorAndFactory is Script {
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
-                deployersWhitelist: DeploymentsMainnet.DEPLOYERS_WHITELIST,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
                 taxTokenV2Impl: DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL,
@@ -64,7 +62,6 @@ contract RedeployV2GraduatorAndFactory is Script {
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
-                deployersWhitelist: DeploymentsSepolia.DEPLOYERS_WHITELIST,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
                 taxTokenV2Impl: DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL,
@@ -81,7 +78,6 @@ contract RedeployV2GraduatorAndFactory is Script {
         require(i.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(i.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(i.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
-        require(i.deployersWhitelist != address(0), "manifest: DEPLOYERS_WHITELIST missing");
         require(i.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(i.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
         require(i.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
@@ -121,8 +117,7 @@ contract RedeployV2GraduatorAndFactory is Script {
                 i.taxTokenV2SniperImpl,
                 i.bondingCurve,
                 newGraduatorV2,
-                i.masterFeeHandler,
-                i.deployersWhitelist
+                i.masterFeeHandler
             )
         );
         console.log("| LivoFactoryUniV2Unified (NEW)    |", newFactoryV2);

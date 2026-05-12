@@ -12,7 +12,6 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {IDeployersWhitelist} from "src/interfaces/IDeployersWhitelist.sol";
 import {ILivoTaxableToken, ILivoTaxableTokenSniperProtected, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -24,10 +23,17 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     uint256 internal constant BASIS_POINTS = 10_000;
 
-    /// @notice Max configurable tax duration without deployer-whitelist approval.
+    /// @notice Max configurable tax duration for the default (non-charity) deploy path.
     uint256 public constant MAX_TAX_DURATION_SECONDS = 365 days;
-    /// @notice Max configurable tax duration for whitelisted deployers.
-    uint256 public constant MAX_EXTENDED_TAX_DURATION_SECONDS = 2 * 365 days;
+    /// @notice Max configurable tax duration when the deploy opts into "charity mode": a
+    ///         single fee receiver that is not the deployer and ownership renounced at
+    ///         creation (`tokenOwner == address(0)`). Capped at 120 years; the upper bound is
+    ///         driven by `TaxConfigInit.taxDurationSeconds`'s `uint32` packing.
+    /// @dev    We do NOT verify on-chain that the fee receiver is a real charity — deployers
+    ///         can fake this by passing any non-deployer address. The only invariants enforced
+    ///         on chain are the single-non-deployer-receiver rule and the renounced-ownership
+    ///         rule; off-chain UI / curation is responsible for the social trust layer.
+    uint256 public constant MAX_CHARITY_TAX_DURATION_SECONDS = 120 * 365 days;
 
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
@@ -46,8 +52,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     address public immutable TOKEN_IMPL_TAX;
     /// @notice Token implementation cloned when both tax and anti-sniper are configured.
     address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
-    /// @notice Whitelist checked when a deployer configures tax duration above 365 days.
-    IDeployersWhitelist public immutable DEPLOYERS_WHITELIST;
 
     /// @notice Max configurable tax (buy or sell). Per-venue value supplied by the derived factory
     ///         via `override`: V2 uses 5% (the swap-back path needs more headroom to amortise
@@ -66,8 +70,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address masterFeeHandler,
-        address deployersWhitelist
+        address masterFeeHandler
     ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
@@ -77,7 +80,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
         TOKEN_IMPL_TAX = tokenImplTax;
         TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
-        DEPLOYERS_WHITELIST = IDeployersWhitelist(deployersWhitelist);
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -268,16 +270,30 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     }
 
     /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
-    ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, caps `taxDurationSeconds` at the
-    ///      extended ceiling, and requires whitelist approval to exceed the standard 365-day window.
-    function _validateTaxConfig(TaxConfigInit calldata t) internal view {
+    ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, and caps `taxDurationSeconds` at
+    ///      `MAX_CHARITY_TAX_DURATION_SECONDS`. A duration above the standard 365-day window
+    ///      unlocks the "charity mode" path which requires:
+    ///        (1) exactly one fee receiver, distinct from the deployer (`msg.sender`); and
+    ///        (2) the deployed token to be ownerless (`tokenOwner == address(0)`).
+    ///      The charity address is NOT verified on-chain — a deployer can pass any non-deployer
+    ///      address (even one they control). Off-chain UI / curation is responsible for the
+    ///      social trust signal. The on-chain rules only prevent the most trivial abuse: a lone
+    ///      deployer keeping ownership and routing fees to themselves while extending the tax
+    ///      window past one year.
+    function _validateTaxConfig(TaxConfigInit calldata t, FeeShare[] calldata feeReceivers, address tokenOwner)
+        internal
+        view
+    {
         if (_isTaxConfigured(t)) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             uint256 maxTaxBps = MAX_TAX_BPS();
             require(t.buyTaxBps <= maxTaxBps && t.sellTaxBps <= maxTaxBps, InvalidTaxBps());
-            require(t.taxDurationSeconds <= MAX_EXTENDED_TAX_DURATION_SECONDS, InvalidTaxDuration());
+            require(t.taxDurationSeconds <= MAX_CHARITY_TAX_DURATION_SECONDS, InvalidTaxDuration());
             if (t.taxDurationSeconds > MAX_TAX_DURATION_SECONDS) {
-                require(DEPLOYERS_WHITELIST.isWhitelisted(msg.sender), DeployerNotWhitelisted());
+                require(
+                    feeReceivers.length == 1 && feeReceivers[0].account != msg.sender, CharityModeFeeReceiverInvalid()
+                );
+                require(tokenOwner == address(0), CharityModeOwnerNotRenounced());
             }
         } else {
             require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());

@@ -14,8 +14,9 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 ///         V4 unified tax tests. Locks in: (1) the four-cell dispatch matrix (tax × anti-sniper)
 ///         resolves to the correct implementation; (2) `previewTokenImplementation` returns the
 ///         same address `createToken` clones; (3) tax-config validation matches the V4 factory
-///         (max bps, max duration, deployer-whitelist gating); (4) tax fields propagate to the
-///         deployed token; (5) ownership rule (all V2 tokens are ownerless at creation).
+///         (max bps, max duration, charity-mode gating for extended durations); (4) tax fields
+///         propagate to the deployed token; (5) ownership rule (all V2 tokens are ownerless at
+///         creation, which satisfies the charity-mode renounced-ownership invariant by default).
 contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator {
     // ───────────── Dispatch — preview returns correct impl per combo ─────────────
 
@@ -109,36 +110,64 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
-    function test_preview_revertsOnDurationOverExtended() public {
-        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(2 * 365 days + 1));
+    function test_preview_revertsOnDurationOverCharityCeiling() public {
+        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(120 * 365 days + 1));
         vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(alice), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
-    // ───────────── Deployer-whitelist gating for extended duration ─────────────
+    // ───────────── Charity-mode gating for extended duration ─────────────
+    //
+    // For V2 the renounced-ownership invariant is satisfied by default (tokens always deploy
+    // with `owner == address(0)`), so the only on-chain check that gates an extended duration is
+    // the fee-receiver rule: exactly one receiver, distinct from the deployer (`msg.sender`).
+    // The address is NOT verified to be a charity — by design.
 
-    function test_createToken_revertsForExtendedDurationWithoutWhitelist() public {
-        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(365 days + 1)); // > 365 days
+    function test_createToken_revertsForExtendedDurationWhenFeeReceiverIsDeployer() public {
+        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(365 days + 1));
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
 
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.DeployerNotWhitelisted.selector);
+        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
         factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
-    function test_createToken_succeedsForExtendedDurationWithWhitelistedDeployer() public {
-        // admin-whitelisted whitelist admin (set in base setUp). Whitelist `creator` first.
-        vm.prank(admin);
-        deployersWhitelist.setWhitelisted(creator, true);
+    function test_createToken_revertsForExtendedDurationWithMultipleReceivers() public {
+        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(365 days + 1));
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
 
-        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(30 days));
+        ILivoFactory.FeeShare[] memory two = new ILivoFactory.FeeShare[](2);
+        two[0] = ILivoFactory.FeeShare({account: alice, shares: 5_000, directFeesEnabled: false});
+        two[1] = ILivoFactory.FeeShare({account: bob, shares: 5_000, directFeesEnabled: false});
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
+        factoryV2Unified.createToken("T", "T", salt, two, _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_createToken_succeedsForExtendedDurationInCharityMode() public {
+        // 5-year duration with a single fee receiver != deployer. V2 always renounces, so the
+        // tokenOwner check is satisfied for free.
+        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(5 * 365 days));
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
 
         vm.prank(creator);
-        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(alice), _noSs(), cfg, _emptyAntiSniperCfg());
 
         LivoTaxableTokenUniV2 t = LivoTaxableTokenUniV2(payable(token));
-        assertEq(uint256(t.taxDurationSeconds()), 30 days);
+        assertEq(uint256(t.taxDurationSeconds()), 5 * 365 days);
+        assertEq(t.owner(), address(0));
+    }
+
+    function test_createToken_succeedsForMaxCharityDurationInCharityMode() public {
+        TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(120 * 365 days));
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+
+        vm.prank(creator);
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(alice), _noSs(), cfg, _emptyAntiSniperCfg());
+
+        LivoTaxableTokenUniV2 t = LivoTaxableTokenUniV2(payable(token));
+        assertEq(uint256(t.taxDurationSeconds()), 120 * 365 days);
     }
 
     // ───────────── Ownership semantics ─────────────

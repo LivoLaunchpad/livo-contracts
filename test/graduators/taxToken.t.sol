@@ -30,15 +30,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
+        // Duration above the absolute (charity-mode) ceiling — must revert with InvalidTaxDuration
+        // regardless of charity-mode satisfaction, because the cap is checked first.
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
             "0x12",
-            _fs(creator),
+            _fs(alice),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(730 days + 1)),
+            true,
+            _taxCfg(0, 400, uint32(120 * 365 days + 1)),
             _emptyAntiSniperCfg()
         );
     }

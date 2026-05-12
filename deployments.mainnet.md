@@ -11,7 +11,6 @@
 | LivoGraduatorUniswapV2                       | `0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC` |
 | LivoGraduatorUniswapV4                       | `0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944` |
 | LivoMasterFeeHandler                         | _(not deployed)_                             |
-| DeployersWhitelist                           | _(not deployed)_                             |
 | LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
 | LivoQuoter                                   | `0x035693207fb473358b41A81FF09445dB1f3889D1` |
 | LivoToken (impl)                             | `0x51fD501d1D866177E209eAa357C515578Df1C766` |

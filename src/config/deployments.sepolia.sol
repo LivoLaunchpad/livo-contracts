@@ -17,7 +17,6 @@ library DeploymentsSepolia {
     address internal constant GRADUATOR_UNIV2 = 0x973B8F3b1e52244E79ecb86591C8FdA6E2D0e691;
     address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
     address internal constant MASTER_FEE_HANDLER = 0x53110c743BD7Df466F071A77B5b2cfe767F7c5B9;
-    address internal constant DEPLOYERS_WHITELIST = 0xa22A3246e86B7dc841D09A0475E78Cc48A22e74c;
 
     address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
     address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;

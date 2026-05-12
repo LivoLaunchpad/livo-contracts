@@ -16,7 +16,6 @@ library DeploymentsMainnet {
     address internal constant GRADUATOR_UNIV2 = 0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC;
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
     address internal constant MASTER_FEE_HANDLER = address(0);
-    address internal constant DEPLOYERS_WHITELIST = address(0);
 
     address internal constant SWAP_HOOK = 0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc;
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;

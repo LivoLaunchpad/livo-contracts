@@ -20,8 +20,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address masterFeeHandler,
-        address deployersWhitelist
+        address masterFeeHandler
     )
         LivoFactoryAbstract(
             launchpad,
@@ -31,8 +30,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
             tokenImplTaxAntiSniper,
             bondingCurve,
             graduator,
-            masterFeeHandler,
-            deployersWhitelist
+            masterFeeHandler
         )
     {}
 
@@ -57,15 +55,18 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        _validateTaxConfig(taxCfg);
-        _validateAntiSniperConfig(antiSniperCfg);
         _validateInputs(name, symbol, feeReceivers, supplyShares);
+        _validateAntiSniperConfig(antiSniperCfg);
 
-        // `tokenOwner` is computed inline (rather than a local) to keep the stack frame within the
-        // EVM limit without needing `via_ir`.
-        token = _dispatchAndInitialize(
-            name, symbol, salt, renounceOwnership_ ? address(0) : msg.sender, taxCfg, antiSniperCfg
-        );
+        // `tokenOwner` is scoped tightly to share between the tax-config validator (which needs
+        // it to enforce the charity-mode renounced-ownership rule) and `_dispatchAndInitialize`
+        // (which writes it into the cloned token), while keeping the createToken stack frame
+        // within the EVM limit without `via_ir`.
+        {
+            address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
+            _validateTaxConfig(taxCfg, feeReceivers, tokenOwner);
+            token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+        }
 
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, feeReceivers, supplyShares);
@@ -79,13 +80,14 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///      have all other tax/anti-sniper fields
     ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
-        FeeShare[] calldata, /* feeReceivers */
+        FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata, /* supplyShares */
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
-        _validateTaxConfig(taxCfg);
         _validateAntiSniperConfig(antiSniperCfg);
+        // token implementation does not depend on ownership even for v4 tokens.
+        _validateTaxConfig(taxCfg, feeReceivers, address(0));
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 }

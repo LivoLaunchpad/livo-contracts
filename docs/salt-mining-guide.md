@@ -32,7 +32,7 @@ Three factors control the final address:
 | `salt` | `bytes32` passed to `createToken()` | User-controlled |
 | `initcode` | ERC-1167 minimal proxy bytecode (depends on the dispatched token implementation) | Fixed per `(factory, dispatch path)` pair |
 
-Since `deployer` and `initcode` are fixed for a given factory + dispatch path, **the only variable is `salt`**. The dispatch path is determined by the `TaxConfigInit` and `AntiSniperConfigs` you intend to pass to `createToken` — call `previewTokenImplementation(...)` with those exact values to get the implementation address. For tax durations above 14 days, call preview from the deployer address that is whitelisted in `DeployersWhitelist`, because preview runs the same tax validation as creation.
+Since `deployer` and `initcode` are fixed for a given factory + dispatch path, **the only variable is `salt`**. The dispatch path is determined by the `TaxConfigInit` and `AntiSniperConfigs` you intend to pass to `createToken` — call `previewTokenImplementation(...)` with those exact values to get the implementation address. For tax durations above 365 days, preview runs the same tax validation as creation: it requires a single fee receiver distinct from the deployer (`msg.sender` of the preview call). Preview assumes the renounced-ownership path is taken at creation; if you do not renounce, `createToken` will still revert with `CharityModeOwnerNotRenounced()`.
 
 ## The Initcode
 
