@@ -6,13 +6,15 @@ The Livo factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 un
 
 Since the consolidation, the launchpad whitelists **two unified factories** instead of six:
 
-- `LivoFactoryUniV2Unified` — V2 family. Dispatches between two token implementations
-  (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`) based on whether `AntiSniperConfigs` is configured.
+- `LivoFactoryUniV2Unified` — V2 family. Dispatches between four token implementations
+  (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
+  based on whether `TaxConfigInit` and/or `AntiSniperConfigs` are configured. V2 creation is
+  always ownerless and has no `renounceOwnership` argument.
 - `LivoFactoryUniV4Unified` — V4 family. Dispatches between four token implementations
   (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
   based on whether `TaxConfigInit` and/or `AntiSniperConfigs` are configured.
 
-**Critical**: pick the right token implementation **before** mining the salt. Each factory exposes a `previewTokenImplementation(...)` view that mirrors the full `createToken` input set (minus identity fields `name`, `symbol`, `salt`) and returns the implementation address that will be cloned. Always call it first, then use that returned address as `TOKEN_IMPLEMENTATION` in the CREATE2 calculation below.
+**Critical**: pick the right token implementation **before** mining the salt. Each factory exposes a `previewTokenImplementation(...)` view that mirrors the dispatch-relevant `createToken` inputs and returns the implementation address that will be cloned. Always call it first, then use that returned address as `TOKEN_IMPLEMENTATION` in the CREATE2 calculation below.
 
 ## How CREATE2 Addresses Work
 
@@ -30,7 +32,7 @@ Three factors control the final address:
 | `salt` | `bytes32` passed to `createToken()` | User-controlled |
 | `initcode` | ERC-1167 minimal proxy bytecode (depends on the dispatched token implementation) | Fixed per `(factory, dispatch path)` pair |
 
-Since `deployer` and `initcode` are fixed for a given factory + dispatch path, **the only variable is `salt`**. The dispatch path is determined by the `TaxConfigInit` and `AntiSniperConfigs` you intend to pass to `createToken` — call `previewTokenImplementation(...)` with those exact values to get the implementation address.
+Since `deployer` and `initcode` are fixed for a given factory + dispatch path, **the only variable is `salt`**. The dispatch path is determined by the `TaxConfigInit` and `AntiSniperConfigs` you intend to pass to `createToken` — call `previewTokenImplementation(...)` with those exact values to get the implementation address. For tax durations above 365 days, preview runs the same tax validation as creation: it requires a single fee receiver distinct from the deployer (`msg.sender` of the preview call). Preview assumes the renounced-ownership path is taken at creation; if you do not renounce, `createToken` will still revert with `CharityModeOwnerNotRenounced()`.
 
 ## The Initcode
 
@@ -46,13 +48,15 @@ This is the bytecode that CREATE2 hashes. It comes directly from [OpenZeppelin's
 
 ### Recommended flow
 
-1. Build the `createToken` arguments you want to submit (`feeReceivers`, `supplyShares`, `renounceOwnership`, `taxCfg`, `antiSniperCfg`).
-2. Call `factory.previewTokenImplementation(...)` with those same arguments (minus `name`, `symbol`, `salt`) — returns the implementation address.
+1. Build the `createToken` arguments you want to submit:
+   - V2: `feeReceivers`, `supplyShares`, `taxCfg`, `antiSniperCfg`.
+   - V4: `feeReceivers`, `supplyShares`, `renounceOwnership`, `taxCfg`, `antiSniperCfg`.
+2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` — returns the implementation address. The V4 `renounceOwnership` flag does not affect dispatch and is not part of preview.
 3. Compute `initcode = 0x3d…73 ++ <impl> ++ 0x5af4…5bf3` and `initcodeHash = keccak256(initcode)`.
 4. Mine `salt` against `(factory, initcodeHash)` until `last 2 bytes == 0x1110`.
 5. Submit `factory.createToken(name, symbol, salt, ...)` with the same arguments.
 
-If steps 2 and 5 use the same arguments, the deployed address is guaranteed to match the predicted one. If you change `taxCfg` or `antiSniperCfg` between preview and submit, the dispatched implementation may differ and the salt becomes invalid (the call reverts with `InvalidTokenAddress`).
+If steps 2 and 5 use the same dispatch inputs, the deployed address is guaranteed to match the predicted one. If you change `taxCfg` or `antiSniperCfg` between preview and submit, the dispatched implementation may differ and the salt becomes invalid (the call reverts with `InvalidTokenAddress`).
 
 ## The Constraint
 
@@ -132,6 +136,6 @@ function findValidSalt(): { salt: string; tokenAddress: string } {
 ## Important Notes
 
 - **`INITCODE_HASH` is constant** for a given `(factory, dispatch path)` pair — compute it once per dispatch path at startup, not per call. If your UI lets users toggle anti-sniper / tax options, recompute the hash whenever the toggles change.
-- **Each unified factory has multiple token implementations**. `LivoFactoryUniV2Unified` has 2 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`); `LivoFactoryUniV4Unified` has 4 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`). The dispatch is fully determined by the `taxCfg` / `antiSniperCfg` you pass — always call `previewTokenImplementation(...)` with the **same arguments** you intend to submit, and use its return value as `TOKEN_IMPLEMENTATION`.
+- **Each unified factory has multiple token implementations**. `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified` each have 4 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`). The dispatch is fully determined by the `taxCfg` / `antiSniperCfg` you pass — always call `previewTokenImplementation(...)` with the **same dispatch inputs** you intend to submit, and use its return value as `TOKEN_IMPLEMENTATION`.
 - **Salt uniqueness**: each salt can only be used once per `(factory, implementation)` pair. If a salt has already been used (token deployed), `create2` will revert. If you need to handle retries, start iterating from a random offset.
 - **On-chain verification**: you can call `Clones.predictDeterministicAddress(implementation, salt, factory)` via a static call to double-check your off-chain computation before submitting.

@@ -38,12 +38,7 @@
         "internalType": "address"
       },
       {
-        "name": "feeHandler",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "feeSplitterImplementation",
+        "name": "masterFeeHandler",
         "type": "address",
         "internalType": "address"
       }
@@ -59,32 +54,6 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "FEE_HANDLER",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoFeeHandler"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "FEE_SPLITTER_IMPLEMENTATION",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoFeeSplitter"
       }
     ],
     "stateMutability": "view"
@@ -117,7 +86,20 @@
   },
   {
     "type": "function",
-    "name": "MAX_SELL_TAX_DURATION_SECONDS",
+    "name": "MASTER_FEE_HANDLER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoMasterFeeHandler"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_CHARITY_TAX_DURATION_SECONDS",
     "inputs": [],
     "outputs": [
       {
@@ -131,6 +113,19 @@
   {
     "type": "function",
     "name": "MAX_TAX_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TAX_DURATION_SECONDS",
     "inputs": [],
     "outputs": [
       {
@@ -233,6 +228,11 @@
             "name": "shares",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "directFeesEnabled",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       },
@@ -313,11 +313,6 @@
         "name": "token",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "feeSplitter",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "payable"
@@ -366,7 +361,7 @@
     "name": "previewTokenImplementation",
     "inputs": [
       {
-        "name": "",
+        "name": "feeReceivers",
         "type": "tuple[]",
         "internalType": "struct ILivoFactory.FeeShare[]",
         "components": [
@@ -379,6 +374,11 @@
             "name": "shares",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "directFeesEnabled",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       },
@@ -398,11 +398,6 @@
             "internalType": "uint256"
           }
         ]
-      },
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
       },
       {
         "name": "taxCfg",
@@ -560,37 +555,6 @@
   },
   {
     "type": "event",
-    "name": "FeeSplitterCreated",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "feeSplitter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "recipients",
-        "type": "address[]",
-        "indexed": false,
-        "internalType": "address[]"
-      },
-      {
-        "name": "sharesBps",
-        "type": "uint256[]",
-        "indexed": false,
-        "internalType": "uint256[]"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "MaxBuyOnDeployBpsUpdated",
     "inputs": [
       {
@@ -685,15 +649,19 @@
         "type": "address",
         "indexed": false,
         "internalType": "address"
-      },
-      {
-        "name": "feeReceiver",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "CharityModeFeeReceiverInvalid",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CharityModeOwnerNotRenounced",
+    "inputs": []
   },
   {
     "type": "error",
@@ -715,6 +683,11 @@
         "internalType": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidAntiSniperConfig",
+    "inputs": []
   },
   {
     "type": "error",
@@ -753,6 +726,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidTaxConfig",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidTaxDuration",
     "inputs": []
   },
@@ -764,6 +742,11 @@
   {
     "type": "error",
     "name": "InvalidTokenOwner",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MultipleDirectFeeReceivers",
     "inputs": []
   },
   {

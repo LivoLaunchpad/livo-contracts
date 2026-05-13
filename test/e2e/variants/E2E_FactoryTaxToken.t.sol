@@ -27,7 +27,7 @@ contract E2E_FactoryTaxToken is
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
-        (token,) = factoryTax.createToken(
+        token = factoryTax.createToken(
             "E2E", "E2E", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
         );
     }
@@ -35,10 +35,10 @@ contract E2E_FactoryTaxToken is
     function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
         internal
         override
-        returns (address token, address splitter)
+        returns (address token)
     {
         vm.prank(creator);
-        (token, splitter) = factoryTax.createToken(
+        token = factoryTax.createToken(
             "E2E", "E2E", salt, feeReceivers, _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
         );
     }
@@ -50,7 +50,7 @@ contract E2E_FactoryTaxToken is
     {
         vm.deal(creator, ethValue);
         vm.prank(creator);
-        (token,) = factoryTax.createToken{value: ethValue}(
+        token = factoryTax.createToken{value: ethValue}(
             "E2E",
             "E2E",
             salt,

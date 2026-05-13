@@ -8,7 +8,6 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -28,7 +27,7 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
@@ -54,7 +53,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         returns (address)
     {
         vm.prank(creator);
-        (address token,) = factoryV4.createToken(
+        address token = factoryV4.createToken(
             name,
             symbol,
             _nextValidSalt(address(factoryV4), address(livoToken)),
@@ -84,7 +83,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     modifier setReceiver(address caller, address receiver) virtual {
         vm.prank(caller);
-        ILivoToken(testToken).setFeeReceiver(receiver);
+        feeHandler.setShares(testToken, _fs(receiver));
         _;
     }
 
@@ -98,7 +97,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     function _setFeeReceiver(address receiver) internal {
         vm.prank(creator);
-        ILivoToken(testToken).setFeeReceiver(receiver);
+        feeHandler.setShares(testToken, _fs(receiver));
     }
 
     function _transferOwnership(address newOwner) internal {
@@ -149,7 +148,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     }
 
     function _claimable(address token, address account) internal view virtual returns (uint256) {
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
+        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
     }
 }
 
@@ -672,16 +671,14 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     function test_tokenOwnershipTransferred_doesntChangeFeeReceiver() public createAndGraduateToken {
-        address initialReceiver = ILivoToken(testToken).feeReceiver();
+        (address[] memory recipientsBefore,) = feeHandler.getRecipients(testToken);
 
         _transferOwnership(alice);
 
         assertEq(ILivoToken(testToken).owner(), alice, "owner should be updated after ownership transfer");
-        assertEq(
-            ILivoToken(testToken).feeReceiver(),
-            initialReceiver,
-            "fee receiver should not change on ownership transfer without explicit update"
-        );
+        (address[] memory recipientsAfter,) = feeHandler.getRecipients(testToken);
+        assertEq(recipientsAfter.length, recipientsBefore.length, "recipients length should not change");
+        assertEq(recipientsAfter[0], recipientsBefore[0], "fee receiver should not change on ownership transfer");
     }
 
     function test_feeReceiverUpdated_givesFeesToNewReceiver_claimable()
@@ -691,7 +688,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     {
         uint256 aliceClaimableBefore = _claimable(testToken, alice);
         uint256 creatorClaimableBefore = _claimable(testToken, creator);
-        assertEq(ILivoToken(testToken).feeReceiver(), alice, "fee receiver should be updated to alice");
+        (address[] memory recipients,) = feeHandler.getRecipients(testToken);
+        assertEq(recipients[0], alice, "fee receiver should be updated to alice");
 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 2 ether, 10e18, true);
@@ -1190,7 +1188,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _transferOwnership(alice);
         vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
+        feeHandler.setShares(testToken, _fs(alice));
 
         uint256 newOwnerBeforeSecondSell = _claimableFor(alice);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
@@ -1253,7 +1251,7 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         returns (address)
     {
         vm.prank(creator);
-        (address token,) = factoryTax.createToken(
+        address token = factoryTax.createToken(
             name,
             symbol,
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),

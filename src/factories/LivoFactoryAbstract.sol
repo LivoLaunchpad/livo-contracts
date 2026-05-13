@@ -10,9 +10,12 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
+import {ILivoTaxableToken, ILivoTaxableTokenSniperProtected, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
+import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 
 /// @notice Abstract base for Livo token factories. Holds shared state and helper logic.
 abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
@@ -20,16 +23,40 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     uint256 internal constant BASIS_POINTS = 10_000;
 
+    /// @notice Max configurable tax duration for the default (non-charity) deploy path.
+    uint256 public constant MAX_TAX_DURATION_SECONDS = 365 days;
+    /// @notice Max configurable tax duration when the deploy opts into "charity mode": a
+    ///         single fee receiver that is not the deployer and ownership renounced at
+    ///         creation (`tokenOwner == address(0)`). Capped at 120 years; the upper bound is
+    ///         driven by `TaxConfigInit.taxDurationSeconds`'s `uint32` packing.
+    /// @dev    We do NOT verify on-chain that the fee receiver is a real charity — deployers
+    ///         can fake this by passing any non-deployer address. The only invariants enforced
+    ///         on chain are the single-non-deployer-receiver rule and the renounced-ownership
+    ///         rule; off-chain UI / curation is responsible for the social trust layer.
+    uint256 public constant MAX_CHARITY_TAX_DURATION_SECONDS = 120 * 365 days;
+
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
     /// @notice Graduator contract that handles token graduation to Uniswap
     ILivoGraduator public immutable GRADUATOR;
     /// @notice Bonding curve used for token pricing before graduation
     ILivoBondingCurve public immutable BONDING_CURVE;
-    /// @notice Fee handler contract for managing creator and treasury fees
-    ILivoFeeHandler public immutable FEE_HANDLER;
-    /// @notice Fee splitter implementation contract used as the clone source
-    ILivoFeeSplitter public immutable FEE_SPLITTER_IMPLEMENTATION;
+    /// @notice Master fee handler for all token fee routing
+    ILivoMasterFeeHandler public immutable MASTER_FEE_HANDLER;
+
+    /// @notice Token implementation cloned when neither tax nor anti-sniper are configured.
+    address public immutable TOKEN_IMPL_BASE;
+    /// @notice Token implementation cloned when only anti-sniper protection is configured.
+    address public immutable TOKEN_IMPL_ANTISNIPER;
+    /// @notice Token implementation cloned when only tax is configured.
+    address public immutable TOKEN_IMPL_TAX;
+    /// @notice Token implementation cloned when both tax and anti-sniper are configured.
+    address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
+
+    /// @notice Max configurable tax (buy or sell). Per-venue value supplied by the derived factory
+    ///         via `override`: V2 uses 5% (the swap-back path needs more headroom to amortise
+    ///         per-sell router gas); V4 uses 4%.
+    function MAX_TAX_BPS() public pure virtual returns (uint256);
 
     /// @notice Max percentage of total supply that can be purchased on token creation (applies to the aggregate, not per recipient), in basis points
     uint256 public maxBuyOnDeployBps = 1_000; // 10%
@@ -37,16 +64,22 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     /// @notice Initializes the factory with its immutable dependencies
     constructor(
         address launchpad,
+        address tokenImplBase,
+        address tokenImplAntiSniper,
+        address tokenImplTax,
+        address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
+        address masterFeeHandler
     ) Ownable(msg.sender) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
-        FEE_HANDLER = ILivoFeeHandler(feeHandler);
-        FEE_SPLITTER_IMPLEMENTATION = ILivoFeeSplitter(feeSplitterImplementation);
+        MASTER_FEE_HANDLER = ILivoMasterFeeHandler(masterFeeHandler);
+        TOKEN_IMPL_BASE = tokenImplBase;
+        TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
+        TOKEN_IMPL_TAX = tokenImplTax;
+        TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -74,21 +107,34 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0, sum == 10 000.
+    /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
+    ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
+    ///      direct receivers at 1 here as a user-surface constraint
     function _validateFeeShares(FeeShare[] calldata feeReceivers) internal pure {
         uint256 len = feeReceivers.length;
         require(len > 0, InvalidFeeReceiver());
 
         uint256 total;
-        for (uint256 i = 0; i < len; i++) {
+        uint256 directCount;
+        for (uint256 i = 0; i < len;) {
             require(feeReceivers[i].account != address(0), InvalidFeeReceiver());
             require(feeReceivers[i].shares > 0, InvalidShares());
-            for (uint256 j = i + 1; j < len; j++) {
+            for (uint256 j = i + 1; j < len;) {
                 require(feeReceivers[i].account != feeReceivers[j].account, InvalidFeeReceiver());
+                unchecked {
+                    ++j;
+                }
             }
             total += feeReceivers[i].shares;
+            if (feeReceivers[i].directFeesEnabled) {
+                directCount++;
+            }
+            unchecked {
+                ++i;
+            }
         }
         require(total == BASIS_POINTS, InvalidShares());
+        require(directCount <= 1, MultipleDirectFeeReceivers());
     }
 
     /// @dev Validates a SupplyShare array: non-empty, no zero accounts, no duplicates, every share > 0, sum == 10 000.
@@ -97,51 +143,21 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         require(len > 0, InvalidSupplyShares());
 
         uint256 total;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len;) {
             require(supplyShares[i].account != address(0), InvalidSupplyShares());
             require(supplyShares[i].shares > 0, InvalidShares());
-            for (uint256 j = i + 1; j < len; j++) {
+            for (uint256 j = i + 1; j < len;) {
                 require(supplyShares[i].account != supplyShares[j].account, InvalidSupplyShares());
+                unchecked {
+                    ++j;
+                }
             }
             total += supplyShares[i].shares;
+            unchecked {
+                ++i;
+            }
         }
         require(total == BASIS_POINTS, InvalidShares());
-    }
-
-    /// @dev Resolves the (feeHandler, feeReceiver, feeSplitter) tuple for the given feeReceivers.
-    ///      - len == 1 → (FEE_HANDLER, feeReceivers[0].account, address(0)) — no splitter deployed
-    ///      - len >= 2 → (splitter, splitter, splitter) — splitter is deployed here but not yet initialized
-    ///      Empty arrays are never accepted; belt-and-braces check since `_validateFeeShares` also
-    ///      rejects empty, but this keeps `_resolveFeeRouting` safe if called without validation.
-    function _resolveFeeRouting(FeeShare[] calldata feeReceivers, bytes32 salt)
-        internal
-        returns (address feeHandler_, address feeReceiver_, address feeSplitter)
-    {
-        uint256 len = feeReceivers.length;
-        require(len > 0, InvalidFeeReceiver());
-        if (len == 1) {
-            return (address(FEE_HANDLER), feeReceivers[0].account, address(0));
-        }
-        feeSplitter = _deployFeeSplitter(salt);
-        return (feeSplitter, feeSplitter, feeSplitter);
-    }
-
-    /// @dev Initializes a freshly-deployed FeeSplitter for `token`. Emits `FeeSplitterCreated` BEFORE
-    ///      `initialize()` so the indexer creates the splitter entity before `SharesUpdated` fires.
-    function _initFeeSplitter(address feeSplitter, address token, FeeShare[] calldata feeReceivers) internal {
-        uint256 len = feeReceivers.length;
-        address[] memory recipients = new address[](len);
-        uint256[] memory sharesBps = new uint256[](len);
-        for (uint256 i = 0; i < len; i++) {
-            recipients[i] = feeReceivers[i].account;
-            sharesBps[i] = feeReceivers[i].shares;
-        }
-
-        // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
-        // creates the FeeSplitter entity from this event, and events emitted during initialize()
-        // (SharesUpdated) depend on the FeeSplitter entity existing.
-        emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
-        ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
     }
 
     /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
@@ -160,62 +176,64 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         address[] memory recipients = new address[](len);
         uint256[] memory amounts = new uint256[](len);
 
+        uint256 lastIdx = len - 1;
         uint256 distributed;
-        for (uint256 i = 0; i < len - 1; i++) {
+        for (uint256 i = 0; i < lastIdx;) {
             uint256 amount = tokensBought * supplyShares[i].shares / BASIS_POINTS;
             recipients[i] = supplyShares[i].account;
             amounts[i] = amount;
             distributed += amount;
             IERC20(token).safeTransfer(supplyShares[i].account, amount);
+            unchecked {
+                ++i;
+            }
         }
         // last recipient absorbs rounding dust
         uint256 lastAmount = tokensBought - distributed;
-        recipients[len - 1] = supplyShares[len - 1].account;
-        amounts[len - 1] = lastAmount;
-        IERC20(token).safeTransfer(supplyShares[len - 1].account, lastAmount);
+        recipients[lastIdx] = supplyShares[lastIdx].account;
+        amounts[lastIdx] = lastAmount;
+        IERC20(token).safeTransfer(supplyShares[lastIdx].account, lastAmount);
 
         emit BuyOnDeploy(token, msg.sender, msg.value, tokensBought, recipients, amounts);
     }
 
-    function _deployFeeSplitter(bytes32 salt) internal returns (address feeSplitter) {
-        // forge-lint: disable-next-line
-        bytes32 splitterSalt = keccak256(abi.encodePacked(salt, "feeSplitter"));
-        feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
-    }
-
-    /// @dev Shared preamble for every factory's `createToken`: validates fee shares, conditionally
-    ///      validates supply shares (requires empty when msg.value == 0), and resolves fee routing.
-    ///      `feeSplitter` is cloned here without emitting — `FeeSplitterCreated` is emitted later
-    ///      by `_finalizeCreation` so the indexer sees `TokenCreated` first.
-    ///      Returns a `FeeRouting` memory struct (1 stack slot) to keep caller stacks shallow.
-    function _validateInputsAndResolveFees(
-        FeeShare[] calldata feeReceivers,
-        SupplyShare[] calldata supplyShares,
-        bytes32 salt
-    ) internal returns (FeeRouting memory routing) {
-        _validateFeeShares(feeReceivers);
-        if (msg.value > 0) _validateSupplyShares(supplyShares);
-        else require(supplyShares.length == 0, InvalidSupplyShares());
-
-        (routing.feeHandler, routing.feeReceiver, routing.feeSplitter) = _resolveFeeRouting(feeReceivers, salt);
-    }
-
-    /// @dev Shared postamble: initializes the splitter (if any) and performs the deployer buy (if any).
-    ///      Event order: `FeeSplitterCreated` fires strictly after `TokenLaunched`, and the deployer
-    ///      buy events fire last.
-    function _finalizeCreation(
-        address token,
-        address feeSplitter,
+    /// @dev Shared preamble for every factory's `createToken`: validates name/symbol and the fee
+    ///      and supply share arrays. Single source of truth so both factories' `createToken`
+    ///      have all input validation co-located at the top.
+    function _validateInputs(
+        string calldata name,
+        string calldata symbol,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares
     ) internal {
-        if (feeSplitter != address(0)) {
-            _initFeeSplitter(feeSplitter, token, feeReceivers);
+        _validateNameSymbol(name, symbol);
+        _validateFeeShares(feeReceivers);
+        if (msg.value > 0) _validateSupplyShares(supplyShares);
+        else require(supplyShares.length == 0, InvalidSupplyShares());
+    }
+
+    /// @dev Enforces anti-sniper sentinel consistency. A zero window disables anti-sniper dispatch,
+    ///      so all other anti-sniper inputs must also be empty/zero.
+    function _validateAntiSniperConfig(AntiSniperConfigs calldata cfg) internal pure {
+        if (cfg.protectionWindowSeconds == 0) {
+            require(
+                cfg.maxBuyPerTxBps == 0 && cfg.maxWalletBps == 0 && cfg.whitelist.length == 0, InvalidAntiSniperConfig()
+            );
         }
+    }
+
+    /// @dev Shared postamble: asks the token to self-register its fee config with the master
+    ///      handler, then performs the deployer buy (if any). Event order: `SharesUpdated` fires
+    ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
+    function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
+        internal
+    {
+        ILivoToken(token).registerFees(feeReceivers);
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
-    /// @dev Shared name/symbol validation. Duplicated in every token-init path.
+    /// @dev Shared name/symbol validation. Single source of truth — called once from `_validateInputs`
+    ///      for both V2 and V4 factories.
     function _validateNameSymbol(string calldata name, string calldata symbol) internal pure {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
@@ -231,18 +249,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         string calldata name,
         string calldata symbol,
         bytes32 salt,
-        address tokenOwner,
-        address feeHandler_,
-        address feeReceiver
+        address tokenOwner
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
-        _validateNameSymbol(name, symbol);
-
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
         emit TokenCreated(
-            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
+            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), address(MASTER_FEE_HANDLER)
         );
 
         params = ILivoToken.InitializeParams({
@@ -251,8 +265,129 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
             tokenOwner: tokenOwner,
             graduator: address(GRADUATOR),
             launchpad: address(LAUNCHPAD),
-            feeHandler: feeHandler_,
-            feeReceiver: feeReceiver
+            feeHandler: address(MASTER_FEE_HANDLER)
         });
+    }
+
+    /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
+    ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, and caps `taxDurationSeconds` at
+    ///      `MAX_CHARITY_TAX_DURATION_SECONDS`. A duration above the standard 365-day window
+    ///      unlocks the "charity mode" path which requires:
+    ///        (1) exactly one fee receiver, distinct from the deployer (`msg.sender`); and
+    ///        (2) the deployed token to be ownerless (`tokenOwner == address(0)`).
+    ///      The charity address is NOT verified on-chain — a deployer can pass any non-deployer
+    ///      address (even one they control). Off-chain UI / curation is responsible for the
+    ///      social trust signal. The on-chain rules only prevent the most trivial abuse: a lone
+    ///      deployer keeping ownership and routing fees to themselves while extending the tax
+    ///      window past one year.
+    function _validateTaxConfig(TaxConfigInit calldata t, FeeShare[] calldata feeReceivers, address tokenOwner)
+        internal
+        view
+    {
+        if (_isTaxConfigured(t)) {
+            require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
+            uint256 maxTaxBps = MAX_TAX_BPS();
+            require(t.buyTaxBps <= maxTaxBps && t.sellTaxBps <= maxTaxBps, InvalidTaxBps());
+            require(t.taxDurationSeconds <= MAX_CHARITY_TAX_DURATION_SECONDS, InvalidTaxDuration());
+            if (t.taxDurationSeconds > MAX_TAX_DURATION_SECONDS) {
+                require(
+                    feeReceivers.length == 1 && feeReceivers[0].account != msg.sender, CharityModeFeeReceiverInvalid()
+                );
+                require(tokenOwner == address(0), CharityModeOwnerNotRenounced());
+            }
+        } else {
+            require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
+        }
+    }
+
+    function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {
+        return t.taxDurationSeconds != 0;
+    }
+
+    function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {
+        return a.protectionWindowSeconds != 0;
+    }
+
+    /// @dev Single source of truth for which implementation `createToken` will clone for a given
+    ///      `(taxCfg, antiSniperCfg)` pair. Both the public `previewTokenImplementation` (used by
+    ///      frontends to mine a `0x1110`-suffixed salt) and `_dispatchAndInitialize` (the path
+    ///      that actually clones the impl) read from this function — so a salt that previews to
+    ///      a vanity-suffixed address is guaranteed to also produce one at create time.
+    function _previewTokenImplementation(TaxConfigInit calldata taxCfg, AntiSniperConfigs calldata antiSniperCfg)
+        internal
+        view
+        returns (address)
+    {
+        bool hasTax = _isTaxConfigured(taxCfg);
+        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
+        if (hasTax) {
+            return hasAntiSniper ? TOKEN_IMPL_TAX_ANTISNIPER : TOKEN_IMPL_TAX;
+        }
+        return hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
+    }
+
+    /// @dev Resolves the implementation via `_previewTokenImplementation` and then routes to the
+    ///      tax or non-tax sub-helper. Splitting by family keeps each sub-helper's stack frame
+    ///      small enough to compile without `via_ir`. Callers (`createToken` on the derived
+    ///      factory) are responsible for invoking `LAUNCHPAD.launchToken` and `_finalizeCreation`
+    ///      (which registers the token's fee config with the master handler) after this returns.
+    function _dispatchAndInitialize(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        TaxConfigInit calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
+        address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
+        if (_isTaxConfigured(taxCfg)) {
+            token = _initializeTaxToken(impl, name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+        } else {
+            token = _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, antiSniperCfg);
+        }
+    }
+
+    /// @dev Clones the resolved tax implementation (passed in by `_dispatchAndInitialize` so the
+    ///      preview/create dispatch share a single source of truth) and dispatches into the 2-arg
+    ///      or 3-arg `initialize` overload through the venue-agnostic
+    ///      `ILivoTaxableToken[SniperProtected]` interfaces.
+    function _initializeTaxToken(
+        address impl,
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        TaxConfigInit calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
+        ILivoToken.InitializeParams memory params;
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
+
+        if (_isAntiSniperConfigured(antiSniperCfg)) {
+            ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
+        } else {
+            ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
+        }
+    }
+
+    /// @dev Clones the resolved non-tax implementation (passed in by `_dispatchAndInitialize`) and
+    ///      runs the appropriate `initialize` overload. Identical between V2 and V4 because both
+    ///      venues share the same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
+    function _initializeNonTaxToken(
+        address impl,
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address tokenOwner,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) internal returns (address token) {
+        ILivoToken.InitializeParams memory params;
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
+
+        if (_isAntiSniperConfigured(antiSniperCfg)) {
+            LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
+        } else {
+            LivoToken(token).initialize(params);
+        }
     }
 }

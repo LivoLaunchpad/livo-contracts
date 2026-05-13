@@ -7,6 +7,7 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 interface ILivoLaunchpad {
     function treasury() external view returns (address);
     function baseBuyFeeBps() external view returns (uint16);
+    function whitelistedFactories(address factory) external view returns (bool);
     function launchToken(address token, ILivoBondingCurve curve) external;
     function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline)
         external

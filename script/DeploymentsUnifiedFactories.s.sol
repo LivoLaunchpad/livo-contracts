@@ -3,20 +3,30 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
+import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
+import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
+import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
+
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Deploy unified factories only
-/// @notice Deploys `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified` against the
-///         already-live Livo core. Reuses the four pre-deployed token implementations
-///         (`TOKEN_IMPL`, `TOKEN_SNIPER_PROTECTED_IMPL`, `TAXABLE_TOKEN_IMPL`,
-///         `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL`) plus the launchpad, bonding curve,
-///         graduators, fee handler, and fee splitter impl, all read from
+/// @title Deploy Livo master fee handler, token implementations, and unified factories
+/// @notice Deploys, in order:
+///         1. `LivoMasterFeeHandler`
+///         2. the deployable token implementations in `src/tokens/`
+///         3. `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified`
+///
+///         The factories are wired to the freshly-deployed master fee handler and token
+///         implementations while reusing the launchpad, bonding curve, and graduators from
 ///         `src/config/deployments.{mainnet,sepolia}.sol`.
 ///
 ///         Whitelisting on the launchpad is intentionally NOT done here — the launchpad
@@ -25,21 +35,28 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 /// @dev    Run with:
 ///         forge script DeploymentsUnifiedFactories --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
 contract DeploymentsUnifiedFactories is Script {
-    /// @dev Bundle of pre-deployed addresses sourced from the per-chain manifest.
+    /// @dev Bundle of pre-deployed core addresses sourced from the per-chain manifest.
     struct Deps {
         address launchpad;
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
-        address feeHandler;
-        address feeSplitterImpl;
+    }
+
+    /// @dev Freshly-deployed addresses emitted by this script.
+    struct FreshDeployments {
+        address masterFeeHandler;
         address tokenImpl;
         address tokenSniperImpl;
         address taxTokenImpl;
         address taxTokenSniperImpl;
+        address taxTokenV2Impl;
+        address taxTokenV2SniperImpl;
+        address factoryV2;
+        address factoryV4;
     }
 
-    /// @notice Resolves all dependency addresses for the active chain.
+    /// @notice Resolves core dependency addresses for the active chain.
     /// @dev Asserts that `LivoTaxableTokenUniV4`'s hardcoded chain import matches the active chain
     ///      (run `just taxtokenaddresses` before deploying to sepolia).
     function _getDeps() internal view returns (Deps memory d) {
@@ -48,13 +65,7 @@ contract DeploymentsUnifiedFactories is Script {
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                feeHandler: DeploymentsMainnet.FEE_HANDLER,
-                feeSplitterImpl: DeploymentsMainnet.FEE_SPLITTER_IMPL,
-                tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenImpl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
-                taxTokenSniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesMainnet.UNIV4_POOL_MANAGER,
@@ -65,13 +76,7 @@ contract DeploymentsUnifiedFactories is Script {
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                feeHandler: DeploymentsSepolia.FEE_HANDLER,
-                feeSplitterImpl: DeploymentsSepolia.FEE_SPLITTER_IMPL,
-                tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenImpl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
-                taxTokenSniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesSepolia.UNIV4_POOL_MANAGER,
@@ -86,18 +91,13 @@ contract DeploymentsUnifiedFactories is Script {
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.feeHandler != address(0), "manifest: FEE_HANDLER missing");
-        require(d.feeSplitterImpl != address(0), "manifest: FEE_SPLITTER_IMPL missing");
-        require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
-        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
-        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
-        require(d.taxTokenSniperImpl != address(0), "manifest: TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL missing");
     }
 
     function run() public {
         Deps memory d = _getDeps();
+        FreshDeployments memory fresh;
 
-        console.log("=== Livo Unified Factories Deployment ===");
+        console.log("=== Livo Unified Stack Deployment ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("Launchpad:", d.launchpad);
@@ -105,33 +105,66 @@ contract DeploymentsUnifiedFactories is Script {
 
         vm.startBroadcast();
 
-        console.log("| Contract Name             | Address |");
-        console.log("| ------------------------- | --- |");
+        console.log("| Contract Name                          | Address |");
+        console.log("| -------------------------------------- | --- |");
 
-        LivoFactoryUniV2Unified factoryV2 = new LivoFactoryUniV2Unified(
-            d.launchpad, d.tokenImpl, d.tokenSniperImpl, d.bondingCurve, d.graduatorV2, d.feeHandler, d.feeSplitterImpl
-        );
-        console.log("| LivoFactoryUniV2Unified  |", address(factoryV2));
+        fresh.masterFeeHandler = address(new LivoMasterFeeHandler());
+        console.log("| LivoMasterFeeHandler                  |", fresh.masterFeeHandler);
 
-        LivoFactoryUniV4Unified factoryV4 = new LivoFactoryUniV4Unified(
-            d.launchpad,
-            d.tokenImpl,
-            d.tokenSniperImpl,
-            d.taxTokenImpl,
-            d.taxTokenSniperImpl,
-            d.bondingCurve,
-            d.graduatorV4,
-            d.feeHandler,
-            d.feeSplitterImpl
+        fresh.tokenImpl = address(new LivoToken());
+        console.log("| LivoToken (impl)                      |", fresh.tokenImpl);
+
+        fresh.tokenSniperImpl = address(new LivoTokenSniperProtected());
+        console.log("| LivoTokenSniperProtected (impl)       |", fresh.tokenSniperImpl);
+
+        fresh.taxTokenImpl = address(new LivoTaxableTokenUniV4());
+        console.log("| LivoTaxableTokenUniV4 (impl)          |", fresh.taxTokenImpl);
+
+        fresh.taxTokenSniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
+        console.log("| LivoTaxableTokenUniV4SniperProtected (impl) |", fresh.taxTokenSniperImpl);
+
+        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
+        console.log("| LivoTaxableTokenUniV2 (impl)          |", fresh.taxTokenV2Impl);
+
+        fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
+        console.log("| LivoTaxableTokenUniV2SniperProtected (impl) |", fresh.taxTokenV2SniperImpl);
+
+        fresh.factoryV2 = address(
+            new LivoFactoryUniV2Unified(
+                d.launchpad,
+                fresh.tokenImpl,
+                fresh.tokenSniperImpl,
+                fresh.taxTokenV2Impl,
+                fresh.taxTokenV2SniperImpl,
+                d.bondingCurve,
+                d.graduatorV2,
+                fresh.masterFeeHandler
+            )
         );
-        console.log("| LivoFactoryUniV4Unified  |", address(factoryV4));
+        console.log("| LivoFactoryUniV2Unified               |", fresh.factoryV2);
+
+        fresh.factoryV4 = address(
+            new LivoFactoryUniV4Unified(
+                d.launchpad,
+                fresh.tokenImpl,
+                fresh.tokenSniperImpl,
+                fresh.taxTokenImpl,
+                fresh.taxTokenSniperImpl,
+                d.bondingCurve,
+                d.graduatorV4,
+                fresh.masterFeeHandler
+            )
+        );
+        console.log("| LivoFactoryUniV4Unified               |", fresh.factoryV4);
 
         vm.stopBroadcast();
 
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("Next steps:");
-        console.log("1. Update FACTORY_UNIV2_UNIFIED / FACTORY_UNIV4_UNIFIED in");
+        console.log("1. Update MASTER_FEE_HANDLER, TOKEN_IMPL, TOKEN_SNIPER_PROTECTED_IMPL,");
+        console.log("   TAXABLE_TOKEN_IMPL, TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL,");
+        console.log("   FACTORY_UNIV2_UNIFIED, and FACTORY_UNIV4_UNIFIED in");
         console.log("   src/config/deployments.{mainnet,sepolia}.sol with the addresses above.");
         console.log("2. Run `just export-deployments` to refresh the .md manifests and commit them.");
         console.log("3. Whitelist both factories on the launchpad with the launchpad-owner account:");

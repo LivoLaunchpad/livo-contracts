@@ -126,12 +126,13 @@ contract QuoteInverseTests_Univ2 is QuoteInverseTests, LaunchpadBaseTestsWithUni
 
     modifier createTestToken() override(LaunchpadBaseTests) {
         vm.prank(creator);
-        (testToken,) = factoryV2.createToken(
+        testToken = factoryV2.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV2), address(livoToken)),
             _fs(creator),
             _noSs(),
+            _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
         _;
@@ -145,7 +146,7 @@ contract QuoteInverseTests_Univ4 is QuoteInverseTests, LaunchpadBaseTestsWithUni
 
     modifier createTestToken() override(LaunchpadBaseTests) {
         vm.prank(creator);
-        (testToken,) = factoryV4.createToken(
+        testToken = factoryV4.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryV4), address(livoToken)),

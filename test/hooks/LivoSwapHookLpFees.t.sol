@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
+import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -18,7 +18,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     function _pendingCreatorFees(address token) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, creator)[0];
+        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(tokens, creator)[0];
     }
 
     /// @notice Buy charges 1% LP fee: 0.5% to creator (via fee handler), 0.5% to treasury (direct)

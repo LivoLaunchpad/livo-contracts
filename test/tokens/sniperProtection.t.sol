@@ -10,7 +10,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 
@@ -206,21 +206,26 @@ abstract contract SniperProtectionBaseTest is Test {
     /// Deployer-buy path: launchpad → factory → supplyShares. The launchpad → factory hop moves
     /// up to 10% of supply (factory's `maxBuyOnDeployBps`), which is far above the 3% cap. The
     /// recipient-is-factory exemption lets this pass.
+    /// @dev `tokenFactory` lives in transient storage on the token, so the recipient-is-factory
+    ///      exemption only fires while init and the deployer-buy hop run in the same tx — which
+    ///      mirrors the production flow (the factory's `createToken` does both atomically). We
+    ///      clone + init a fresh token inside this test method so the simulation runs in a
+    ///      single tx, just like production.
     function test_deployerBuyViaDeployingFactory_bypassesCaps() public {
         uint256 deployerBuyAmount = TOTAL_SUPPLY / 10; // 10%
 
-        // The token captured `factory = msg.sender` at init — the test contract itself, since
-        // this base setUp() calls `initialize()` directly on the clone.
+        LivoToken freshToken =
+            _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, new address[](0));
         address deployingFactory = address(this);
 
         vm.prank(launchpad);
-        _token().transfer(deployingFactory, deployerBuyAmount);
-        assertEq(_token().balanceOf(deployingFactory), deployerBuyAmount);
+        freshToken.transfer(deployingFactory, deployerBuyAmount);
+        assertEq(freshToken.balanceOf(deployingFactory), deployerBuyAmount);
 
         // Factory → deployer (from != launchpad): sniper check is inactive regardless.
         vm.prank(deployingFactory);
-        _token().transfer(deployer, deployerBuyAmount);
-        assertEq(_token().balanceOf(deployer), deployerBuyAmount);
+        freshToken.transfer(deployer, deployerBuyAmount);
+        assertEq(freshToken.balanceOf(deployer), deployerBuyAmount);
     }
 
     /// Non-factory, non-whitelisted recipients are still capped — ensures the bypass is scoped.
@@ -479,8 +484,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 tokenOwner: tokenOwner,
                 graduator: address(graduator),
                 launchpad: launchpad,
-                feeHandler: feeHandler,
-                feeReceiver: feeReceiver
+                feeHandler: feeHandler
             }),
             _defaultCfg()
         );
@@ -506,8 +510,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     tokenOwner: tokenOwner,
                     graduator: address(graduator),
                     launchpad: launchpad,
-                    feeHandler: feeHandler,
-                    feeReceiver: feeReceiver
+                    feeHandler: feeHandler
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -541,8 +544,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 tokenOwner: tokenOwner,
                 graduator: address(graduator),
                 launchpad: launchpad,
-                feeHandler: feeHandler,
-                feeReceiver: feeReceiver
+                feeHandler: feeHandler
             }),
             TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
@@ -569,8 +571,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     tokenOwner: tokenOwner,
                     graduator: address(graduator),
                     launchpad: launchpad,
-                    feeHandler: feeHandler,
-                    feeReceiver: feeReceiver
+                    feeHandler: feeHandler
                 }),
                 TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({

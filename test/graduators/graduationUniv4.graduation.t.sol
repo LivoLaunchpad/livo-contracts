@@ -25,7 +25,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
@@ -874,7 +874,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     /// @notice Override createTestToken modifier to provide tax configuration
     modifier createTestToken() override {
         vm.prank(creator);
-        (testToken,) = factoryTax.createToken(
+        testToken = factoryTax.createToken(
             "TestToken",
             "TEST",
             _nextValidSalt(address(factoryTax), address(livoTaxToken)),
@@ -896,8 +896,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         // so we capture it here to exclude from pool-balance accounting.
         address[] memory _tokens = new address[](1);
         _tokens[0] = testToken;
-        uint256 graduationDeposit =
-            ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
+        uint256 graduationDeposit = ILivoClaims(ILivoToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 interface ILivoToken is IERC20 {
     //////////////////////// Events //////////////////////
@@ -9,7 +10,6 @@ interface ILivoToken is IERC20 {
     event Graduated();
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
-    event FeeReceiverUpdated(address newFeeReceiver);
 
     /// @notice Shared initialization parameters for Livo token clones
     struct InitializeParams {
@@ -19,7 +19,6 @@ interface ILivoToken is IERC20 {
         address graduator;
         address launchpad;
         address feeHandler;
-        address feeReceiver;
     }
 
     /// @notice Tax configuration for a token
@@ -34,6 +33,10 @@ interface ILivoToken is IERC20 {
 
     function markGraduated() external;
 
+    /// @notice Registers the token's initial fee receiver config in its fee handler.
+    /// @dev Callable only by the factory that initialized the token.
+    function registerFees(ILivoFactory.FeeShare[] calldata feeShares) external;
+
     /// @notice Routes ETH fees to the token's fee handler for the token's fee receiver
     function accrueFees() external payable;
 
@@ -45,9 +48,6 @@ interface ILivoToken is IERC20 {
 
     /// @notice Allows the current owner to permanently renounce ownership
     function renounceOwnership() external;
-
-    /// @notice Updates the address receiving fees inside the token `feeHandler`
-    function setFeeReceiver(address newFeeReceiver) external;
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 
@@ -66,11 +66,7 @@ interface ILivoToken is IERC20 {
     function pair() external view returns (address);
 
     /// @notice The contract address where fees are claimed from
-    /// @dev Must implement ILivoFeeHandler interface
     function feeHandler() external view returns (address);
-
-    /// @notice The address that receives fees within the feeHandler contract
-    function feeReceiver() external view returns (address);
 
     /// @notice Owner of the token. The creator unless communityTakeOver takes place
     function owner() external view returns (address);
@@ -80,8 +76,8 @@ interface ILivoToken is IERC20 {
     function proposedOwner() external view returns (address);
 
     /// @notice Returns the underlying fee receiver addresses and their share in basis points
-    /// @dev If the fee receiver is a splitter, returns the splitter's recipients and shares.
-    ///      Otherwise, returns the single fee receiver with 10_000 bps (100%).
+    /// @dev Sourced from the master fee handler's per-token config: returns every current
+    ///      recipient (direct + claimable) with their BPS share. Sum of shares is always 10_000.
     function getFeeReceivers() external view returns (address[] memory receivers, uint256[] memory sharesBps);
 
     /// @notice Returns the maximum amount of tokens `buyer` can purchase right now on the bonding curve.

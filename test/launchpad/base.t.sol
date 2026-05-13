@@ -6,10 +6,12 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
+import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
@@ -24,14 +26,15 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
-import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
+import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
 
     LivoToken public livoToken;
     LivoTaxableTokenUniV4 public livoTaxToken;
+    LivoTaxableTokenUniV2 public livoTaxTokenV2;
+    LivoTaxableTokenUniV2SniperProtected public livoTaxTokenV2Sniper;
 
     ILivoToken public implementation;
 
@@ -59,7 +62,7 @@ contract LaunchpadBaseTests is Test {
 
     LivoTokenSniperProtected public livoTokenSniper;
     LivoTaxableTokenUniV4SniperProtected public livoTaxTokenSniper;
-    LivoFeeHandler public feeHandler;
+    LivoMasterFeeHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -76,7 +79,7 @@ contract LaunchpadBaseTests is Test {
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.125 ether;
-    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.002 ether;
+    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.005 ether;
     uint256 constant GRADUATION_FEE = 0.25 ether;
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
@@ -127,10 +130,16 @@ contract LaunchpadBaseTests is Test {
         }
     }
 
-    /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees.
+    /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees (claimable, no direct).
     function _fs(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
         arr = new ILivoFactory.FeeShare[](1);
-        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000});
+        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: false});
+    }
+
+    /// @dev Build a single-entry FeeShare[] with `account` opted into direct fee forwarding.
+    function _fsDirect(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
+        arr = new ILivoFactory.FeeShare[](1);
+        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: true});
     }
 
     /// @dev Build an empty FeeShare[] (only valid for UniV2 factory).
@@ -214,25 +223,26 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
-        feeHandler = new LivoFeeHandler();
+        feeHandler = new LivoMasterFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
 
-        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
-
         livoTokenSniper = new LivoTokenSniperProtected();
         livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
+        livoTaxTokenV2 = new LivoTaxableTokenUniV2();
+        livoTaxTokenV2Sniper = new LivoTaxableTokenUniV2SniperProtected();
 
         factoryV2Unified = new LivoFactoryUniV2Unified(
             address(launchpad),
             address(livoToken),
             address(livoTokenSniper),
+            address(livoTaxTokenV2),
+            address(livoTaxTokenV2Sniper),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
 
         factoryV4Unified = new LivoFactoryUniV4Unified(
@@ -243,8 +253,7 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxTokenSniper),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler),
-            address(feeSplitterImpl)
+            address(feeHandler)
         );
 
         // Legacy aliases — same instance, different reference name. Kept so existing tests that
@@ -267,7 +276,7 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                (testToken,) = factoryV4Unified.createToken(
+                testToken = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
                     _nextValidSalt(address(factoryV4Unified), address(livoTaxToken)),
@@ -278,7 +287,7 @@ contract LaunchpadBaseTests is Test {
                     _emptyAntiSniperCfg()
                 );
             } else {
-                (testToken,) = factoryV4Unified.createToken(
+                testToken = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
                     _nextValidSalt(address(factoryV4Unified), address(livoToken)),
@@ -290,12 +299,13 @@ contract LaunchpadBaseTests is Test {
                 );
             }
         } else {
-            (testToken,) = factoryV2Unified.createToken(
+            testToken = factoryV2Unified.createToken(
                 "TestToken",
                 "TEST",
                 _nextValidSalt(address(factoryV2Unified), address(livoToken)),
                 _fs(creator),
                 _noSs(),
+                _emptyTaxCfg(),
                 _emptyAntiSniperCfg()
             );
         }

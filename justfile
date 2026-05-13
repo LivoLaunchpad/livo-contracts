@@ -21,21 +21,25 @@ abis:
     @jq '.abi' out/LivoFactoryUniV2Unified.sol/LivoFactoryUniV2Unified.json > abis/LivoFactoryUniV2Unified.json
     @jq '.abi' out/LivoFactoryUniV4Unified.sol/LivoFactoryUniV4Unified.json > abis/LivoFactoryUniV4Unified.json
     @jq '.abi' out/ILivoFeeSplitter.sol/ILivoFeeSplitter.json > abis/ILivoFeeSplitter.json
+    @jq '.abi' out/ILivoTaxableToken.sol/ILivoTaxableToken.json > abis/ILivoTaxableToken.json
     @echo "✔ ABIs copied to abis/ directory"
     
 
 ##################### TESTING ################################
 fast-test:
-    forge test --no-match-contract Invariants
+    forge test --no-match-contract Invariants --no-match-path "test/integration/**"
 
 gas-report:
-    forge test --no-match-contract Invariants --gas-report
+    forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report
 
 test-curves:
     forge test --match-contract Curve
 
 invariant-tests:
     forge test --match-contract Invariants
+
+integration-tests:
+    forge test --match-path "test/integration/**"
 
 # Runs a super fast version of invariants for CI.(not so reliable at all) (runs=1, depth=5)
 lean-invariants:
@@ -48,7 +52,7 @@ error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
 taxtokenaddresses:
-    sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
+    sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
 
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>

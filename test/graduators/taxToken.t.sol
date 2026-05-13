@@ -4,18 +4,19 @@ pragma solidity 0.8.28;
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
@@ -29,15 +30,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxDuration.selector));
+        // Duration above the absolute (charity-mode) ceiling — must revert with InvalidTaxDuration
+        // regardless of charity-mode satisfaction, because the cap is checked first.
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
             "0x12",
-            _fs(creator),
+            _fs(alice),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(15 days)),
+            true,
+            _taxCfg(0, 400, uint32(120 * 365 days + 1)),
             _emptyAntiSniperCfg()
         );
     }

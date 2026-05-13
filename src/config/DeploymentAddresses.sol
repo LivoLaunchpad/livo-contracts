@@ -80,10 +80,12 @@ library DeploymentAddressesSepolia {
 
     /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
     /// @dev Required by `LivoGraduatorUniswapV2` to predict the CREATE2 pair address without
-    ///      deploying the pair upfront. Sepolia's UniV2 deployment uses the same canonical
-    ///      stock pair bytecode as mainnet, so the hash matches.
+    ///      deploying the pair upfront. The Sepolia factory at `UNIV2_FACTORY` is NOT Uniswap's
+    ///      canonical V2 deployment — it's a fork whose pair init code differs from mainnet, so
+    ///      the hash here is different from the stock mainnet value. Derived empirically from the
+    ///      CREATE2 input of a pair created by this factory; verified by predicting a known pair.
     bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
-        0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+        0x4156ccc01dad273e6c65c4335c428a2ff4a4b0c95a9a228f6bfed45a069d3fe7;
 
     /// @notice Dead address used for burning LP tokens
     /// @dev Standard burn address that works on all chains

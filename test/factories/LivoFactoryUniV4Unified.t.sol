@@ -8,7 +8,7 @@ import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol"
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
@@ -23,29 +23,27 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     // ───────────── Dispatch — preview returns correct impl per combo ─────────────
 
     function test_dispatch_base_returnsBaseImpl() public view {
-        address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
-        );
+        address impl =
+            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
         assertEq(impl, address(livoToken));
     }
 
     function test_dispatch_antiSniper_returnsAntiSniperImpl() public view {
-        address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), false, _emptyTaxCfg(), _defaultAntiSniperCfg()
-        );
+        address impl =
+            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg());
         assertEq(impl, address(livoTokenSniper));
     }
 
     function test_dispatch_tax_returnsTaxImpl() public view {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
         );
         assertEq(impl, address(livoTaxToken));
     }
 
     function test_dispatch_taxAntiSniper_returnsTaxAntiSniperImpl() public view {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _defaultAntiSniperCfg()
+            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(7 days)), _defaultAntiSniperCfg()
         );
         assertEq(impl, address(livoTaxTokenSniper));
     }
@@ -53,14 +51,13 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     // ───────────── Dispatch — preview matches deployed for each combo ─────────────
 
     function test_createToken_dispatchMatchesPreview_base() public {
-        address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
-        );
+        address impl =
+            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken(
+        address token = factoryV4Unified.createToken(
             "T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
@@ -68,14 +65,13 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function test_createToken_dispatchMatchesPreview_antiSniper() public {
-        address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), false, _emptyTaxCfg(), _defaultAntiSniperCfg()
-        );
+        address impl =
+            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken(
+        address token = factoryV4Unified.createToken(
             "T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _defaultAntiSniperCfg()
         );
 
@@ -84,13 +80,12 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_dispatchMatchesPreview_tax() public {
         TaxConfigInit memory cfg = _taxCfg(100, 200, uint32(7 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
 
         assertEq(token, expected);
@@ -98,13 +93,12 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_dispatchMatchesPreview_taxAntiSniper() public {
         TaxConfigInit memory cfg = _taxCfg(100, 200, uint32(7 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), false, cfg, _defaultAntiSniperCfg());
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _defaultAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _defaultAntiSniperCfg());
 
         assertEq(token, expected);
@@ -118,12 +112,11 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         wl[1] = bob;
         AntiSniperConfigs memory snipCfg = _antiSniperCfg(50, 100, 30 minutes, wl);
 
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), false, _emptyTaxCfg(), snipCfg);
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), snipCfg);
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), snipCfg);
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
@@ -137,12 +130,11 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_tax_configFieldsStoredOnToken() public {
         TaxConfigInit memory cfg = _taxCfg(150, 250, uint32(3 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
 
         LivoTaxableTokenUniV4 t = LivoTaxableTokenUniV4(payable(token));
@@ -157,11 +149,11 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         TaxConfigInit memory taxCfg = _taxCfg(100, 200, uint32(1 days));
         AntiSniperConfigs memory snipCfg = _antiSniperCfg(25, 100, 2 hours, wl);
 
-        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), false, taxCfg, snipCfg);
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), taxCfg, snipCfg);
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, taxCfg, snipCfg);
+        address token = factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, taxCfg, snipCfg);
 
         LivoTaxableTokenUniV4SniperProtected t = LivoTaxableTokenUniV4SniperProtected(payable(token));
         assertEq(t.buyTaxBps(), 100);
@@ -177,12 +169,11 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_renounceOwnership_setsOwnerToZero_taxVariant() public {
         TaxConfigInit memory cfg = _taxCfg(0, 400, uint32(14 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), true, cfg, _emptyAntiSniperCfg());
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), true, cfg, _emptyAntiSniperCfg());
 
         assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), address(0));
@@ -190,22 +181,50 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_keepOwnership_setsOwnerToCaller_taxVariant() public {
         TaxConfigInit memory cfg = _taxCfg(0, 400, uint32(14 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        (address token,) =
+        address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
 
         assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), creator);
     }
 
-    // ───────────── Tax validation ─────────────
+    // ───────────── Tax / anti-sniper sentinel validation ─────────────
+
+    function test_preview_revertsOnDisabledTaxWithNonZeroBps() public {
+        vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
+        factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _taxCfg(100, 0, 0), _emptyAntiSniperCfg());
+    }
+
+    function test_createToken_revertsOnDisabledTaxWithNonZeroBps() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(100, 0, 0), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnTaxDurationWithoutBps() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 0, uint32(1 days)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnDisabledAntiSniperWithNonZeroFields() public {
+        AntiSniperConfigs memory cfg = _antiSniperCfg(50, 0, 0, new address[](0));
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
+        factoryV4Unified.createToken("T", "T", "0x12", _fs(creator), _noSs(), false, _emptyTaxCfg(), cfg);
+    }
 
     function test_createToken_revertsOnInvalidTaxBps() public {
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxBps.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
             "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(14 days)), _emptyAntiSniperCfg()
         );
@@ -213,10 +232,96 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_revertsOnInvalidTaxDuration() public {
         vm.prank(creator);
-        vm.expectRevert(LivoFactoryUniV4Unified.InvalidTaxDuration.selector);
+        vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
         factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days + 1)), _emptyAntiSniperCfg()
+            "T",
+            "T",
+            "0x12",
+            _fs(alice),
+            _noSs(),
+            true,
+            _taxCfg(0, 400, uint32(120 * 365 days + 1)),
+            _emptyAntiSniperCfg()
         );
+    }
+
+    // ───────────── Charity-mode gating for extended duration ─────────────
+    //
+    // A tax duration above MAX_TAX_DURATION_SECONDS (365 days) requires:
+    //   (1) exactly one fee receiver, distinct from the deployer; and
+    //   (2) ownership renounced at creation (renounceOwnership_ == true → tokenOwner == address(0)).
+    // The charity address is NOT verified on-chain — anyone can pass a fake one. The on-chain
+    // rules just block the most trivial abuse (deployer keeping ownership and routing fees to
+    // themselves while running a multi-year tax window).
+
+    function test_createToken_revertsOnExtendedTaxWhenFeeReceiverIsDeployer() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnExtendedTaxWithMultipleReceivers() public {
+        ILivoFactory.FeeShare[] memory two = new ILivoFactory.FeeShare[](2);
+        two[0] = ILivoFactory.FeeShare({account: alice, shares: 5_000, directFeesEnabled: false});
+        two[1] = ILivoFactory.FeeShare({account: bob, shares: 5_000, directFeesEnabled: false});
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", two, _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_revertsOnExtendedTaxWhenOwnershipNotRenounced() public {
+        // Single fee receiver != deployer (charity-mode candidate), but `renounceOwnership_ = false`
+        // keeps the deployer as owner — must revert.
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.CharityModeOwnerNotRenounced.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(alice), _noSs(), false, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_allowsExtendedTaxInCharityMode() public {
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, _fs(alice), _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
+        assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), address(0));
+    }
+
+    function test_createToken_allowsMaxCharityDurationInCharityMode() public {
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, _fs(alice), _noSs(), true, _taxCfg(0, 400, uint32(120 * 365 days)), _emptyAntiSniperCfg()
+        );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 120 * 365 days);
+    }
+
+    function test_preview_revertsOnExtendedTaxWhenFeeReceiverIsDeployer() public {
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
+        factoryV4Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_preview_returnsTaxImplForCharityModeExtendedTax() public {
+        vm.prank(creator);
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _fs(alice), _noSs(), _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        );
+
+        assertEq(impl, address(livoTaxToken));
     }
 
     // ───────────── InvalidTokenAddress on tax dispatch path ─────────────

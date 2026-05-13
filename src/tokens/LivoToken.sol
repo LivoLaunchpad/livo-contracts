@@ -5,9 +5,9 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
+import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
@@ -24,11 +24,13 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
+    /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
+    /// @dev Packed with `graduated` so the hot-path read of both fields in `_update` costs a
+    ///      single SLOAD.
+    address public pair;
+
     /// @notice Whether the token has graduated already or not
     bool public graduated;
-
-    /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
-    address public pair;
 
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
@@ -36,8 +38,31 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
-    /// @notice Address that receives fees within the fee handler
-    address public feeReceiver;
+    /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
+    /// @dev Lives in transient storage: the factory calls `initialize` and `registerFees` in the
+    ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
+    ///      end of tx, so a second `registerFees` attempt from any future tx finds it zeroed
+    ///      and reverts on the `msg.sender == 0` check.
+    /// @dev SECURITY ASSUMPTION (sniper-protected variants): `SniperProtection._checkSniperProtection`
+    ///      reads this slot to exempt the launchpad → factory deployer-buy hop from the per-tx /
+    ///      per-wallet caps. Outside the deploy tx the slot reads `address(0)`, so the exemption
+    ///      check effectively becomes `if (to == address(0)) return;`. This is currently safe
+    ///      ONLY because OZ ERC20 v5's `transfer` / `transferFrom` revert with
+    ///      `ERC20InvalidReceiver` before reaching `_update` whenever `to == address(0)`, which
+    ///      makes a sniper-checked transfer with a zero recipient unreachable in practice.
+    /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `from == launchpad`
+    ///      and `to == address(0)` would silently bypass the sniper caps. Concrete cases to
+    ///      watch out for:
+    ///        - a `LaunchpadV2` that exposes a buyer-supplied `receiver` parameter and forwards
+    ///          it to the token without rejecting `address(0)`;
+    ///        - a custom token transfer override (or alternate ERC20 base) that drops the
+    ///          zero-recipient guard;
+    ///        - any new internal call site that issues `_update(launchpad, address(0), x)`
+    ///          directly (e.g. a "burn from launchpad" admin path).
+    ///      If any such path is introduced, harden the exemption: pass a non-zero sentinel
+    ///      for the cleared state, or have `_checkSniperProtection` add an explicit
+    ///      `factoryAddr != address(0)` guard around the `to == factoryAddr` short-circuit.
+    address internal transient tokenFactory;
 
     /// @notice Token name
     string internal _tokenName;
@@ -50,9 +75,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error OnlyGraduatorAllowed();
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
-    error InvalidGraduator();
     error Unauthorized();
-    error InvalidFeeReceiver();
 
     //////////////////////////////////////////////////////
 
@@ -69,15 +92,16 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @dev Internal initializer body; callable from child `initializer`-gated functions.
+    /// @dev `params.graduator` is not explicitly checked for `address(0)`; the call to
+    ///      `ILivoGraduator(params.graduator).initialize(address(this))` below would revert in
+    ///      that case anyway (no code at the zero address).
     function _initializeLivoToken(ILivoToken.InitializeParams memory params) internal onlyInitializing {
-        require(params.graduator != address(0), InvalidGraduator());
-
         _tokenName = params.name;
         _tokenSymbol = params.symbol;
         graduator = params.graduator;
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
-        feeReceiver = params.feeReceiver;
+        tokenFactory = msg.sender;
         pair = ILivoGraduator(params.graduator).initialize(address(this));
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
@@ -130,41 +154,26 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit OwnershipTransferred(address(0));
     }
 
-    /// @notice Updates the fee receiver address, only callable by the token owner
-    function setFeeReceiver(address newFeeReceiver) external {
-        require(msg.sender == owner, Unauthorized());
-        require(newFeeReceiver != address(0), InvalidFeeReceiver());
-
-        feeReceiver = newFeeReceiver;
-
-        emit FeeReceiverUpdated(newFeeReceiver);
-    }
-
     //////////////////////// fee accrual ////////////////////////
 
-    /// @notice Routes ETH fees to the fee handler for the token's fee receiver
+    /// @notice Registers this token's initial fee shares in the master fee handler.
+    /// @dev Callable only by the factory that initialized the token. The handler infers the token
+    ///      from `msg.sender`, so this token contract is the only address registered.
+    function registerFees(ILivoFactory.FeeShare[] calldata feeShares) external {
+        require(msg.sender == tokenFactory, Unauthorized());
+        ILivoMasterFeeHandler(feeHandler).registerToken(feeShares);
+    }
+
+    /// @notice Routes ETH fees to the fee handler for this token
     function accrueFees() external payable {
-        ILivoFeeHandler(feeHandler).depositFees{value: msg.value}(address(this), feeReceiver);
+        ILivoMasterFeeHandler(feeHandler).depositFees{value: msg.value}(address(this));
     }
 
     //////////////////////// view functions ////////////////////////
 
     /// @notice Returns the underlying fee receiver addresses and their share in basis points
     function getFeeReceivers() external view returns (address[] memory, uint256[] memory) {
-        address feeReceiver_ = feeReceiver;
-        if (feeReceiver_.code.length > 0) {
-            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (
-                address[] memory recipients, uint256[] memory sharesBps
-            ) {
-                return (recipients, sharesBps);
-            } catch {}
-        }
-        // fallback to direct fee receiver with 100% share if the fee receiver is not a fee splitter
-        address[] memory result = new address[](1);
-        result[0] = feeReceiver_;
-        uint256[] memory shares = new uint256[](1);
-        shares[0] = 10_000;
-        return (result, shares);
+        return ILivoMasterFeeHandler(feeHandler).getRecipients(address(this));
     }
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.

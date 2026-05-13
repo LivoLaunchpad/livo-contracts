@@ -1,43 +1,53 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
-/// @notice Unified factory for the Uniswap V2 token family. Dispatches between two token
-///         implementations based on whether `AntiSniperConfigs` is configured. Ownership is
-///         always renounced at creation (`tokenOwner == address(0)`) — V2 tokens have no
-///         `setFeeReceiver` path, so the fee receiver is permanent.
+/// @notice Unified factory for the Uniswap V2 token family. Dispatches between four token
+///         implementations based on whether `TaxConfigInit` and `AntiSniperConfigs` are
+///         configured.
 ///
-///         Replaces `LivoFactoryUniV2` and `LivoFactoryUniV2SniperProtected`.
+///         Replaces `LivoFactoryUniV2` and `LivoFactoryUniV2SniperProtected`, and now also
+///         covers the new tax variants (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2SniperProtected`).
+///
+///         Ownership rule: all V2-family tokens are deployed with `tokenOwner = address(0)`.
+///         Tax cap: 5% (vs V4's 4%) — the V2 swap-back path needs more headroom to amortise per-sell
+///         router gas, so a slightly higher cap keeps the tax slice meaningful.
 contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
-    /// @notice Token implementation cloned when no anti-sniper protection is requested.
-    address public immutable TOKEN_IMPL_BASE;
-    /// @notice Token implementation cloned when anti-sniper protection is requested.
-    address public immutable TOKEN_IMPL_ANTISNIPER;
-
     constructor(
         address launchpad,
         address tokenImplBase,
         address tokenImplAntiSniper,
+        address tokenImplTax,
+        address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address feeHandler,
-        address feeSplitterImplementation
-    ) LivoFactoryAbstract(launchpad, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {
-        TOKEN_IMPL_BASE = tokenImplBase;
-        TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
+        address masterFeeHandler
+    )
+        LivoFactoryAbstract(
+            launchpad,
+            tokenImplBase,
+            tokenImplAntiSniper,
+            tokenImplTax,
+            tokenImplTaxAntiSniper,
+            bondingCurve,
+            graduator,
+            masterFeeHandler
+        )
+    {}
+
+    /// @inheritdoc LivoFactoryAbstract
+    function MAX_TAX_BPS() public pure override returns (uint256) {
+        return 500;
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
-    /// @notice Deploys a V2-family Livo token with ownership renounced and registers it in the launchpad.
-    ///         If `antiSniperCfg.protectionWindowSeconds != 0`, deploys the sniper-protected variant.
-    ///         If `feeReceivers.length >= 2`, also deploys a `FeeSplitter` as the fee receiver.
+    /// @notice Deploys a V2-family Livo token and registers it in the launchpad.
+    ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
+    ///         The per-token fee config is registered with the master fee handler at deploy time.
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
     function createToken(
         string calldata name,
@@ -45,57 +55,38 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         bytes32 salt,
         FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata supplyShares,
+        TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
-    ) external payable returns (address token, address feeSplitter) {
-        FeeRouting memory routing = _validateInputsAndResolveFees(feeReceivers, supplyShares, salt);
+    ) external payable returns (address token) {
+        // V2-family tokens are always deployed ownerless. The renounced-ownership invariant for
+        // charity-mode tax durations is therefore satisfied by default on this venue.
+        address tokenOwner = address(0);
 
-        // Deploy the token, call launchpad.launchToken, and initialize the token proxy contract
-        token = _dispatchAndInitialize(name, symbol, salt, routing, antiSniperCfg);
+        _validateInputs(name, symbol, feeReceivers, supplyShares);
+        _validateAntiSniperConfig(antiSniperCfg);
+        _validateTaxConfig(taxCfg, feeReceivers, tokenOwner);
 
-        // Wrapping up: Handle fee splitter deployment, creator buy, etc.
-        _finalizeCreation(token, routing.feeSplitter, feeReceivers, supplyShares);
-        feeSplitter = routing.feeSplitter;
+        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+        _finalizeCreation(token, feeReceivers, supplyShares);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
     /// @dev Mirrors the full `createToken` input set minus the identity fields (`name`, `symbol`,
     ///      `salt`) so the ABI stays stable when future features change which inputs participate in
-    ///      dispatch. Today only `antiSniperCfg.protectionWindowSeconds` matters; the other params
-    ///      are ignored. Used by frontends to compute the initcode hash before mining a salt.
+    ///      dispatch. Today only `taxCfg.taxDurationSeconds` and `antiSniperCfg.protectionWindowSeconds`
+    ///      matter for dispatch; disabled configs must have all other tax/anti-sniper fields
+    ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
-        FeeShare[] calldata, /* feeReceivers */
+        FeeShare[] calldata feeReceivers,
         SupplyShare[] calldata, /* supplyShares */
+        TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
-        return _isAntiSniperConfigured(antiSniperCfg) ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
-    }
-
-    /////////////////////// INTERNAL FUNCTIONS /////////////////////////
-
-    function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {
-        return a.protectionWindowSeconds != 0;
-    }
-
-    function _dispatchAndInitialize(
-        string calldata name,
-        string calldata symbol,
-        bytes32 salt,
-        FeeRouting memory routing,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) internal returns (address token) {
-        bool antiSniper = _isAntiSniperConfigured(antiSniperCfg);
-        address impl = antiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
-
-        ILivoToken.InitializeParams memory initParams;
-        (token, initParams) =
-            _cloneAndCreateToken(impl, name, symbol, salt, address(0), routing.feeHandler, routing.feeReceiver);
-
-        if (antiSniper) {
-            LivoTokenSniperProtected(token).initialize(initParams, antiSniperCfg);
-        } else {
-            LivoToken(token).initialize(initParams);
-        }
-
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+        _validateAntiSniperConfig(antiSniperCfg);
+        // V2 tokens are always deployed ownerless, so the preview's `tokenOwner` is `address(0)`.
+        _validateTaxConfig(taxCfg, feeReceivers, address(0));
+        return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 }

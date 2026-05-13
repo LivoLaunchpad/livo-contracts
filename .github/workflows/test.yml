@@ -53,14 +53,14 @@ jobs:
           fi
         id: deployments_drift
 
-      - name: Forge tests (no invariants)
+      - name: Forge tests (no invariants, no integration)
         run: |
-          forge test --no-match-contract Invariant -vvv
+          forge test --no-match-contract Invariants --no-match-path "test/integration/**" -vvv
         id: unit_tests
 
       - name: Lean Invariant tests
         run: |
           sed -i 's/runs = [0-9]*/runs = 1/' foundry.toml
           sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
-          forge test --match-contract Invariant
+          forge test --match-contract Invariants
         id: invariants

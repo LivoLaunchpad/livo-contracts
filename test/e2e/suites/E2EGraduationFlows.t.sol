@@ -5,8 +5,6 @@ import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
-import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 
 /// @notice E2E graduation flows. Drives a token from creation, through bonding curve buys, into
 ///         graduation, then exercises a post-graduation swap on the appropriate AMM (V2 pair or
@@ -75,10 +73,10 @@ abstract contract E2EGraduationFlows is LivoE2EBase {
         assertGt(creator.balance, ethBefore, "creator should claim non-zero ETH after graduation");
     }
 
-    function test_e2e_splitter_recipientsCanClaim_afterGraduation() public {
+    function test_e2e_multiRecipient_canClaim_afterGraduation() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         ILivoFactory.FeeShare[] memory fees = _fsTwo(alice, bob);
-        (address token, address splitter) = _createTestTokenWithSplit(salt, fees);
+        address token = _createTestTokenWithSplit(salt, fees);
         _graduateE2E(token);
 
         address[] memory tokens = new address[](1);
@@ -88,15 +86,15 @@ abstract contract E2EGraduationFlows is LivoE2EBase {
         uint256 bobBefore = bob.balance;
 
         vm.prank(alice);
-        LivoFeeSplitter(payable(splitter)).claim(tokens);
+        feeHandler.claim(tokens);
         vm.prank(bob);
-        LivoFeeSplitter(payable(splitter)).claim(tokens);
+        feeHandler.claim(tokens);
 
         uint256 aliceGain = alice.balance - aliceBefore;
         uint256 bobGain = bob.balance - bobBefore;
 
-        assertGt(aliceGain, 0, "alice should receive ETH from splitter");
-        assertGt(bobGain, 0, "bob should receive ETH from splitter");
+        assertGt(aliceGain, 0, "alice should receive ETH");
+        assertGt(bobGain, 0, "bob should receive ETH");
         // 60/40 split with tolerance for rounding
         assertApproxEqRel(aliceGain * 4, bobGain * 6, 1e15, "alice/bob ratio should be ~60/40");
     }

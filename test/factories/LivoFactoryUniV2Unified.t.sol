@@ -9,9 +9,9 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
-/// @notice Dispatch + field-readback tests for `LivoFactoryUniV2Unified`. The unified factory
-///         dispatches between two token implementations based solely on
-///         `antiSniperCfg.protectionWindowSeconds != 0`. These tests lock in:
+/// @notice Dispatch + field-readback tests for `LivoFactoryUniV2Unified`. These non-tax tests lock
+///         in dispatch between the base and anti-sniper implementations based on
+///         `antiSniperCfg.protectionWindowSeconds != 0`:
 ///         (1) `previewTokenImplementation(...)` returns the same address that `createToken`
 ///         actually clones from — load-bearing for frontend salt mining; and (2) the configs
 ///         are correctly propagated from the factory to the cloned token's storage.
@@ -19,35 +19,42 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
     // ───────────── Dispatch — preview ─────────────
 
     function test_dispatch_noAntiSniper_returnsBaseImpl() public view {
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
         assertEq(impl, address(livoToken));
     }
 
     function test_dispatch_withAntiSniper_returnsAntiSniperImpl() public view {
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _defaultAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg());
         assertEq(impl, address(livoTokenSniper));
     }
 
     // ───────────── Dispatch — preview matches deployed ─────────────
 
     function test_createToken_dispatchMatchesPreview_base() public {
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address token =
+            factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
 
         assertEq(token, expected);
     }
 
     function test_createToken_dispatchMatchesPreview_antiSniper() public {
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _defaultAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _defaultAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            "T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg()
+        );
 
         assertEq(token, expected);
     }
@@ -60,11 +67,11 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         wl[1] = bob;
         AntiSniperConfigs memory cfg = _antiSniperCfg(50, 150, 45 minutes, wl);
 
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg);
+        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), cfg);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg);
+        address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), cfg);
 
         LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
         assertEq(t.maxBuyPerTxBps(), 50);
@@ -75,24 +82,46 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         assertFalse(t.sniperBypass(creator));
     }
 
-    // ───────────── Ownership: V2 always renounces ─────────────
+    // ───────────── Anti-sniper sentinel validation ─────────────
 
-    function test_createToken_alwaysRenouncesOwnership_base() public {
+    function test_preview_revertsOnDisabledAntiSniperWithNonZeroFields() public {
+        AntiSniperConfigs memory cfg = _antiSniperCfg(50, 0, 0, new address[](0));
+
+        vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), cfg);
+    }
+
+    function test_createToken_revertsOnDisabledAntiSniperWithWhitelist() public {
+        address[] memory wl = new address[](1);
+        wl[0] = alice;
+        AntiSniperConfigs memory cfg = _antiSniperCfg(0, 0, 0, wl);
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
+        factoryV2Unified.createToken("T", "T", "0x12", _fs(creator), _noSs(), _emptyTaxCfg(), cfg);
+    }
+
+    // ───────────── Ownership: V2 is always ownerless ─────────────
+
+    function test_createToken_alwaysSetsOwnerToZero_base() public {
         address impl = address(livoToken);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyAntiSniperCfg());
+        address token =
+            factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
 
         assertEq(LivoToken(token).owner(), address(0));
     }
 
-    function test_createToken_alwaysRenouncesOwnership_antiSniper() public {
+    function test_createToken_alwaysSetsOwnerToZero_antiSniper() public {
         address impl = address(livoTokenSniper);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
-        (address token,) = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _defaultAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            "T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg()
+        );
 
         assertEq(LivoTokenSniperProtected(token).owner(), address(0));
     }
@@ -104,6 +133,6 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidFeeReceiver.selector);
-        factoryV2Unified.createToken("T", "T", salt, _noFs(), _noSs(), _emptyAntiSniperCfg());
+        factoryV2Unified.createToken("T", "T", salt, _noFs(), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
     }
 }

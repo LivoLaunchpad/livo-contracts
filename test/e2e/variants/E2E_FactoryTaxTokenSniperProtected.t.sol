@@ -32,7 +32,7 @@ contract E2E_FactoryTaxTokenSniperProtected is
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
-        (token,) = factoryTaxSniper.createToken(
+        token = factoryTaxSniper.createToken(
             "E2E",
             "E2E",
             salt,
@@ -47,10 +47,10 @@ contract E2E_FactoryTaxTokenSniperProtected is
     function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
         internal
         override
-        returns (address token, address splitter)
+        returns (address token)
     {
         vm.prank(creator);
-        (token, splitter) = factoryTaxSniper.createToken(
+        token = factoryTaxSniper.createToken(
             "E2E",
             "E2E",
             salt,
@@ -69,7 +69,7 @@ contract E2E_FactoryTaxTokenSniperProtected is
     {
         vm.deal(creator, ethValue);
         vm.prank(creator);
-        (token,) = factoryTaxSniper.createToken{value: ethValue}(
+        token = factoryTaxSniper.createToken{value: ethValue}(
             "E2E",
             "E2E",
             salt,

@@ -4,14 +4,14 @@ pragma solidity 0.8.28;
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
@@ -30,7 +30,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
+        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -146,7 +146,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // New owner can manually update the fee receiver
         vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
+        feeHandler.setShares(testToken, _fs(alice));
 
         // Ensure buyer has fresh tokens for a post-update sell path
         deal(buyer, 0.2 ether);
@@ -212,10 +212,15 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    /// @notice Test that zero sell tax rate results in no tax collection
+    /// @notice Test that zero sell tax rate results in no sell-tax collection on the sell leg.
+    /// @dev The factory rejects `(0, 0, duration)` configs, so we use a token with non-zero buy
+    ///      tax + zero sell tax to exercise the "zero sell tax" path. The buy-side tax accrued by
+    ///      the swapBuy is captured in `creatorTaxesBefore`, so the post-sell delta isolates the
+    ///      sell leg's contribution.
     function test_zeroSellTaxRate_noTaxCollected() public {
-        // Create token with 0% sell tax (buy tax is always 0)
-        testToken = _createTaxToken(0, 0, 14 days);
+        // Create token with 1% buy tax and 0% sell tax. Buy tax must be non-zero so the factory
+        // does not reject the config as a degenerate tax variant.
+        testToken = _createTaxToken(100, 0, 14 days);
 
         // Buy tokens through launchpad
         vm.deal(buyer, 2 ether);
@@ -224,20 +229,25 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         _graduateToken();
 
-        // Verify no buy tax is collected (buy tax is always 0)
+        // V4 takes tax in ETH from the pool (never as token balance on the contract), so the
+        // token-balance check passes regardless of buyTaxBps.
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
-        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected");
+        assertEq(
+            IERC20(testToken).balanceOf(testToken),
+            tokenContractBalanceBefore,
+            "Tax token contract should never accumulate token balance under V4 (taxes go straight to ETH)"
+        );
 
-        // Test sell with 0% tax - creator should accrue only LP creator share (0.5%), no sell tax
+        // Snapshot creator's pending balance AFTER the buy so any buy-leg accrual is excluded.
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         uint256 creatorTaxesBefore = _pendingTaxes(testToken, creator);
         uint256 buyerEthBalanceBefore = buyer.balance;
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
         uint256 ethReceived = buyer.balance - buyerEthBalanceBefore;
 
-        // With 0% sell tax, creator only gets LP creator share (0.5% of gross)
+        // With 0% sell tax, the sell leg accrues only the LP creator share (0.5% of gross).
         // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS)
         uint256 denominator = 10000 - 100; // only LP fee, no sell tax
         uint256 expectedCreatorShare = (ethReceived * 50) / denominator;
@@ -362,7 +372,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         _graduateToken();
 
-        uint40 graduationTimestamp = ILivoTaxableTokenUniV4(testToken).graduationTimestamp();
+        uint40 graduationTimestamp = ILivoTaxableToken(testToken).graduationTimestamp();
         uint256 creatorTaxBalance;
         uint256 buyerTokenBalance;
 
@@ -451,7 +461,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         vm.prank(creator);
         factoryTax.createToken(
             "InvalidToken",
@@ -796,7 +806,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryUniV4Unified.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",

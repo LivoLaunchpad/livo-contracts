@@ -50,7 +50,7 @@ graph TB
 
     %% V4 Tax System
     UniV4 -->|hooks| SwapHook
-    SwapHook -->|enforces time-limited<br/>sell taxes| Token
+    SwapHook -->|reads tax config,<br/>collects buy/sell tax| Token
 
     %% Fee Collection (V4)
     Creator -->|collectEthFees| GraduatorV4
@@ -98,7 +98,7 @@ When ETH reserves reach graduation threshold:
 - Creates **Uniswap V4 Pool** via `initialize()`
 - Adds two liquidity positions (balanced + single-sided ETH)
 - Locks LP NFTs in **LiquidityLockUniv4WithFees**
-- **LivoSwapHook** enforces time-limited sell taxes (0-14 days post-graduation)
+- **LivoSwapHook** reads each token's `TaxConfig` (`buyTaxBps`, `sellTaxBps`, `taxDurationSeconds`) and collects the configured buy/sell tax on every V4 swap while `block.timestamp <= graduationTimestamp + taxDurationSeconds`. The hook itself does not enforce any duration cap; the cap is enforced at creation by the factory (`MAX_TAX_DURATION_SECONDS = 365 days` for the default path, up to `MAX_CHARITY_TAX_DURATION_SECONDS = 120 years` in charity mode — a single non-deployer fee receiver and ownership renounced at creation; the charity address is NOT verified on-chain) and the resulting window is immutable on the token.
 
 ### 4. Post-Graduation Fee Collection (V4 only)
 - **Creator** calls `collectEthFees()` on graduator

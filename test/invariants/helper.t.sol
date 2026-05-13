@@ -7,7 +7,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
@@ -126,15 +126,17 @@ contract InvariantsHelperLaunchpad is Test {
         address token;
         ILivoFactory.SupplyShare[] memory noSs = new ILivoFactory.SupplyShare[](0);
         ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
-        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000});
+        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl);
             vm.prank(currentActor);
-            (token,) = factoryV2.createToken("TestToken", "TEST", salt, creatorFs, noSs, _emptyAntiSniperCfg());
+            token = factoryV2.createToken(
+                "TestToken", "TEST", salt, creatorFs, noSs, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            );
         } else {
             bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl);
             vm.prank(currentActor);
-            (token,) = factoryV4.createToken(
+            token = factoryV4.createToken(
                 "TestToken", "TEST", salt, creatorFs, noSs, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
             );
         }
