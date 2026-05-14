@@ -3,35 +3,29 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Deploy Livo master fee handler, token implementations, and unified factories
-/// @notice Deploys, in order:
-///         1. `LivoMasterFeeHandler`
-///         2. the deployable token implementations in `src/tokens/`
-///         3. For each factory: implementation + `ERC1967Proxy` (UUPS). The proxy is the address
-///            the launchpad whitelists and that integrators track — it stays stable across future
-///            implementation upgrades that don't break the ABI.
+/// @title Deploy the unified factory implementations and their UUPS proxies
+/// @notice Deploys ONLY the four contracts that are net-new for this run:
+///         1. `LivoFactoryUniV2Unified` (implementation) + its `ERC1967Proxy`
+///         2. `LivoFactoryUniV4Unified` (implementation) + its `ERC1967Proxy`
 ///
-///         The factories are wired to the freshly-deployed master fee handler and token
-///         implementations while reusing the launchpad, bonding curve, and graduators from
-///         `src/config/deployments.{mainnet,sepolia}.sol`.
+///         Every other dependency — launchpad, bonding curve, graduators, master fee handler,
+///         and every token implementation — is sourced from the per-chain manifest in
+///         `src/config/deployments.{mainnet,sepolia}.sol`. To redeploy any of those, use the
+///         dedicated script for that component, not this one.
+///
+///         The proxy is the address the launchpad whitelists and that integrators track —
+///         it stays stable across future implementation upgrades that don't break the ABI.
 ///
 ///         Whitelisting on the launchpad is intentionally NOT done here — the launchpad
 ///         owner (`livo.admin`) must whitelist the proxy address after broadcast finishes
@@ -40,16 +34,13 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 /// @dev    Run with:
 ///         forge script DeploymentsUnifiedFactories --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
 contract DeploymentsUnifiedFactories is Script {
-    /// @dev Bundle of pre-deployed core addresses sourced from the per-chain manifest.
+    /// @dev Pre-deployed core addresses sourced from the per-chain manifest. None of these are
+    ///      redeployed by this script.
     struct Deps {
         address launchpad;
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
-    }
-
-    /// @dev Freshly-deployed addresses emitted by this script.
-    struct FreshDeployments {
         address masterFeeHandler;
         address tokenImpl;
         address tokenSniperImpl;
@@ -57,6 +48,10 @@ contract DeploymentsUnifiedFactories is Script {
         address taxTokenSniperImpl;
         address taxTokenV2Impl;
         address taxTokenV2SniperImpl;
+    }
+
+    /// @dev Freshly-deployed addresses emitted by this script.
+    struct FreshDeployments {
         address factoryV2Impl;
         address factoryV2;
         address factoryV4Impl;
@@ -72,7 +67,14 @@ contract DeploymentsUnifiedFactories is Script {
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4
+                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
+                masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
+                tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenImpl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
+                taxTokenSniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenV2Impl: DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV2SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesMainnet.UNIV4_POOL_MANAGER,
@@ -83,7 +85,14 @@ contract DeploymentsUnifiedFactories is Script {
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4
+                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
+                masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
+                tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenImpl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
+                taxTokenSniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenV2Impl: DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV2SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesSepolia.UNIV4_POOL_MANAGER,
@@ -98,13 +107,20 @@ contract DeploymentsUnifiedFactories is Script {
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
+        require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
+        require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
+        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
+        require(d.taxTokenSniperImpl != address(0), "manifest: TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
+        require(d.taxTokenV2SniperImpl != address(0), "manifest: TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL missing");
     }
 
     function run() public {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        console.log("=== Livo Unified Stack Deployment ===");
+        console.log("=== Livo Unified Factories Deployment ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("Launchpad:", d.launchpad);
@@ -115,37 +131,16 @@ contract DeploymentsUnifiedFactories is Script {
         console.log("| Contract Name                          | Address |");
         console.log("| -------------------------------------- | --- |");
 
-        fresh.masterFeeHandler = address(new LivoMasterFeeHandler());
-        console.log("| LivoMasterFeeHandler                  |", fresh.masterFeeHandler);
-
-        fresh.tokenImpl = address(new LivoToken());
-        console.log("| LivoToken (impl)                      |", fresh.tokenImpl);
-
-        fresh.tokenSniperImpl = address(new LivoTokenSniperProtected());
-        console.log("| LivoTokenSniperProtected (impl)       |", fresh.tokenSniperImpl);
-
-        fresh.taxTokenImpl = address(new LivoTaxableTokenUniV4());
-        console.log("| LivoTaxableTokenUniV4 (impl)          |", fresh.taxTokenImpl);
-
-        fresh.taxTokenSniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
-        console.log("| LivoTaxableTokenUniV4SniperProtected (impl) |", fresh.taxTokenSniperImpl);
-
-        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
-        console.log("| LivoTaxableTokenUniV2 (impl)          |", fresh.taxTokenV2Impl);
-
-        fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
-        console.log("| LivoTaxableTokenUniV2SniperProtected (impl) |", fresh.taxTokenV2SniperImpl);
-
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                fresh.tokenImpl,
-                fresh.tokenSniperImpl,
-                fresh.taxTokenV2Impl,
-                fresh.taxTokenV2SniperImpl,
+                d.tokenImpl,
+                d.tokenSniperImpl,
+                d.taxTokenV2Impl,
+                d.taxTokenV2SniperImpl,
                 d.bondingCurve,
                 d.graduatorV2,
-                fresh.masterFeeHandler
+                d.masterFeeHandler
             )
         );
         console.log("| LivoFactoryUniV2Unified (impl)        |", fresh.factoryV2Impl);
@@ -157,13 +152,13 @@ contract DeploymentsUnifiedFactories is Script {
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                fresh.tokenImpl,
-                fresh.tokenSniperImpl,
-                fresh.taxTokenImpl,
-                fresh.taxTokenSniperImpl,
+                d.tokenImpl,
+                d.tokenSniperImpl,
+                d.taxTokenImpl,
+                d.taxTokenSniperImpl,
                 d.bondingCurve,
                 d.graduatorV4,
-                fresh.masterFeeHandler
+                d.masterFeeHandler
             )
         );
         console.log("| LivoFactoryUniV4Unified (impl)        |", fresh.factoryV4Impl);
@@ -177,13 +172,11 @@ contract DeploymentsUnifiedFactories is Script {
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("Next steps:");
-        console.log("1. Update MASTER_FEE_HANDLER, TOKEN_IMPL, TOKEN_SNIPER_PROTECTED_IMPL,");
-        console.log("   TAXABLE_TOKEN_IMPL, TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL,");
-        console.log("   FACTORY_UNIV2_UNIFIED, and FACTORY_UNIV4_UNIFIED in");
-        console.log("   src/config/deployments.{mainnet,sepolia}.sol with the addresses above.");
+        console.log("1. Update FACTORY_UNIV2_UNIFIED and FACTORY_UNIV4_UNIFIED in");
+        console.log("   src/config/deployments.{mainnet,sepolia}.sol with the proxy addresses above.");
         console.log("2. Run `just export-deployments` to refresh the .md manifests and commit them.");
-        console.log("3. Whitelist both factories on the launchpad with the launchpad-owner account:");
-        console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV2Unified> --account livo.admin");
-        console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV4Unified> --account livo.admin");
+        console.log("3. Whitelist both factory PROXIES on the launchpad with the launchpad-owner account:");
+        console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV2 proxy> --account livo.admin");
+        console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV4 proxy> --account livo.admin");
     }
 }
