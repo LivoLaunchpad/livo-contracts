@@ -34,15 +34,14 @@ library DeploymentsMainnet {
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
-    address internal constant FACTORY_UNIV2_UNIFIED = 0x97BF1fC5Ee72Dd8c9686386ff00c99b6e3b9C00D;
-    address internal constant FACTORY_UNIV4_UNIFIED = 0xD8Ccee63514E8B0862f9E0fF82223b2DCa943936;
+    address internal constant FACTORY_UNIV2_UNIFIED = 0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9;
+    address internal constant FACTORY_UNIV4_UNIFIED = 0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565;
 
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
-    ///         no contract or frontend consumes these directly. Placeholder until the first proxy
-    ///         deploy on mainnet.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = address(0);
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = address(0);
+    ///         no contract or frontend consumes these directly.
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x5610C18cd46B0Bb324cf772B998F9068b4788647;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x75A42715c6B8912631971c0737E523a662Ec7064;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
