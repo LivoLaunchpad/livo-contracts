@@ -5,9 +5,7 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
-import {
-    Ownable2StepUpgradeable
-} from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
@@ -26,7 +24,7 @@ import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol"
 ///         (baked into bytecode) and calls `_disableInitializers()` to prevent direct init.
 ///         Proxies must call `initialize()` exactly once to claim ownership. Upgrade authorisation
 ///         lives in `_authorizeUpgrade`.
-abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
+abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     uint256 internal constant BASIS_POINTS = 10_000;
@@ -103,7 +101,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, Ownable2St
     ///         init-data) so no one else can front-run ownership.
     function initialize() external initializer {
         __Ownable_init(msg.sender);
-        __Ownable2Step_init();
         __UUPSUpgradeable_init();
     }
 
