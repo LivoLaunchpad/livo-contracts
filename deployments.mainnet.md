@@ -19,8 +19,10 @@
 | LivoTaxableTokenUniV4SniperProtected (impl)  | `0x9b8541B251a3ABCE6BbC5419baa478Bbc6B11E00` |
 | LivoTaxableTokenUniV2 (impl)                 | `0x56c80E0db3ACD50F1C3a51af2a64C63AfbDf50dF` |
 | LivoTaxableTokenUniV2SniperProtected (impl)  | `0x8CF57ab48D49C9D5d7736459cc291aD0C960BEC2` |
-| LivoFactoryUniV2Unified                      | `0x97BF1fC5Ee72Dd8c9686386ff00c99b6e3b9C00D` |
-| LivoFactoryUniV4Unified                      | `0xD8Ccee63514E8B0862f9E0fF82223b2DCa943936` |
+| LivoFactoryUniV2Unified (proxy)              | `0x97BF1fC5Ee72Dd8c9686386ff00c99b6e3b9C00D` |
+| LivoFactoryUniV2Unified (impl)               | _(not deployed)_                             |
+| LivoFactoryUniV4Unified (proxy)              | `0xD8Ccee63514E8B0862f9E0fF82223b2DCa943936` |
+| LivoFactoryUniV4Unified (impl)               | _(not deployed)_                             |
 
 ## Accounts
 

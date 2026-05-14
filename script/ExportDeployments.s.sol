@@ -56,8 +56,10 @@ contract ExportDeployments is Script {
                 "LivoTaxableTokenUniV2SniperProtected (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
             )
         );
-        s = string.concat(s, _row("LivoFactoryUniV2Unified", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED));
-        s = string.concat(s, _row("LivoFactoryUniV4Unified", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED));
+        s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED));
+        s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED_IMPL));
+        s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED));
+        s = string.concat(s, _row("LivoFactoryUniV4Unified (impl)", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED_IMPL));
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("Livo Deployer", DeploymentsMainnet.LIVO_DEV));
@@ -101,8 +103,10 @@ contract ExportDeployments is Script {
                 "LivoTaxableTokenUniV2SniperProtected (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
             )
         );
-        s = string.concat(s, _row("LivoFactoryUniV2Unified", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED));
-        s = string.concat(s, _row("LivoFactoryUniV4Unified", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED));
+        s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED));
+        s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED_IMPL));
+        s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED));
+        s = string.concat(s, _row("LivoFactoryUniV4Unified (impl)", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED_IMPL));
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("Livo Dev", DeploymentsSepolia.LIVO_DEV));
