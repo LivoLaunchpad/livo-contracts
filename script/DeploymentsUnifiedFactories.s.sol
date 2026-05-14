@@ -4,8 +4,10 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
+import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -23,14 +25,17 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 /// @notice Deploys, in order:
 ///         1. `LivoMasterFeeHandler`
 ///         2. the deployable token implementations in `src/tokens/`
-///         3. `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified`
+///         3. For each factory: implementation + `ERC1967Proxy` (UUPS). The proxy is the address
+///            the launchpad whitelists and that integrators track — it stays stable across future
+///            implementation upgrades that don't break the ABI.
 ///
 ///         The factories are wired to the freshly-deployed master fee handler and token
 ///         implementations while reusing the launchpad, bonding curve, and graduators from
 ///         `src/config/deployments.{mainnet,sepolia}.sol`.
 ///
 ///         Whitelisting on the launchpad is intentionally NOT done here — the launchpad
-///         owner (`livo.admin`) must whitelist after broadcast finishes (see "Next steps").
+///         owner (`livo.admin`) must whitelist the proxy address after broadcast finishes
+///         (see "Next steps").
 ///
 /// @dev    Run with:
 ///         forge script DeploymentsUnifiedFactories --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
@@ -52,7 +57,9 @@ contract DeploymentsUnifiedFactories is Script {
         address taxTokenSniperImpl;
         address taxTokenV2Impl;
         address taxTokenV2SniperImpl;
+        address factoryV2Impl;
         address factoryV2;
+        address factoryV4Impl;
         address factoryV4;
     }
 
@@ -129,7 +136,7 @@ contract DeploymentsUnifiedFactories is Script {
         fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
         console.log("| LivoTaxableTokenUniV2SniperProtected (impl) |", fresh.taxTokenV2SniperImpl);
 
-        fresh.factoryV2 = address(
+        fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
                 fresh.tokenImpl,
@@ -141,9 +148,13 @@ contract DeploymentsUnifiedFactories is Script {
                 fresh.masterFeeHandler
             )
         );
-        console.log("| LivoFactoryUniV2Unified               |", fresh.factoryV2);
+        console.log("| LivoFactoryUniV2Unified (impl)        |", fresh.factoryV2Impl);
 
-        fresh.factoryV4 = address(
+        fresh.factoryV2 =
+            address(new ERC1967Proxy(fresh.factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
+        console.log("| LivoFactoryUniV2Unified (proxy)       |", fresh.factoryV2);
+
+        fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
                 fresh.tokenImpl,
@@ -155,7 +166,11 @@ contract DeploymentsUnifiedFactories is Script {
                 fresh.masterFeeHandler
             )
         );
-        console.log("| LivoFactoryUniV4Unified               |", fresh.factoryV4);
+        console.log("| LivoFactoryUniV4Unified (impl)        |", fresh.factoryV4Impl);
+
+        fresh.factoryV4 =
+            address(new ERC1967Proxy(fresh.factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
+        console.log("| LivoFactoryUniV4Unified (proxy)       |", fresh.factoryV4);
 
         vm.stopBroadcast();
 

@@ -7,8 +7,10 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
@@ -234,26 +236,36 @@ contract LaunchpadBaseTests is Test {
         livoTaxTokenV2 = new LivoTaxableTokenUniV2();
         livoTaxTokenV2Sniper = new LivoTaxableTokenUniV2SniperProtected();
 
-        factoryV2Unified = new LivoFactoryUniV2Unified(
-            address(launchpad),
-            address(livoToken),
-            address(livoTokenSniper),
-            address(livoTaxTokenV2),
-            address(livoTaxTokenV2Sniper),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler)
+        address factoryV2Impl = address(
+            new LivoFactoryUniV2Unified(
+                address(launchpad),
+                address(livoToken),
+                address(livoTokenSniper),
+                address(livoTaxTokenV2),
+                address(livoTaxTokenV2Sniper),
+                address(bondingCurve),
+                address(graduatorV2),
+                address(feeHandler)
+            )
+        );
+        factoryV2Unified = LivoFactoryUniV2Unified(
+            address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
         );
 
-        factoryV4Unified = new LivoFactoryUniV4Unified(
-            address(launchpad),
-            address(livoToken),
-            address(livoTokenSniper),
-            address(livoTaxToken),
-            address(livoTaxTokenSniper),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler)
+        address factoryV4Impl = address(
+            new LivoFactoryUniV4Unified(
+                address(launchpad),
+                address(livoToken),
+                address(livoTokenSniper),
+                address(livoTaxToken),
+                address(livoTaxTokenSniper),
+                address(bondingCurve),
+                address(graduatorV4),
+                address(feeHandler)
+            )
+        );
+        factoryV4Unified = LivoFactoryUniV4Unified(
+            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
         );
 
         // Legacy aliases — same instance, different reference name. Kept so existing tests that

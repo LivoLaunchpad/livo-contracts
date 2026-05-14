@@ -4,7 +4,11 @@ pragma solidity 0.8.28;
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import {
+    Ownable2StepUpgradeable
+} from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
@@ -18,7 +22,11 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 
 /// @notice Abstract base for Livo token factories. Holds shared state and helper logic.
-abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
+/// @dev    UUPS-upgradeable. The implementation contract sets its immutables in the constructor
+///         (baked into bytecode) and calls `_disableInitializers()` to prevent direct init.
+///         Proxies must call `initialize()` exactly once to claim ownership. Upgrade authorisation
+///         lives in `_authorizeUpgrade`.
+abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     uint256 internal constant BASIS_POINTS = 10_000;
@@ -58,10 +66,17 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
     ///         per-sell router gas); V4 uses 4%.
     function MAX_TAX_BPS() public pure virtual returns (uint256);
 
-    /// @notice Max percentage of total supply that can be purchased on token creation (applies to the aggregate, not per recipient), in basis points
-    uint256 public maxBuyOnDeployBps = 1_000; // 10%
+    /// @notice Max percentage of total supply that can be purchased on token creation (applies to the
+    ///         aggregate, not per recipient), in basis points. Fixed at 10%. To change this value,
+    ///         deploy a new implementation with a different constant and `upgradeTo` the proxy.
+    uint256 public constant maxBuyOnDeployBps = 1_000; // 10%
 
-    /// @notice Initializes the factory with its immutable dependencies
+    /// @notice Sets up the factory's immutables on the implementation. The implementation itself is
+    ///         not meant to be used directly — `_disableInitializers()` locks its proxy storage so
+    ///         only proxies pointing to this implementation can be initialized.
+    /// @dev    Immutables are read from the implementation's bytecode through delegatecall, so they
+    ///         work transparently behind the UUPS proxy. To change any of them, deploy a new impl
+    ///         with different constructor args and call `upgradeTo` on the proxy.
     constructor(
         address launchpad,
         address tokenImplBase,
@@ -71,7 +86,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         address bondingCurve,
         address graduator,
         address masterFeeHandler
-    ) Ownable(msg.sender) {
+    ) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
@@ -80,18 +95,22 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
         TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
         TOKEN_IMPL_TAX = tokenImplTax;
         TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
+        _disableInitializers();
     }
+
+    /// @notice One-shot initializer for the proxy. Sets `msg.sender` as the initial owner.
+    /// @dev    Must be called atomically with proxy deployment (via `ERC1967Proxy`'s constructor
+    ///         init-data) so no one else can front-run ownership.
+    function initialize() external initializer {
+        __Ownable_init(msg.sender);
+        __Ownable2Step_init();
+        __UUPSUpgradeable_init();
+    }
+
+    /// @dev UUPS upgrade gate: only the owner can swap the implementation.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
-
-    /// @notice Updates the max aggregate buy-on-deploy percentage
-    /// @param newMaxBuyOnDeployBps New max in basis points (e.g. 1000 = 10%)
-    /// @dev setting 0 here will make deployments revert, as msg.value > 0 is required to trigger the buy-on-deploy logic
-    function setMaxBuyOnDeployBps(uint256 newMaxBuyOnDeployBps) external onlyOwner {
-        require(newMaxBuyOnDeployBps < BASIS_POINTS, InvalidMaxBuyOnDeployBps());
-        maxBuyOnDeployBps = newMaxBuyOnDeployBps;
-        emit MaxBuyOnDeployBpsUpdated(newMaxBuyOnDeployBps);
-    }
 
     /// @notice Quotes the ETH needed (msg.value) to receive exactly `tokenAmount` tokens on a new token
     /// @param tokenAmount Amount of tokens to receive
@@ -390,4 +409,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Ownable2Step {
             LivoToken(token).initialize(params);
         }
     }
+
+    /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the
+    ///      proxy's slot layout stable across upgrades. Never reorder existing storage.
+    uint256[50] private __gap;
 }

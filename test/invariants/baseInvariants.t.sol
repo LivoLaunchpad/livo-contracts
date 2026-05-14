@@ -7,8 +7,10 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
@@ -89,26 +91,36 @@ contract LaunchpadInvariants is Test {
         // The unified factories take both base and sniper-protected token impls. The invariant
         // helper only ever uses the base path (no anti-sniper, no tax), so we pass `tokenImplementation`
         // for both slots — sniper impls are never cloned in this suite.
-        factoryV2 = new LivoFactoryUniV2Unified(
-            address(launchpad),
-            address(tokenImplementation),
-            address(tokenImplementation),
-            address(tokenImplementation),
-            address(tokenImplementation),
-            address(bondingCurve),
-            address(graduatorV2),
-            address(feeHandler)
+        address factoryV2Impl = address(
+            new LivoFactoryUniV2Unified(
+                address(launchpad),
+                address(tokenImplementation),
+                address(tokenImplementation),
+                address(tokenImplementation),
+                address(tokenImplementation),
+                address(bondingCurve),
+                address(graduatorV2),
+                address(feeHandler)
+            )
+        );
+        factoryV2 = LivoFactoryUniV2Unified(
+            address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
         );
 
-        factoryV4 = new LivoFactoryUniV4Unified(
-            address(launchpad),
-            address(tokenImplementation),
-            address(tokenImplementation),
-            address(tokenImplementation),
-            address(tokenImplementation),
-            address(bondingCurve),
-            address(graduatorV4),
-            address(feeHandler)
+        address factoryV4Impl = address(
+            new LivoFactoryUniV4Unified(
+                address(launchpad),
+                address(tokenImplementation),
+                address(tokenImplementation),
+                address(tokenImplementation),
+                address(tokenImplementation),
+                address(bondingCurve),
+                address(graduatorV4),
+                address(feeHandler)
+            )
+        );
+        factoryV4 = LivoFactoryUniV4Unified(
+            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
         );
 
         launchpad.whitelistFactory(address(factoryV2));

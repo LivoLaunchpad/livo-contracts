@@ -5,7 +5,9 @@ import {Script, console} from "forge-std/Script.sol";
 
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
+import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
@@ -102,7 +104,7 @@ contract RedeployV2TaxTokensAndFactory is Script {
         address newTaxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
         console.log("| LivoTaxableTokenUniV2SniperProtected (NEW)   |", newTaxTokenV2SniperImpl);
 
-        address newFactoryV2 = address(
+        address newFactoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 i.launchpad,
                 i.tokenImpl,
@@ -114,7 +116,11 @@ contract RedeployV2TaxTokensAndFactory is Script {
                 i.masterFeeHandler
             )
         );
-        console.log("| LivoFactoryUniV2Unified (NEW)                |", newFactoryV2);
+        console.log("| LivoFactoryUniV2Unified (impl)               |", newFactoryV2Impl);
+
+        address newFactoryV2 =
+            address(new ERC1967Proxy(newFactoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
+        console.log("| LivoFactoryUniV2Unified (proxy)              |", newFactoryV2);
 
         vm.stopBroadcast();
 

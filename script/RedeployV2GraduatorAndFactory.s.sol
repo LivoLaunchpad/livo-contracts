@@ -4,7 +4,9 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
@@ -108,7 +110,7 @@ contract RedeployV2GraduatorAndFactory is Script {
         address newGraduatorV2 = address(new LivoGraduatorUniswapV2(i.uniV2Router, i.launchpad, i.pairInitCodeHash));
         console.log("| LivoGraduatorUniswapV2 (NEW)     |", newGraduatorV2);
 
-        address newFactoryV2 = address(
+        address newFactoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 i.launchpad,
                 i.tokenImpl,
@@ -120,7 +122,11 @@ contract RedeployV2GraduatorAndFactory is Script {
                 i.masterFeeHandler
             )
         );
-        console.log("| LivoFactoryUniV2Unified (NEW)    |", newFactoryV2);
+        console.log("| LivoFactoryUniV2Unified (impl)   |", newFactoryV2Impl);
+
+        address newFactoryV2 =
+            address(new ERC1967Proxy(newFactoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
+        console.log("| LivoFactoryUniV2Unified (proxy)  |", newFactoryV2);
 
         vm.stopBroadcast();
 

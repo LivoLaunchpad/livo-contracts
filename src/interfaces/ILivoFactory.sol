@@ -41,8 +41,6 @@ interface ILivoFactory {
         uint256[] amounts
     );
 
-    event MaxBuyOnDeployBpsUpdated(uint256 newMaxBuyOnDeployBps);
-
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();
@@ -52,7 +50,6 @@ interface ILivoFactory {
     error InvalidShares();
     error InvalidTokenAddress();
     error InvalidBuyOnDeploy();
-    error InvalidMaxBuyOnDeployBps();
     error MultipleDirectFeeReceivers();
     error InvalidAntiSniperConfig();
     error InvalidTaxConfig();
