@@ -17,10 +17,10 @@
 | LivoTaxableTokenUniV4 (impl)                 | `0xF232d7D7B552B3B981FE91B13F715B3c1F075A13` |
 | LivoTokenSniperProtected (impl)              | `0xb9f3c1dB897F24385eEE4feD03C5cd732E9dd087` |
 | LivoTaxableTokenUniV4SniperProtected (impl)  | `0x9b8541B251a3ABCE6BbC5419baa478Bbc6B11E00` |
-| LivoTaxableTokenUniV2 (impl)                 | `0x56c80E0db3ACD50F1C3a51af2a64C63AfbDf50dF` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0x8CF57ab48D49C9D5d7736459cc291aD0C960BEC2` |
+| LivoTaxableTokenUniV2 (impl)                 | `0xfb536Abb27f52DBb62DD91f789C6B9a12C48441b` |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | `0x854459b98Ef631A5D154761da705862c11AA10fc` |
 | LivoFactoryUniV2Unified (proxy)              | `0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9` |
-| LivoFactoryUniV2Unified (impl)               | `0x5610C18cd46B0Bb324cf772B998F9068b4788647` |
+| LivoFactoryUniV2Unified (impl)               | `0x356DF589B73f7a097F9029be3d387f3548478927` |
 | LivoFactoryUniV4Unified (proxy)              | `0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565` |
 | LivoFactoryUniV4Unified (impl)               | `0x75A42715c6B8912631971c0737E523a662Ec7064` |
 
