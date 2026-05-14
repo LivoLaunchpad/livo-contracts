@@ -13,7 +13,9 @@ import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.s
 ///         bonding-curve buys (pre-graduation).
 /// @dev `_update` runs the sniper-cap check first, then delegates to
 ///      `LivoTaxableTokenUniV2._update` (tax + auto-swap). The two checks don't overlap in time:
-///      sniper-protection is pre-graduation only, taxes are post-graduation only.
+///      sniper-protection is pre-graduation only, taxes are post-graduation only. So the tax
+///      tokens that accumulate on `address(this)` post-graduation are never subject to the
+///      `maxWalletBps` cap — no explicit exemption for the token contract's own balance needed.
 contract LivoTaxableTokenUniV2SniperProtected is
     LivoTaxableTokenUniV2,
     SniperProtection,
