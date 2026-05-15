@@ -12,7 +12,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator {
     // ============ Happy Path ============
@@ -242,44 +241,6 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         );
     }
 
-    // ============ Admin: setMaxBuyOnDeployBps ============
-
-    /// @dev owner can update maxBuyOnDeployBps
-    function test_setMaxBuyOnDeployBps() public {
-        vm.prank(admin);
-        factoryV2.setMaxBuyOnDeployBps(500); // 5%
-        assertEq(factoryV2.maxBuyOnDeployBps(), 500);
-    }
-
-    /// @dev non-owner cannot update maxBuyOnDeployBps
-    function test_setMaxBuyOnDeployBps_revertsForNonOwner() public {
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, creator));
-        factoryV2.setMaxBuyOnDeployBps(500);
-    }
-
-    /// @dev setting maxBuyOnDeployBps to 0 disables buy-on-deploy
-    function test_createToken_revertsWhenMaxBuyIsZero() public {
-        vm.prank(admin);
-        factoryV2.setMaxBuyOnDeployBps(0);
-
-        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidBuyOnDeploy.selector));
-        factoryV2.createToken{value: 0.01 ether}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
-        );
-    }
-
-    /// @dev MaxBuyOnDeployBpsUpdated event is emitted
-    function test_setMaxBuyOnDeployBps_emitsEvent() public {
-        vm.prank(admin);
-        vm.expectEmit(true, true, true, true);
-        emit ILivoFactory.MaxBuyOnDeployBpsUpdated(500);
-        factoryV2.setMaxBuyOnDeployBps(500);
-    }
-
     // ============ quoteBuyOnDeploy ============
 
     /// @dev quoteBuyOnDeploy returns correct ETH that yields exactly tokenAmount
@@ -376,22 +337,6 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
             _taxCfg(0, 400, uint32(14 days)),
             _emptyAntiSniperCfg()
         );
-    }
-
-    // ============ Admin: setMaxBuyOnDeployBps ============
-
-    /// @dev owner can update maxBuyOnDeployBps
-    function test_setMaxBuyOnDeployBps() public {
-        vm.prank(admin);
-        factoryTax.setMaxBuyOnDeployBps(500);
-        assertEq(factoryTax.maxBuyOnDeployBps(), 500);
-    }
-
-    /// @dev non-owner cannot update maxBuyOnDeployBps
-    function test_setMaxBuyOnDeployBps_revertsForNonOwner() public {
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, creator));
-        factoryTax.setMaxBuyOnDeployBps(500);
     }
 
     // ============ quoteBuyOnDeploy ============

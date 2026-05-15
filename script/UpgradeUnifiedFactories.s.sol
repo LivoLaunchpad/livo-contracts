@@ -3,10 +3,9 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
@@ -14,29 +13,33 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Deploy the unified factory implementations and their UUPS proxies
-/// @notice Deploys ONLY the four contracts that are net-new for this run:
-///         1. `LivoFactoryUniV2Unified` (implementation) + its `ERC1967Proxy`
-///         2. `LivoFactoryUniV4Unified` (implementation) + its `ERC1967Proxy`
+/// @title Upgrade the implementations behind the unified factory UUPS proxies
+/// @notice For each of `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified`:
+///         1. deploys a fresh implementation contract wired to the addresses in the per-chain
+///            manifest (`src/config/deployments.{mainnet,sepolia}.sol`)
+///         2. calls `upgradeToAndCall(newImpl, "")` on the existing factory proxy
 ///
-///         Every other dependency — launchpad, bonding curve, graduators, master fee handler,
-///         and every token implementation — is sourced from the per-chain manifest in
-///         `src/config/deployments.{mainnet,sepolia}.sol`. To redeploy any of those, use the
-///         dedicated script for that component, not this one.
+///         The proxy addresses (and therefore the launchpad's `whitelistedFactories` mapping) do
+///         NOT change. No init data is passed — there are no new storage variables to populate.
 ///
-///         The proxy is the address the launchpad whitelists and that integrators track —
-///         it stays stable across future implementation upgrades that don't break the ABI.
+///         The broadcaster MUST be the proxy owner (the EOA that ran the original deploy script,
+///         since `initialize()` set the owner to `msg.sender` of the proxy-deployment tx). If the
+///         broadcaster isn't the owner, `_authorizeUpgrade` reverts with
+///         `OwnableUnauthorizedAccount(broadcaster)` — no state changes.
 ///
-///         Whitelisting on the launchpad is intentionally NOT done here — the launchpad
-///         owner (`livo.admin`) must whitelist the proxy address after broadcast finishes
-///         (see "Next steps").
+///         Storage layout safety: the new implementations must keep `LivoFactoryAbstract`'s storage
+///         layout. Today that's "empty + 50-slot gap", so any change that adds storage must shrink
+///         the gap and never reorder. Review the diff before broadcasting.
 ///
 /// @dev    Run with:
-///         forge script DeploymentsUnifiedFactories --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
-contract DeploymentsUnifiedFactories is Script {
-    /// @dev Pre-deployed core addresses sourced from the per-chain manifest. None of these are
-    ///      redeployed by this script.
+///         forge script UpgradeUnifiedFactories --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
+contract UpgradeUnifiedFactories is Script {
+    /// @dev Pre-deployed addresses sourced from the per-chain manifest. `factoryV2Proxy` and
+    ///      `factoryV4Proxy` are the existing UUPS proxies whose impl we're swapping. Everything
+    ///      else is wired into the new implementations as immutables.
     struct Deps {
+        address factoryV2Proxy;
+        address factoryV4Proxy;
         address launchpad;
         address bondingCurve;
         address graduatorV2;
@@ -53,17 +56,14 @@ contract DeploymentsUnifiedFactories is Script {
     /// @dev Freshly-deployed addresses emitted by this script.
     struct FreshDeployments {
         address factoryV2Impl;
-        address factoryV2;
         address factoryV4Impl;
-        address factoryV4;
     }
 
-    /// @notice Resolves core dependency addresses for the active chain.
-    /// @dev Asserts that `LivoTaxableTokenUniV4`'s hardcoded chain import matches the active chain
-    ///      (run `just taxtokenaddresses` before deploying to sepolia).
     function _getDeps() internal view returns (Deps memory d) {
         if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
             d = Deps({
+                factoryV2Proxy: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
@@ -82,6 +82,8 @@ contract DeploymentsUnifiedFactories is Script {
             );
         } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
             d = Deps({
+                factoryV2Proxy: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
@@ -103,6 +105,8 @@ contract DeploymentsUnifiedFactories is Script {
         }
 
         // Belt-and-braces: catch a stale or zero address in the manifest before we waste a deploy.
+        require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
+        require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
@@ -120,10 +124,21 @@ contract DeploymentsUnifiedFactories is Script {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        console.log("=== Livo Unified Factories Deployment ===");
-        console.log("Chain ID:", block.chainid);
-        console.log("Deployer:", msg.sender);
-        console.log("Launchpad:", d.launchpad);
+        // Sanity: confirm proxies are responsive and initialized. `owner()` reverts on uninitialized
+        // proxies (returns 0 from storage), so an explicit nonzero check catches a wrong manifest
+        // address pointing at a non-Livo contract.
+        address ownerV2 = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
+        address ownerV4 = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
+        require(ownerV2 != address(0), "V2 proxy not initialized");
+        require(ownerV4 != address(0), "V4 proxy not initialized");
+        require(ownerV2 == ownerV4, "V2/V4 proxies have diverged owners - verify the manifest");
+
+        console.log("=== Livo Unified Factories Upgrade ===");
+        console.log("Chain ID:                ", block.chainid);
+        console.log("Broadcaster:             ", msg.sender);
+        console.log("Required owner (V2/V4):  ", ownerV2);
+        console.log("V2 proxy:                ", d.factoryV2Proxy);
+        console.log("V4 proxy:                ", d.factoryV4Proxy);
         console.log("");
 
         vm.startBroadcast();
@@ -143,11 +158,10 @@ contract DeploymentsUnifiedFactories is Script {
                 d.masterFeeHandler
             )
         );
-        console.log("| LivoFactoryUniV2Unified (impl)        |", fresh.factoryV2Impl);
+        console.log("| LivoFactoryUniV2Unified (new impl)    |", fresh.factoryV2Impl);
 
-        fresh.factoryV2 =
-            address(new ERC1967Proxy(fresh.factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
-        console.log("| LivoFactoryUniV2Unified (proxy)       |", fresh.factoryV2);
+        UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(fresh.factoryV2Impl, "");
+        console.log("| V2 proxy upgraded to                  |", fresh.factoryV2Impl);
 
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
@@ -161,22 +175,18 @@ contract DeploymentsUnifiedFactories is Script {
                 d.masterFeeHandler
             )
         );
-        console.log("| LivoFactoryUniV4Unified (impl)        |", fresh.factoryV4Impl);
+        console.log("| LivoFactoryUniV4Unified (new impl)    |", fresh.factoryV4Impl);
 
-        fresh.factoryV4 =
-            address(new ERC1967Proxy(fresh.factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
-        console.log("| LivoFactoryUniV4Unified (proxy)       |", fresh.factoryV4);
+        UUPSUpgradeable(d.factoryV4Proxy).upgradeToAndCall(fresh.factoryV4Impl, "");
+        console.log("| V4 proxy upgraded to                  |", fresh.factoryV4Impl);
 
         vm.stopBroadcast();
 
         console.log("");
-        console.log("=== Deployment Complete ===");
-        console.log("Next steps:");
-        console.log("1. Update FACTORY_UNIV2_UNIFIED and FACTORY_UNIV4_UNIFIED in");
-        console.log("   src/config/deployments.{mainnet,sepolia}.sol with the proxy addresses above.");
-        console.log("2. Run `just export-deployments` to refresh the .md manifests and commit them.");
-        console.log("3. Whitelist both factory PROXIES on the launchpad with the launchpad-owner account:");
-        console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV2 proxy> --account livo.admin");
-        console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV4 proxy> --account livo.admin");
+        console.log("=== Upgrade Complete ===");
+        console.log("Proxy addresses are UNCHANGED - no launchpad whitelisting or integrator action needed.");
+        console.log("New implementation addresses (for Etherscan verification + record keeping):");
+        console.log("  V2 impl:", fresh.factoryV2Impl);
+        console.log("  V4 impl:", fresh.factoryV4Impl);
     }
 }

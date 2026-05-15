@@ -43,12 +43,25 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         sells while keeping per-swap price-impact bounded for the common case.
     uint256 public constant SWAP_THRESHOLD = TOTAL_SUPPLY / 2000;
 
+    /// @notice Minimum seconds between two successful `_swapBack` calls. Set to one Ethereum
+    ///         mainnet slot so the contract performs at most ~1 swapback per block: every
+    ///         transaction in a single block shares an identical `block.timestamp`, so the
+    ///         check `block.timestamp >= lastSwapbackTimestamp + 12` is necessarily false for
+    ///         any second swap in the same block (`T >= T + 12` cannot hold).
+    uint256 public constant SWAPBACK_COOLDOWN = 12;
+
     /////////////////////////// pure storage ///////////////////////
 
     /// @dev Re-entrancy guard for the swap-back path. When true, `_update` short-circuits the
     ///      tax + auto-trigger logic so the router's `transferFrom(this, pair, ...)` is a plain
     ///      ERC20 transfer. Lives in transient storage — auto-clears at end of tx, no SSTORE cost.
     bool internal transient _inSwap;
+
+    /// @notice Block timestamp of the most recent successful `_swapBack`. Zero until the first
+    ///         swapback runs. Used by both the `_update` auto-trigger and the manual `swapBack`
+    ///         entry point to enforce `SWAPBACK_COOLDOWN`. Stored as uint40 so it packs into the
+    ///         parent `LivoTaxableToken` slot alongside `graduationTimestamp`.
+    uint40 public lastSwapbackTimestamp;
 
     //////////////////////// Events //////////////////////
 
@@ -58,6 +71,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         actually accrued to the creator (and any direct receivers) for the swap window
     ///         covered by this back-swap.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
+
+    //////////////////////// Errors //////////////////////
+
+    /// @notice Thrown by manual `swapBack` when the previous swapback finished less than
+    ///         `SWAPBACK_COOLDOWN` seconds ago. The auto-trigger in `_update` does NOT revert
+    ///         on cooldown — it silently skips the swap so sells inside the cooldown window
+    ///         keep working.
+    error SwapbackCooldownNotMet();
 
     //////////////////////////////////////////////////////
 
@@ -122,6 +143,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         when `balance >= SWAP_THRESHOLD`, OR — after the tax window expires — when any
     ///         non-zero balance remains, so a sub-threshold residual gets drained on the next sell
     ///         instead of stranding forever (no new tax accrues post-window to push it across).
+    ///         Both branches are additionally gated on `SWAPBACK_COOLDOWN` (12s) so the contract
+    ///         performs at most one swapback per Ethereum mainnet block — same-block sells share
+    ///         `block.timestamp` and silently skip the auto-trigger after the first swap.
     ///         Any excess stays on the contract and is drained on the next qualifying sell.
     ///      4. If we're in the post-graduation tax window AND the transfer touches the pair AND
     ///         the source is not the graduator (which moves the initial liquidity), divert
@@ -156,17 +180,20 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // produces a `_update(graduator, pair, ...)` while the pair still has zero reserves, so
         // firing `_swapBack` against it would revert the entire graduation tx. Anyone could grief
         // graduation by pre-funding `address(this)` with `>= SWAP_THRESHOLD` tokens before it.
-        if (isSell && from != graduator) {
+        // Cooldown check pre-gates both auto-trigger branches. Putting it before the `balanceOf`
+        // SLOAD means sells inside the cooldown window pay nothing extra. The slot holding
+        // `lastSwapbackTimestamp` is also packed with `graduationTimestamp`, so the SLOAD here
+        // pre-warms the slot read by the tax-window branch below.
+        if (isSell && from != graduator && block.timestamp >= uint256(lastSwapbackTimestamp) + SWAPBACK_COOLDOWN) {
             uint256 contractBalance = balanceOf(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
                 _swapBack(swapAmount, 0);
             } else if (contractBalance > 0 && block.timestamp > uint256(graduationTimestamp) + taxDurationSeconds) {
                 // Post-window drain: window's closed, no fresh tax will ever flow in, so a residual
-                // stuck below SWAP_THRESHOLD would otherwise sit forever. The cheap balance check
-                // short-circuits before this branch's SLOAD, so the common zero-balance sell pays
-                // nothing extra. No 2*SWAP_THRESHOLD cap needed: this branch only fires when
-                // contractBalance < SWAP_THRESHOLD, so the swap is already small.
+                // stuck below SWAP_THRESHOLD would otherwise sit forever. No 2*SWAP_THRESHOLD cap
+                // needed: this branch only fires when contractBalance < SWAP_THRESHOLD, so the swap
+                // is already small.
                 _swapBack(contractBalance, 0);
             }
         }
@@ -201,8 +228,13 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @dev `address(this).balance` is forwarded in full (not just the swap output): any ETH that
     ///      may have arrived through `receive()` between swap-backs is treated as un-routed fees
     ///      and routed through the same path. Avoids ETH ever sitting idle in the contract.
+    /// @dev Enforces `SWAPBACK_COOLDOWN` (12s) between consecutive swapbacks. Reverts with
+    ///      `SwapbackCooldownNotMet` if called too soon — `_update` pre-checks the same condition
+    ///      and skips the auto-trigger, so in practice only the manual `swapBack` entry point ever
+    ///      surfaces this revert.
     function _swapBack(uint256 tokenAmount, uint256 amountOutMinWei) internal {
         if (tokenAmount == 0) return;
+        require(block.timestamp >= uint256(lastSwapbackTimestamp) + SWAPBACK_COOLDOWN, SwapbackCooldownNotMet());
 
         _inSwap = true;
 
@@ -215,6 +247,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         );
 
         _inSwap = false;
+        lastSwapbackTimestamp = uint40(block.timestamp);
 
         uint256 ethBalance = address(this).balance;
         emit CreatorTaxSwapback(tokenAmount, ethBalance);
