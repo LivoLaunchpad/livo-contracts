@@ -40,8 +40,8 @@ library DeploymentsMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x356DF589B73f7a097F9029be3d387f3548478927;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x75A42715c6B8912631971c0737E523a662Ec7064;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xb22b28faf008C07b070311E8B9018a77c62475e1;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x99Fe2360f8121b3CE92a67612AE13Af18B738533;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
