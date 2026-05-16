@@ -245,46 +245,51 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         );
     }
 
-    // ───────────── Charity-mode gating for extended duration ─────────────
+    // ───────────── Extended durations — no restrictions beyond the 120-year cap ─────────────
     //
-    // A tax duration above MAX_TAX_DURATION_SECONDS (365 days) requires:
-    //   (1) exactly one fee receiver, distinct from the deployer; and
-    //   (2) ownership renounced at creation (renounceOwnership_ == true → tokenOwner == address(0)).
-    // The charity address is NOT verified on-chain — anyone can pass a fake one. The on-chain
-    // rules just block the most trivial abuse (deployer keeping ownership and routing fees to
-    // themselves while running a multi-year tax window).
+    // Any deployer can pick any tax duration up to MAX_TAX_DURATION_SECONDS (120 years, an
+    // overflow-prevention bound). Fee-receiver identity and ownership are unrestricted at any
+    // duration.
 
-    function test_createToken_revertsOnExtendedTaxWhenFeeReceiverIsDeployer() public {
+    function test_createToken_succeedsOnExtendedTaxWhenFeeReceiverIsDeployer() public {
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
-        factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, _fs(creator), _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
     }
 
-    function test_createToken_revertsOnExtendedTaxWithMultipleReceivers() public {
+    function test_createToken_succeedsOnExtendedTaxWithMultipleReceivers() public {
         ILivoFactory.FeeShare[] memory two = new ILivoFactory.FeeShare[](2);
         two[0] = ILivoFactory.FeeShare({account: alice, shares: 5_000, directFeesEnabled: false});
         two[1] = ILivoFactory.FeeShare({account: bob, shares: 5_000, directFeesEnabled: false});
 
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
-        factoryV4Unified.createToken(
-            "T", "T", "0x12", two, _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, two, _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
     }
 
-    function test_createToken_revertsOnExtendedTaxWhenOwnershipNotRenounced() public {
-        // Single fee receiver != deployer (charity-mode candidate), but `renounceOwnership_ = false`
-        // keeps the deployer as owner — must revert.
+    function test_createToken_succeedsOnExtendedTaxWhenOwnershipNotRenounced() public {
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.CharityModeOwnerNotRenounced.selector);
-        factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(alice), _noSs(), false, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+        address token = factoryV4Unified.createToken(
+            "T", "T", salt, _fs(alice), _noSs(), false, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
         );
+
+        assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
+        assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), creator);
     }
 
-    function test_createToken_allowsExtendedTaxInCharityMode() public {
+    function test_createToken_allowsExtendedTaxRenounced() public {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
 
         vm.prank(creator);
@@ -296,7 +301,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(LivoTaxableTokenUniV4(payable(token)).owner(), address(0));
     }
 
-    function test_createToken_allowsMaxCharityDurationInCharityMode() public {
+    function test_createToken_allowsMaxDuration() public {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
 
         vm.prank(creator);
@@ -307,15 +312,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(uint256(LivoTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 120 * 365 days);
     }
 
-    function test_preview_revertsOnExtendedTaxWhenFeeReceiverIsDeployer() public {
-        vm.prank(creator);
-        vm.expectRevert(ILivoFactory.CharityModeFeeReceiverInvalid.selector);
-        factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
-        );
-    }
-
-    function test_preview_returnsTaxImplForCharityModeExtendedTax() public {
+    function test_preview_returnsTaxImplForExtendedTax() public {
         vm.prank(creator);
         address impl = factoryV4Unified.previewTokenImplementation(
             _fs(alice), _noSs(), _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
