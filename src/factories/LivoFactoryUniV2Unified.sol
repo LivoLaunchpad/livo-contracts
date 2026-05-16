@@ -58,13 +58,12 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        // V2-family tokens are always deployed ownerless. The renounced-ownership invariant for
-        // charity-mode tax durations is therefore satisfied by default on this venue.
+        // V2-family tokens are always deployed ownerless.
         address tokenOwner = address(0);
 
         _validateInputs(name, symbol, feeReceivers, supplyShares);
         _validateAntiSniperConfig(antiSniperCfg);
-        _validateTaxConfig(taxCfg, feeReceivers, tokenOwner);
+        _validateTaxConfig(taxCfg);
 
         token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
 
@@ -79,14 +78,13 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///      matter for dispatch; disabled configs must have all other tax/anti-sniper fields
     ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
-        FeeShare[] calldata feeReceivers,
+        FeeShare[] calldata, /* feeReceivers */
         SupplyShare[] calldata, /* supplyShares */
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
         _validateAntiSniperConfig(antiSniperCfg);
-        // V2 tokens are always deployed ownerless, so the preview's `tokenOwner` is `address(0)`.
-        _validateTaxConfig(taxCfg, feeReceivers, address(0));
+        _validateTaxConfig(taxCfg);
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 }

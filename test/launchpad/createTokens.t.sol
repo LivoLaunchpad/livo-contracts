@@ -285,8 +285,7 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
     }
 
     function test_cannotCreateToken_taxDurationAboveMax() public {
-        // Duration above the absolute (charity-mode) ceiling — must revert with InvalidTaxDuration
-        // regardless of charity-mode satisfaction, because the cap is checked first.
+        // Duration above the 120-year overflow-prevention cap — must revert with InvalidTaxDuration.
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(

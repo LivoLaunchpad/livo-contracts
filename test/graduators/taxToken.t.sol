@@ -30,8 +30,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        // Duration above the absolute (charity-mode) ceiling — must revert with InvalidTaxDuration
-        // regardless of charity-mode satisfaction, because the cap is checked first.
+        // Duration above the 120-year overflow-prevention cap — must revert with InvalidTaxDuration.
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
             "TestToken",

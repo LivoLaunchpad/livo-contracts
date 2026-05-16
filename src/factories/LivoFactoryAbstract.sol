@@ -29,17 +29,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
 
     uint256 internal constant BASIS_POINTS = 10_000;
 
-    /// @notice Max configurable tax duration for the default (non-charity) deploy path.
-    uint256 public constant MAX_TAX_DURATION_SECONDS = 365 days;
-    /// @notice Max configurable tax duration when the deploy opts into "charity mode": a
-    ///         single fee receiver that is not the deployer and ownership renounced at
-    ///         creation (`tokenOwner == address(0)`). Capped at 120 years; the upper bound is
-    ///         driven by `TaxConfigInit.taxDurationSeconds`'s `uint32` packing.
-    /// @dev    We do NOT verify on-chain that the fee receiver is a real charity — deployers
-    ///         can fake this by passing any non-deployer address. The only invariants enforced
-    ///         on chain are the single-non-deployer-receiver rule and the renounced-ownership
-    ///         rule; off-chain UI / curation is responsible for the social trust layer.
-    uint256 public constant MAX_CHARITY_TAX_DURATION_SECONDS = 120 * 365 days;
+    /// @notice Max configurable tax duration. Capped at 120 years purely to prevent overflow —
+    ///         the upper bound is driven by `TaxConfigInit.taxDurationSeconds`'s `uint32` packing.
+    ///         Any deployer can use any duration up to this cap; no fee-receiver or
+    ///         ownership constraints are imposed beyond the standard validation.
+    uint256 public constant MAX_TAX_DURATION_SECONDS = 120 * 365 days;
 
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
@@ -287,30 +281,15 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
 
     /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
     ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, and caps `taxDurationSeconds` at
-    ///      `MAX_CHARITY_TAX_DURATION_SECONDS`. A duration above the standard 365-day window
-    ///      unlocks the "charity mode" path which requires:
-    ///        (1) exactly one fee receiver, distinct from the deployer (`msg.sender`); and
-    ///        (2) the deployed token to be ownerless (`tokenOwner == address(0)`).
-    ///      The charity address is NOT verified on-chain — a deployer can pass any non-deployer
-    ///      address (even one they control). Off-chain UI / curation is responsible for the
-    ///      social trust signal. The on-chain rules only prevent the most trivial abuse: a lone
-    ///      deployer keeping ownership and routing fees to themselves while extending the tax
-    ///      window past one year.
-    function _validateTaxConfig(TaxConfigInit calldata t, FeeShare[] calldata feeReceivers, address tokenOwner)
-        internal
-        view
-    {
+    ///      `MAX_TAX_DURATION_SECONDS` (120 years — an overflow-prevention bound driven by
+    ///      `uint32` packing on `TaxConfigInit.taxDurationSeconds`). No fee-receiver or
+    ///      ownership constraints are imposed at any duration.
+    function _validateTaxConfig(TaxConfigInit calldata t) internal pure {
         if (_isTaxConfigured(t)) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             uint256 maxTaxBps = MAX_TAX_BPS();
             require(t.buyTaxBps <= maxTaxBps && t.sellTaxBps <= maxTaxBps, InvalidTaxBps());
-            require(t.taxDurationSeconds <= MAX_CHARITY_TAX_DURATION_SECONDS, InvalidTaxDuration());
-            if (t.taxDurationSeconds > MAX_TAX_DURATION_SECONDS) {
-                require(
-                    feeReceivers.length == 1 && feeReceivers[0].account != msg.sender, CharityModeFeeReceiverInvalid()
-                );
-                require(tokenOwner == address(0), CharityModeOwnerNotRenounced());
-            }
+            require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
         } else {
             require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
         }
