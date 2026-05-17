@@ -369,6 +369,24 @@
   },
   {
     "type": "function",
+    "name": "setTaxBps",
+    "inputs": [
+      {
+        "name": "newBuyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "newSellTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "totalSupply",
     "inputs": [],
     "outputs": [

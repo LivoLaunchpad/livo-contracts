@@ -26,6 +26,10 @@ interface ILivoTaxableToken is ILivoToken {
     /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2
     ///         or V4 concrete tax-token implementations through a single shared type.
     function initialize(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg) external;
+
+    /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
+    ///         attempts to raise either rate revert.
+    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
 }
 
 /// @title ILivoTaxableTokenSniperProtected
