@@ -76,6 +76,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error Unauthorized();
+    error EthTransferFailed();
 
     //////////////////////////////////////////////////////
 
@@ -164,9 +165,20 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         ILivoMasterFeeHandler(feeHandler).registerToken(feeShares);
     }
 
-    /// @notice Routes ETH fees to the fee handler for this token
+    /// @notice Routes ETH fees to the fee handler for this token.
+    /// @dev Thin external wrapper around `_accrueFees` so subclasses (and internal callers like
+    ///      taxable-token swap-backs) can push fees without re-entering the external function.
     function accrueFees() external payable {
-        ILivoMasterFeeHandler(feeHandler).depositFees{value: msg.value}(address(this));
+        _accrueFees(msg.value);
+    }
+
+    /// @dev Sends `amount` wei to the fee handler with empty calldata. The handler's `receive()`
+    ///      attributes the deposit to `msg.sender` (this token), so the redundant `address(this)`
+    ///      argument is no longer needed. No-op on zero.
+    function _accrueFees(uint256 amount) internal {
+        if (amount == 0) return;
+        (bool ok,) = feeHandler.call{value: amount}("");
+        require(ok, EthTransferFailed());
     }
 
     //////////////////////// view functions ////////////////////////

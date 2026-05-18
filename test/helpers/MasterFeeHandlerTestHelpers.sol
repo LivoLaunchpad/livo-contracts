@@ -25,7 +25,10 @@ contract MockMasterFeeToken {
     }
 
     function accrueFees() external payable {
-        feeHandler.depositFees{value: msg.value}(address(this));
+        // Mirrors the production token: plain ETH transfer to the handler; `receive()` attributes
+        // the deposit via `msg.sender`.
+        (bool ok,) = address(feeHandler).call{value: msg.value}("");
+        require(ok, "accrueFees: transfer failed");
     }
 }
 

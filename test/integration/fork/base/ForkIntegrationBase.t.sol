@@ -85,7 +85,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         quoter = LivoQuoter(forkCfg.quoter);
         factoryV2 = LivoFactoryUniV2Unified(forkCfg.factoryV2Unified);
         factoryV4 = LivoFactoryUniV4Unified(forkCfg.factoryV4Unified);
-        feeHandler = LivoMasterFeeHandler(forkCfg.masterFeeHandler);
+        feeHandler = LivoMasterFeeHandler(payable(forkCfg.masterFeeHandler));
 
         _assertDeployedAddressConfig();
     }

@@ -5,7 +5,6 @@ import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
-import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
@@ -64,9 +63,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
     /// @notice Emitted whenever the contract auto- or manually-swaps accumulated tax tokens to ETH
     ///         and forwards the proceeds to the master fee handler. `ethAmount` is the ETH
-    ///         routed through `feeHandler.depositFees` for this swap-back, i.e. the tax
-    ///         actually accrued to the creator (and any direct receivers) for the swap window
-    ///         covered by this back-swap.
+    ///         pushed via `_accrueFees` (plain ETH transfer to the handler) for this swap-back,
+    ///         i.e. the tax actually accrued to the creator (and any direct receivers) for the
+    ///         swap window covered by this back-swap.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
 
     //////////////////////// Errors //////////////////////
@@ -247,8 +246,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         uint256 ethBalance = address(this).balance;
         emit CreatorTaxSwapback(tokenAmount, ethBalance);
 
-        if (ethBalance > 0) {
-            ILivoMasterFeeHandler(feeHandler).depositFees{value: ethBalance}(address(this));
-        }
+        // Plain ETH push: the handler's `receive()` attributes the deposit via `msg.sender`,
+        // so no `address(this)` argument is needed. `_accrueFees` no-ops on zero balance.
+        _accrueFees(ethBalance);
     }
 }
