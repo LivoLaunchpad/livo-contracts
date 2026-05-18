@@ -11,7 +11,6 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -20,7 +19,7 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Redeploy ALL token implementations + upgrade BOTH unified factories to the new master fee handler
+/// @title Redeploy ALL token implementations + both unified factory implementations
 /// @notice Wraps up the rollout for the `receive()` refactor on `LivoMasterFeeHandler` and the
 ///         matching `_accrueFees` migration on every token (base / sniper-protected / V2 tax /
 ///         V4 tax). Existing deployed tokens keep pointing at the OLD master fee handler — they
@@ -30,7 +29,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///
 ///         Pre-requisite (manual step, done OFF this script): deploy the new `LivoMasterFeeHandler`
 ///         and write its address into `MASTER_FEE_HANDLER` in `src/config/deployments.<chain>.sol`.
-///         This script reads that constant and refuses to run if it still matches the old handler.
+///         This script reads that constant and refuses to run if it's missing or has no code.
 ///
 ///         Single broadcast:
 ///         1. Deploy fresh `LivoToken` (non-tax base).
@@ -43,34 +42,26 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///            `MASTER_FEE_HANDLER` + V2 token impls + the unchanged V2 graduator / bonding curve / launchpad.
 ///         8. Deploy fresh `LivoFactoryUniV4Unified` impl, wired to the manifest's
 ///            `MASTER_FEE_HANDLER` + V4 token impls + the unchanged V4 graduator / bonding curve / launchpad.
-///         9. `upgradeToAndCall(newV2FactoryImpl, "")` on the existing V2 proxy.
-///        10. `upgradeToAndCall(newV4FactoryImpl, "")` on the existing V4 proxy.
 ///
-///         Proxy addresses are UNCHANGED — launchpad's `whitelistedFactories` entries stay valid;
-///         integrators see no address change. No init data is passed; no new factory storage was
-///         added.
-///
-///         The broadcaster MUST be the proxy owner on BOTH proxies. If not, `_authorizeUpgrade`
-///         reverts with `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
+///         The factory proxy upgrades are intentionally NOT performed here — they are a separate,
+///         manual follow-up step done after the new impls have been deployed and inspected.
 ///
 ///         Pre-broadcast sanity: confirms both V2 and V4 tax-token sources import the right
 ///         per-chain `DeploymentAddresses`. Run `just taxtokenaddresses` before deploying to Sepolia.
 ///
 ///         Post-broadcast: update all six token impl addresses and both
 ///         `FACTORY_UNI*_UNIFIED_IMPL` addresses in `src/config/deployments.<chain>.sol`, then run
-///         `just export-deployments`.
+///         `just export-deployments`. The proxy upgrades (`upgradeToAndCall` on each unified factory
+///         proxy) are run separately once the new impls are verified.
 ///
 /// @dev    Run with:
-///         forge script RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler --rpc-url <mainnet|sepolia> \
+///         forge script RedeployAllImpls --rpc-url <mainnet|sepolia> \
 ///             --verify --account livo.dev --slow --broadcast
-contract RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler is Script {
-    /// @dev Per-chain addresses needed to wire the new factory implementations and target the
-    ///      proxy upgrades. Pulled from `src/config/deployments.<chain>.sol`. `masterFeeHandler`
-    ///      must already point at the freshly-deployed handler (manual pre-step).
+contract RedeployAllImpls is Script {
+    /// @dev Per-chain addresses needed to wire the new factory implementations. Pulled from
+    ///      `src/config/deployments.<chain>.sol`. `masterFeeHandler` must already point at the
+    ///      freshly-deployed handler (manual pre-step).
     struct Deps {
-        // Proxies to upgrade
-        address factoryV2Proxy;
-        address factoryV4Proxy;
         // Shared inputs reused by both fresh factory impls (unchanged across this redeploy)
         address launchpad;
         address bondingCurve;
@@ -95,8 +86,6 @@ contract RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler is Script {
     function _getDeps() internal view returns (Deps memory d) {
         if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
@@ -113,8 +102,6 @@ contract RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler is Script {
             );
         } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
@@ -133,8 +120,6 @@ contract RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler is Script {
             revert("Unsupported chain");
         }
 
-        require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
-        require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
@@ -147,19 +132,9 @@ contract RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler is Script {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        // Catch wrong manifest addresses pointing at non-Livo contracts before we waste deploys.
-        address v2ProxyOwner = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
-        address v4ProxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
-        require(v2ProxyOwner != address(0), "V2 proxy not initialized");
-        require(v4ProxyOwner != address(0), "V4 proxy not initialized");
-        require(v2ProxyOwner == v4ProxyOwner, "V2 and V4 proxy owners differ; review before upgrading");
-
-        console.log("=== Livo All-Impls Redeploy + Both Factory Upgrades (new MasterFeeHandler) ===");
+        console.log("=== Livo All-Impls Redeploy (new MasterFeeHandler) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
-        console.log("Required proxy owner:    ", v2ProxyOwner);
-        console.log("V2 factory proxy:        ", d.factoryV2Proxy);
-        console.log("V4 factory proxy:        ", d.factoryV4Proxy);
         console.log("MASTER_FEE_HANDLER (from manifest):", d.masterFeeHandler);
         console.log("");
 
@@ -217,19 +192,11 @@ contract RedeployAllImplsAndUpgradeFactoriesToNewFeeHandler is Script {
         );
         console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);
 
-        // --- (9-10) Proxy upgrades ---
-        UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(fresh.factoryV2Impl, "");
-        console.log("| V2 proxy upgraded to                          |", fresh.factoryV2Impl);
-
-        UUPSUpgradeable(d.factoryV4Proxy).upgradeToAndCall(fresh.factoryV4Impl, "");
-        console.log("| V4 proxy upgraded to                          |", fresh.factoryV4Impl);
-
         vm.stopBroadcast();
 
         console.log("");
         console.log("=== Redeploy Complete ===");
-        console.log("Proxy addresses are UNCHANGED - no launchpad whitelisting or integrator action needed.");
-        console.log("Existing deployed tokens keep pointing at the OLD master fee handler.");
+        console.log("Factory proxies were NOT upgraded - run the proxy upgrade step manually next.");
         console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
         console.log("  TOKEN_IMPL                             :", fresh.tokenImpl);
         console.log("  TOKEN_SNIPER_PROTECTED_IMPL            :", fresh.tokenSniperImpl);
