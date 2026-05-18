@@ -13,16 +13,16 @@
 | LivoMasterFeeHandler                         | `0x3dD70c06e04A10768aAd7208f119e73E4eD3e306` |
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
 | LivoQuoter                                   | `0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438` |
-| LivoToken (impl)                             | `0x2C0a167A0f83E7969cA22B386Fe72BA608af9B4a` |
-| LivoTaxableTokenUniV4 (impl)                 | `0xCcc99765d31A6023E279b98f19e3dFB8430D401f` |
-| LivoTokenSniperProtected (impl)              | `0x237EB36efFBc522a19FD8A5581e74661C484Dfe0` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xfe587A3397e43a92C5bacEBE4bED4bF1e9f8344F` |
-| LivoTaxableTokenUniV2 (impl)                 | `0x90FcBc67563B6e6950439a28D32964a47503Eb35` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0x5998c89a95207Db08653504138abA3ec8420ADA2` |
+| LivoToken (impl)                             | `0x7A2F3A309f070c8F45E541e1069BaEF5dA7A1512` |
+| LivoTaxableTokenUniV4 (impl)                 | `0x57Bb01ac46B9a2DfC3C05cE47d692e4b729BDCBe` |
+| LivoTokenSniperProtected (impl)              | `0xdF5CD2fc0078147Fce85bc2170250eC6339026a0` |
+| LivoTaxableTokenUniV4SniperProtected (impl)  | `0x8289D631513B3766D79820682b864a47923c60a0` |
+| LivoTaxableTokenUniV2 (impl)                 | `0x6b7E55f0Dc9C5841A5bACDDCf23ccDcb28afd040` |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xAF58def3c5663716016Ffa7C9f6f69B359cDE4D8` |
 | LivoFactoryUniV2Unified (proxy)              | `0x87Dd69F8d294fA9cd704fccd38d36d6197F80868` |
-| LivoFactoryUniV2Unified (impl)               | `0xE5D83D4ea61624a847cbC00720926362a5e6105a` |
+| LivoFactoryUniV2Unified (impl)               | `0x279C76a0D562D597eFa8f2C811210AF4fFB68F51` |
 | LivoFactoryUniV4Unified (proxy)              | `0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b` |
-| LivoFactoryUniV4Unified (impl)               | `0x68AE1B6257F3cEdFffe6FA2efcC5C726d4493213` |
+| LivoFactoryUniV4Unified (impl)               | `0x9bd879588A942308bee973B79311680266B85707` |
 
 ## Accounts
 
