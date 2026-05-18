@@ -83,7 +83,7 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
     /// @dev Lets tokens push fees with a bare value-call (`feeHandler.call{value: x}("")`) instead
     ///      of `depositFees(address(this))` — the `address(this)` argument was redundant. Shares
     ///      the same `nonReentrant` transient guard as `depositFees`, `setShares` and `claim`.
-    /// @dev Reverts for non-registered tokens with a clear OOB panic from the attempted read of `claimableRecipients[0]` in `_depositSingle`, 
+    /// @dev Reverts for non-registered tokens with a clear OOB panic from the attempted read of `claimableRecipients[0]` in `_depositSingle`,
     ///      which is an acceptable failure mode for misconfigured tokens.
     receive() external payable nonReentrant {
         _depositFees(msg.sender);
