@@ -22,16 +22,16 @@ library DeploymentsMainnet {
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d;
-    address internal constant TAXABLE_TOKEN_IMPL = 0xF232d7D7B552B3B981FE91B13F715B3c1F075A13;
+    address internal constant TOKEN_IMPL = 0x974F9139D56DAE3D44714Cd24632BB9Bf69139E2;
+    address internal constant TAXABLE_TOKEN_IMPL = 0x805bE40375F5263321Be2B1B16524709F0FE5726;
 
     /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xA6d75e290b12f6c2E90C82bF431bBEb4EF5D4862;
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x95A52bF07bAB218712b66148D48B2EaD44610dE7;
+    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xeebA991E97304a10c3409495F6DFbB0f7CA5fAe5;
+    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x8907cA768EcaCbBb7D2209FEE6b190EA71124A12;
 
     /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xfb536Abb27f52DBb62DD91f789C6B9a12C48441b;
-    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0xE8296eC8061af577DD1f06263E9B07A35d6a084F;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x87d412A2f3976B7933D8a73858218B7147775e2A;
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0x1d20ae8983E44DBCcAF947a8f9998835E07573D3;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -41,8 +41,8 @@ library DeploymentsMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x6Cc0EC8f989bd39A472D0690e24d5249a3642Eb4;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x944f141Cd97c5126D118Df2d0f36867a1D63B186;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x14634CBf79c4432E75E1494B8D58984FaD4e4fEE;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x41241EcD235cd7e0e35a6c79Ba235C1D8BD7DffC;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
