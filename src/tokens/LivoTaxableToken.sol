@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableToken, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
-import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -76,8 +75,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///      (1) Self-token rescue is disallowed — the caller must NEVER be able to siphon accrued
     ///          tax balance ahead of a swap-back.
     ///      (2) ETH stuck in the contract is treated as un-routed fees and pushed back through
-    ///          `feeHandler.depositFees` so it lands on the configured fee receivers, never on
-    ///          the caller. Preserves the project's pull-over-push invariant for ETH.
+    ///          `_accrueFees` (plain ETH transfer to the fee handler, attributed via `msg.sender`)
+    ///          so it lands on the configured fee receivers, never on the caller. Preserves the
+    ///          project's pull-over-push invariant for ETH.
     /// @dev The launchpad owner is included so the protocol admin can sweep stuck balances on
     ///      factory-deployed V2 tokens, where `owner == address(0)` makes the token-owner path
     ///      unreachable. The destination is unchanged regardless of caller: ETH → fee handler,
@@ -88,11 +88,8 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
 
         if (token == address(0)) {
-            uint256 ethBalance = address(this).balance;
-            if (ethBalance > 0) {
-                // deposit fees to the token account in the master fee handler
-                ILivoMasterFeeHandler(feeHandler).depositFees{value: ethBalance}(address(this));
-            }
+            // route any stuck ETH back through the fee handler under this token's accounting
+            _accrueFees(address(this).balance);
         } else if (token == address(this)) {
             // disallow rescuing the token's own balance to prevent siphoning accrued taxes
             revert CannotRescueSelfToken();

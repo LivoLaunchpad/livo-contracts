@@ -41,6 +41,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 8. [`LivoMasterFeeHandler.setShares`](#8-livomasterfeehandlersetsharesaddress-token-feeshare-feeshares)
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`LivoTaxableToken.setTaxBps`](#10-livotaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
+11. [`LivoMasterFeeHandler.receive` (plain ETH)](#11-livomasterfeehandlerreceive-plain-eth)
 
 ---
 
@@ -100,7 +101,7 @@ Livo event order:
 1. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`) — from the triggering buy.
 2. ERC20 transfer of the remaining launchpad token balance from `LivoLaunchpad` to `LivoGraduatorUniswapV2`.
 3. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount=creatorCompensation`).
-4. Creator compensation is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
+4. Creator compensation is routed through `LivoToken.accrueFees()` → plain ETH transfer to the master handler → handler `receive()` attributes the deposit to `msg.sender = token`:
    - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorCompensation`).
    - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) if the configured receiver is direct and the forward succeeds.
 5. **`LivoGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`).
@@ -121,7 +122,7 @@ Livo event order:
 1. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`) — from the triggering buy.
 2. ERC20 transfer of the remaining launchpad token balance from `LivoLaunchpad` to `LivoGraduatorUniswapV4`.
 3. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount=creatorCompensation`).
-4. Creator compensation is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
+4. Creator compensation is routed through `LivoToken.accrueFees()` → plain ETH transfer to the master handler → handler `receive()` attributes the deposit to `msg.sender = token`:
    - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorCompensation`).
    - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) if the configured receiver is direct and the forward succeeds.
 5. **`LivoGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`).
@@ -158,7 +159,7 @@ Livo event order:
 
 1. **`LivoSwapHook.LpFeesAccrued`** (`token, creatorShare, treasuryShare`).
 2. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if buy tax is active and non-zero.
-3. Creator LP share plus any buy tax is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
+3. Creator LP share plus any buy tax is routed through `LivoToken.accrueFees()` → plain ETH transfer to the master handler → handler `receive()` attributes the deposit to `msg.sender = token`:
    - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare + taxAmount`).
    - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
 4. Treasury LP share is sent directly via native ETH call.
@@ -172,7 +173,7 @@ Livo event order:
 
 1. **`LivoSwapHook.LpFeesAccrued`** (`token, creatorShare, treasuryShare`).
 2. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if sell tax is active and non-zero.
-3. Creator LP share plus any sell tax is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
+3. Creator LP share plus any sell tax is routed through `LivoToken.accrueFees()` → plain ETH transfer to the master handler → handler `receive()` attributes the deposit to `msg.sender = token`:
    - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare + taxAmount`).
    - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
 4. Treasury LP share is sent directly via native ETH call.
@@ -189,8 +190,8 @@ Indexer-relevant points:
 - **Auto- or manual-triggered swap-back** runs `IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens` against the pair and then routes proceeds to the master fee handler. Livo event order:
   1. ERC20 transfer from `address(token)` to `pair` for the swap input.
   2. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
-  3. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted before fees are deposited. `ethAmount` is the ETH that will be routed through `feeHandler.depositFees`, i.e. the tax accrued to the creator (and any direct receivers) for the swap window covered by this back-swap.
-  4. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethAmount`) emitted by `depositFees`.
+  3. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted before fees are deposited. `ethAmount` is the ETH that the token will push to the master fee handler via a plain ETH transfer (no `depositFees` call), i.e. the tax accrued to the creator (and any direct receivers) for the swap window covered by this back-swap.
+  4. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethAmount`) emitted by the handler's `receive()` (attribution via `msg.sender = token`).
   5. Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
 - The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger only if the token has a non-zero owner. Factory-deployed V2 tokens are ownerless, so this manual path is inaccessible there.
 - Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the `CreatorTaxSwapback` path is not entered.
@@ -229,7 +230,7 @@ A BPS-only rebalance with an unchanged direct set emits only `SharesUpdated`.
 
 Direct fees are configured per token through `FeeShare.directFeesEnabled` at token creation or through `LivoMasterFeeHandler.setShares`.
 
-For every successful non-zero `depositFees(token)` against a registered config:
+The same event order applies to every successful non-zero deposit, regardless of entry point (`depositFees(token)` or `receive()` via a plain ETH transfer from the token). For every such deposit against a registered config:
 
 1. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
 2. For each direct receiver with a non-zero slice:
@@ -237,7 +238,7 @@ For every successful non-zero `depositFees(token)` against a registered config:
    - If the ETH forward fails, no `CreatorClaimed` event is emitted for that slice; the slice is stored as pending and can later be recovered through `claim()`.
 3. Claimable recipients do not emit per-deposit claim events; they accrue through the master handler accumulator and emit `CreatorClaimed` only when they call `claim()`.
 
-Zero-value `depositFees(token)` calls are no-ops and emit no fee events, including for unregistered tokens.
+Zero-value `depositFees(token)` (or `receive()` from a token) calls are no-ops and emit no fee events, including for unregistered tokens.
 
 ---
 
@@ -250,3 +251,19 @@ The function is decrease-only: `newBuyTaxBps` and `newSellTaxBps` must both be `
 On success:
 
 1. **`LivoTaxableToken.TaxBpsUpdated`** (`newBuyTaxBps, newSellTaxBps`) — emitted before the storage write. Old values can be reconstructed from the preceding `LivoTaxableTokenInitialized` event at creation time and the chain of any prior `TaxBpsUpdated` events.
+
+---
+
+## 11. `LivoMasterFeeHandler.receive` (plain ETH)
+
+Plain ETH transfers (empty calldata) to the master fee handler are accepted and attributed to `msg.sender`. This is the canonical path for tokens to push accrued fees: `LivoToken.accrueFees()` and the V2 swap-back path send ETH directly to the handler, no `depositFees(address)` call.
+
+Behavior is identical to `depositFees(token)` with `token = msg.sender`, including:
+- Zero-value transfers are no-ops (no event).
+- Positive-value transfers from an unregistered address revert with the same array-OOB panic as `depositFees`.
+- The `nonReentrant` transient guard is shared with `depositFees`, `setShares` and `claim`.
+
+Event order on a successful non-zero deposit:
+
+1. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token=msg.sender, amount`).
+2. For each direct receiver with a non-zero slice: optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, sliceAmount`) on a successful synchronous forward. A failed forward (including a recursive `receive()` blocked by the `nonReentrant` guard) silently records the slice as pending instead.
