@@ -316,7 +316,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertEq(uint256(taxToken.lastSwapbackBlock()), stampedBlock + 1, "block stamp advances");
     }
 
-    function test_swapbackCap_manualRevertsThenSucceeds() public {
+    function test_swapbackCap_manualSilentlyNoOpsThenSucceeds() public {
         _setupGraduatedTokenWithBuyer();
 
         // First manual swap stamps `lastSwapbackBlock`. Use admin (launchpad owner).
@@ -326,11 +326,25 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         uint256 stampedBlock = uint256(taxToken.lastSwapbackBlock());
         assertEq(stampedBlock, block.number, "first manual swap stamps block");
 
-        // Re-seed; second manual call in the SAME block reverts.
-        deal(testToken, address(taxToken), 1_500_000e18);
+        // Re-seed; second manual call in the SAME block silently no-ops:
+        //   - tx succeeds (no revert),
+        //   - no `CreatorTaxSwapback` event,
+        //   - balance unchanged,
+        //   - no ETH forwarded to fee handler.
+        uint256 balanceBefore = IERC20(testToken).balanceOf(address(taxToken));
+        deal(testToken, address(taxToken), balanceBefore + 1_500_000e18);
+        balanceBefore = IERC20(testToken).balanceOf(address(taxToken));
+        uint256 feeHandlerEthBeforeNoop = address(feeHandler).balance;
+
+        vm.recordLogs();
         vm.prank(admin);
-        vm.expectRevert(LivoTaxableTokenUniV2.SwapbackAlreadyInThisBlock.selector);
         taxToken.swapBack(500_000e18, 1);
+        assertEq(_countCreatorTaxSwapbackEvents(), 0, "same-block manual call must NOT swap");
+        assertEq(
+            IERC20(testToken).balanceOf(address(taxToken)), balanceBefore, "token balance unchanged on silent no-op"
+        );
+        assertEq(address(feeHandler).balance, feeHandlerEthBeforeNoop, "no ETH forwarded on silent no-op");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), stampedBlock, "block stamp unchanged on silent no-op");
 
         // Roll to the next block → succeeds.
         vm.roll(stampedBlock + 1);
