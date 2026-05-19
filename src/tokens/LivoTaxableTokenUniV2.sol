@@ -24,9 +24,12 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 ///      would otherwise never accrue enough fresh tax to cross it, since no new tax accrues once
 ///      the window expires. Recursion is guarded by `_inSwap`: when the router pulls tokens from
 ///      this contract during the swap, our `_update` short-circuits to a plain transfer.
-///      At most one swap-back per block is allowed: `_swapBack` silently returns when
-///      `block.number <= lastSwapbackBlock`, so any second (or further) call in the same block
-///      — auto or manual — is a no-op.
+///      At most `MAX_SWAPBACKS_PER_BLOCK` swap-backs per block are allowed: `_swapBack` resets
+///      `swapbacksThisBlock` to zero when `block.number > lastSwapbackBlock`, increments it on
+///      each successful swap, and silently returns when the counter hits the cap — so any further
+///      call in the same block (auto or manual) is a no-op. This counter shape mirrors the
+///      reference token at `0xbad06a3ca84e4e2b489974d8918b5f7387e6db8e`, which passes Go+'s
+///      "trading cooldown" heuristic.
 ///      A permissioned `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap
 ///      via a private mempool to avoid sandwiches; on factory-deployed tokens the owner is
 ///      `address(0)`, so this entry point is reachable only via the launchpad owner, and the
@@ -46,6 +49,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         sells while keeping per-swap price-impact bounded for the common case.
     uint256 public constant SWAP_THRESHOLD = TOTAL_SUPPLY / 2000;
 
+    /// @notice Maximum number of swap-backs allowed per block. Further calls in the same block
+    ///         silently no-op. Picked low enough that a single block's swap-back activity stays
+    ///         bounded, high enough that two whales selling in the same block both get their
+    ///         tax routed without one having to wait a block.
+    uint8 public constant MAX_SWAPBACKS_PER_BLOCK = 2;
+
     /////////////////////////// pure storage ///////////////////////
 
     /// @dev Re-entrancy guard for the swap-back path. When true, `_update` short-circuits the
@@ -54,11 +63,17 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     bool internal transient _inSwap;
 
     /// @notice `block.number` of the most recent successful `_swapBack`. Zero until the first
-    ///         swapback runs. `_swapBack` itself gates on `block.number > lastSwapbackBlock` and
-    ///         silently returns otherwise, so the contract performs at most one swap-back per
-    ///         block (both auto and manual paths). uint48 packs into the parent
-    ///         `LivoTaxableToken` slot alongside `graduationTimestamp`.
+    ///         swapback runs. Used together with `swapbacksThisBlock` to enforce the per-block
+    ///         cap: when `block.number > lastSwapbackBlock`, the counter resets to zero. uint48
+    ///         packs into the parent `LivoTaxableToken` slot alongside `graduationTimestamp`.
     uint48 public lastSwapbackBlock;
+
+    /// @notice Count of successful `_swapBack` calls that have already settled in
+    ///         `lastSwapbackBlock`. Reset to zero on the first swap-back of a new block and
+    ///         incremented after each successful swap. Once it reaches `MAX_SWAPBACKS_PER_BLOCK`,
+    ///         further calls in the same block silently no-op. uint8 packs into the parent slot
+    ///         alongside `lastSwapbackBlock` and `graduationTimestamp`.
+    uint8 public swapbacksThisBlock;
 
     //////////////////////// Events //////////////////////
 
@@ -116,9 +131,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      inside `_update` remains the primary path regardless of caller identity. Proceeds are
     ///      forwarded to the fee handler (not the caller), so widening the caller set has no
     ///      asset-routing impact.
-    /// @dev If a swap-back has already settled in the current block, `_swapBack` silently
-    ///      no-ops — the call succeeds but emits no `CreatorTaxSwapback` event. Callers gating
-    ///      on the event still get a clean signal; callers expecting a revert do not.
+    /// @dev If `MAX_SWAPBACKS_PER_BLOCK` swap-backs have already settled in the current block,
+    ///      `_swapBack` silently no-ops — the call succeeds but emits no `CreatorTaxSwapback`
+    ///      event. Callers gating on the event still get a clean signal; callers expecting a
+    ///      revert do not.
     function swapBack(uint256 swapAmount, uint256 amountOutMinWei) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         _swapBack(swapAmount, amountOutMinWei);
@@ -135,9 +151,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         when `balance >= SWAP_THRESHOLD`, OR — after the tax window expires — when any
     ///         non-zero balance remains, so a sub-threshold residual gets drained on the next sell
     ///         instead of stranding forever (no new tax accrues post-window to push it across).
-    ///         `_swapBack` itself enforces the at-most-one-per-block guarantee (silent no-op on
-    ///         repeat); this outer branch deliberately does NOT reference `block.number` so static
-    ///         analyzers don't mistake the per-block swap-back cap for a per-user trading cooldown.
+    ///         `_swapBack` itself enforces the at-most-`MAX_SWAPBACKS_PER_BLOCK`-per-block
+    ///         guarantee via a counter (silent no-op on overflow); this outer branch deliberately
+    ///         does NOT reference `block.number` so static analyzers don't mistake the per-block
+    ///         swap-back cap for a per-user trading cooldown.
     ///         Any excess stays on the contract and is drained on the next qualifying sell.
     ///      4. If we're in the post-graduation tax window AND the transfer touches the pair AND
     ///         the source is not the graduator (which moves the initial liquidity), divert
@@ -172,9 +189,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // produces a `_update(graduator, pair, ...)` while the pair still has zero reserves, so
         // firing `_swapBack` against it would revert the entire graduation tx. Anyone could grief
         // graduation by pre-funding `address(this)` with `>= SWAP_THRESHOLD` tokens before it.
-        // The per-block at-most-once gate lives inside `_swapBack` (silent return) so this outer
-        // sell-branch condition references no `block.number` — static heuristics (e.g. Go+) flag
-        // any `block.number` read in a transfer-hook sell branch as a trading cooldown.
+        // The per-block cap (at most `MAX_SWAPBACKS_PER_BLOCK`) lives inside `_swapBack` as a
+        // counter (silent no-op on overflow), so this outer sell-branch condition references no
+        // `block.number` — static heuristics (e.g. Go+) flag any `block.number` read in a
+        // transfer-hook sell branch as a trading cooldown. Counter-reset-on-new-block matches the
+        // shape of the reference token at `0xbad06a3ca84e4e2b489974d8918b5f7387e6db8e`.
         if (isSell && from != graduator) {
             uint256 contractBalance = balanceOf(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
@@ -219,16 +238,23 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @dev `address(this).balance` is forwarded in full (not just the swap output): any ETH that
     ///      may have arrived through `receive()` between swap-backs is treated as un-routed fees
     ///      and routed through the same path. Avoids ETH ever sitting idle in the contract.
-    /// @dev Enforces at most one swap-back per block via a silent early-return when a swap-back
-    ///      has already settled in this block. The auto path (from `_update`) and the manual
-    ///      `swapBack` entry point both go through this helper, so both same-block-repeat the
-    ///      same way: tx succeeds, no `CreatorTaxSwapback` event, no balance change. The gate
-    ///      lives here (not in the outer sell branch of `_update`) to keep `block.number` out
-    ///      of the transfer hook's gating condition — static analyzers (e.g. Go+) flag any
-    ///      such read as a per-user trading cooldown.
+    /// @dev Enforces at most `MAX_SWAPBACKS_PER_BLOCK` swap-backs per block via a counter that
+    ///      resets to zero on the first call of each new block and increments after each
+    ///      successful swap; once the counter hits the cap, further calls in the same block
+    ///      silently return. The auto path (from `_update`) and the manual `swapBack` entry
+    ///      point both go through this helper, so both same-block-overflow the same way: tx
+    ///      succeeds, no `CreatorTaxSwapback` event, no balance change. The gate lives here
+    ///      (not in the outer sell branch of `_update`) to keep `block.number` out of the
+    ///      transfer hook's gating condition — static analyzers (e.g. Go+) flag any such read
+    ///      as a per-user trading cooldown. The counter-reset-on-new-block shape mirrors the
+    ///      reference token at `0xbad06a3ca84e4e2b489974d8918b5f7387e6db8e`.
     function _swapBack(uint256 tokenAmount, uint256 amountOutMinWei) internal {
         if (tokenAmount == 0) return;
-        if (block.number <= uint256(lastSwapbackBlock)) return;
+
+        if (block.number > uint256(lastSwapbackBlock)) {
+            swapbacksThisBlock = 0;
+        }
+        if (swapbacksThisBlock >= MAX_SWAPBACKS_PER_BLOCK) return;
 
         _inSwap = true;
 
@@ -241,6 +267,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         );
 
         _inSwap = false;
+        swapbacksThisBlock++;
         lastSwapbackBlock = uint48(block.number);
 
         uint256 ethBalance = address(this).balance;
