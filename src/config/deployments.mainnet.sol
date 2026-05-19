@@ -15,23 +15,23 @@ library DeploymentsMainnet {
     address internal constant BONDING_CURVE = 0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23;
     address internal constant GRADUATOR_UNIV2 = 0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC;
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
-    address internal constant MASTER_FEE_HANDLER = 0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC;
+    address internal constant MASTER_FEE_HANDLER = 0x48b3F72469cDba3986A36cE6C47e6Cb027dCCcF2;
 
     address internal constant SWAP_HOOK = 0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc;
     address internal constant SWAP_HOOK_0P5 = 0x068241d20c59980AbEAeDED990d2441F05f5C0Cc;
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d;
-    address internal constant TAXABLE_TOKEN_IMPL = 0xF232d7D7B552B3B981FE91B13F715B3c1F075A13;
+    address internal constant TOKEN_IMPL = 0x974F9139D56DAE3D44714Cd24632BB9Bf69139E2;
+    address internal constant TAXABLE_TOKEN_IMPL = 0x805bE40375F5263321Be2B1B16524709F0FE5726;
 
     /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xb9f3c1dB897F24385eEE4feD03C5cd732E9dd087;
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x9b8541B251a3ABCE6BbC5419baa478Bbc6B11E00;
+    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xeebA991E97304a10c3409495F6DFbB0f7CA5fAe5;
+    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x8907cA768EcaCbBb7D2209FEE6b190EA71124A12;
 
     /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xfb536Abb27f52DBb62DD91f789C6B9a12C48441b;
-    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0x854459b98Ef631A5D154761da705862c11AA10fc;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x87d412A2f3976B7933D8a73858218B7147775e2A;
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0x1d20ae8983E44DBCcAF947a8f9998835E07573D3;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -41,8 +41,8 @@ library DeploymentsMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xb22b28faf008C07b070311E8B9018a77c62475e1;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x99Fe2360f8121b3CE92a67612AE13Af18B738533;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x14634CBf79c4432E75E1494B8D58984FaD4e4fEE;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x41241EcD235cd7e0e35a6c79Ba235C1D8BD7DffC;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
