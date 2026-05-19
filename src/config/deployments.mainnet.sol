@@ -18,6 +18,7 @@ library DeploymentsMainnet {
     address internal constant MASTER_FEE_HANDLER = 0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC;
 
     address internal constant SWAP_HOOK = 0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc;
+    address internal constant SWAP_HOOK_0P5 = 0x068241d20c59980AbEAeDED990d2441F05f5C0Cc;
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;
 
     // --- Token implementations (cloned by factories) ---

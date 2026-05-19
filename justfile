@@ -114,6 +114,15 @@ deploy-sepolia-factories: taxtokenaddresses
 deploy-mainnet-factories:
     forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
+# Mines a valid hook salt and deploys LivoSwapHook (50 bps LP fee build).
+# After broadcast, paste the deployed address into src/config/deployments.{sepolia,mainnet}.sol
+# and run `just export-deployments`.
+deploy-swap-hook-sepolia:
+    forge script DeployLivoSwapHook --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+
+deploy-swap-hook-mainnet:
+    forge script DeployLivoSwapHook --rpc-url mainnet --verify --account livo.dev --slow --broadcast
+
 # Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
 export-deployments:
