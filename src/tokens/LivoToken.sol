@@ -82,8 +82,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error Unauthorized();
-    error EthTransferFailed();
     error InvalidFeeHandler();
+    error FeeHandlerMustBeEOA();
 
     //////////////////////////////////////////////////////
 
@@ -183,26 +183,37 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @dev Sends `amount` wei to the fee handler with empty calldata. The handler's `receive()`
     ///      attributes the deposit to `msg.sender` (this token), so the redundant `address(this)`
     ///      argument is no longer needed. No-op on zero.
+    /// @dev The `.call` result is intentionally ignored. If the transfer fails (e.g. a malicious
+    ///      contract receiver reverts on `receive()`, or the master handler reverts on an
+    ///      unregistered config), the ETH stays in this contract instead of bubbling the revert.
+    ///      The V2 swap-back path sources its push from `address(this).balance`, so any residual
+    ///      from a failed transfer is rolled into the next swap-back automatically. External
+    ///      callers of `accrueFees()` should consider the residual likewise recoverable on a
+    ///      future swap-back / accrual that lands successfully.
     function _accrueFees(uint256 amount) internal {
         if (amount == 0) return;
+        // Failure ignored intentionally — ETH stays in the contract and rolls into the next push.
+        // forge-lint: disable-next-line(unchecked-call)
         (bool ok,) = feeHandler.call{value: amount}("");
-        require(ok, EthTransferFailed());
+        ok;
     }
 
     /// @notice Rotates the fee-handler address. Callable by the token owner OR by the launchpad
     ///         owner. V2-family tokens are deployed ownerless (`tokenOwner = address(0)`), so on
     ///         those tokens only the launchpad owner can call.
-    /// @dev    Primary use case: rotate the single direct receiver of a V2 taxable token deployed
-    ///         via `LivoFactoryUniV2Unified`'s direct-handler path (`token.feeHandler == receiver`).
-    ///         Pointing back at the master fee handler when this token was never registered there
-    ///         will brick swapbacks (master handler's `_depositSingle` reverts on the unregistered
-    ///         config). Redirecting a master-routed token away from the master handler drains all
-    ///         future fee flow to the new address; the master handler's stored recipient set is
-    ///         orphaned (existing pending claims remain claimable). Both are admin foot-guns; the
-    ///         function trusts the caller and does not gate by current state.
+    /// @dev    Requires BOTH the current and the new `feeHandler` to be EOAs
+    ///         (`code.length == 0`). Consequence:
+    ///         - Master-fee-handler-routed tokens cannot rotate at all (current is a contract,
+    ///           so the precondition fails) — fee-handler is effectively immutable for them.
+    ///         - Direct-handler tokens (single-direct-receiver path) can only rotate to another
+    ///           EOA — never back into a master fee handler.
+    ///         Keeps the indexer's `TokenFeeData.isDirectFeeHandlerEOA` trivially correct
+    ///         post-rotation: a rotation can only ever happen between EOAs, so the flag stays
+    ///         `true` and the swap-back handler remains the sole accounting signal.
     function setFeeHandler(address newFeeHandler) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), Unauthorized());
         require(newFeeHandler != address(0), InvalidFeeHandler());
+        require(feeHandler.code.length == 0 && newFeeHandler.code.length == 0, FeeHandlerMustBeEOA());
         address old = feeHandler;
         feeHandler = newFeeHandler;
         emit FeeHandlerChanged(old, newFeeHandler);

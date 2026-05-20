@@ -286,10 +286,12 @@ Event order on a successful non-zero deposit:
 
 ## 12. `LivoToken.setFeeHandler(address newFeeHandler)`
 
-Rotates the fee-handler address on the token. Callable by the current token `owner` OR by `launchpad.owner()`. V2-family tokens are deployed ownerless (`tokenOwner = address(0)`), so on those tokens only the launchpad-owner branch is reachable. Reverts on `newFeeHandler == address(0)` with `InvalidFeeHandler`.
+Rotates the fee-handler address on the token. Callable by the current token `owner` OR by `launchpad.owner()`. V2-family tokens are deployed ownerless (`tokenOwner = address(0)`), so on those tokens only the launchpad-owner branch is reachable. Reverts on `newFeeHandler == address(0)` with `InvalidFeeHandler`, and on `current.code.length != 0 || newFeeHandler.code.length != 0` with `FeeHandlerMustBeEOA`.
+
+The EOA-on-both-sides gate makes the fee-handler effectively **immutable for master-routed tokens** (their current `feeHandler` is a contract, so the precondition fails) and restricts direct-handler tokens to rotating only among EOAs. Post-rotation, fees always flow directly to a wallet address, so master-handler events never fire for the token and the swap-back handler stays the sole accounting signal — the indexer's `TokenFeeData.isDirectFeeHandlerEOA` flag is trivially correct.
 
 On success a single event is emitted:
 
 1. **`LivoToken.FeeHandlerChanged`** (`oldFeeHandler, newFeeHandler`).
 
-Primary use case: rotate the single direct receiver of a V2 taxable token deployed via the direct-handler path (§1.1 exception). The function does not gate by current state — admin can also redirect a master-routed token away from the master handler, which orphans the master handler's recipient set; existing pending claims there remain claimable but no new fees will arrive. Pointing back at the master handler when the token was never registered there will brick swap-backs (master handler's `_depositSingle` reverts on the unregistered config). Both are admin foot-guns.
+Only use case: rotate the single direct receiver of a V2 taxable token deployed via the direct-handler path (§1.1 exception). Master-routed tokens cannot use this function at all.

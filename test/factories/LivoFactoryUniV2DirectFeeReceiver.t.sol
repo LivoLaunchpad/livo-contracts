@@ -84,9 +84,10 @@ contract LivoFactoryUniV2DirectFeeReceiverTest is LaunchpadBaseTests {
         assertEq(address(smartReceiver).balance, before + 0.3 ether, "smart wallet receives fees");
     }
 
-    function test_v2Taxable_singleDirect_rejectingReceiver_bricksAccrual() public {
-        // Documents the trade-off: no master-handler pending-claims fallback exists for the
-        // direct path, so a receiver reverting on receive() DoSes accrueFees / future swap-backs.
+    function test_v2Taxable_singleDirect_rejectingReceiver_keepsEthInToken() public {
+        // `_accrueFees` swallows transfer failures (no revert): a receiver reverting on
+        // `receive()` no longer DoSes accrueFees / swap-backs. The ETH stays on the token contract
+        // and rolls into the next swap-back via `address(this).balance`.
         ILivoFactory.FeeShare[] memory fs = _fsDirect(address(rejectingReceiver));
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
         vm.prank(creator);
@@ -94,10 +95,14 @@ contract LivoFactoryUniV2DirectFeeReceiverTest is LaunchpadBaseTests {
             "Reject", "RJ", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
         );
 
+        uint256 receiverBefore = address(rejectingReceiver).balance;
+        uint256 tokenBefore = token.balance;
         vm.deal(buyer, 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(LivoToken.EthTransferFailed.selector);
         ILivoToken(token).accrueFees{value: 1 ether}();
+
+        assertEq(address(rejectingReceiver).balance, receiverBefore, "rejecting receiver got nothing");
+        assertEq(token.balance, tokenBefore + 1 ether, "ETH stays on the token contract");
     }
 
     // ============================================================
@@ -157,6 +162,45 @@ contract LivoFactoryUniV2DirectFeeReceiverTest is LaunchpadBaseTests {
         vm.expectRevert(LivoToken.InvalidFeeHandler.selector);
         vm.prank(admin);
         ILivoToken(token).setFeeHandler(address(0));
+    }
+
+    function test_setFeeHandler_rejectsContractReceiver() public {
+        // EOA-only gate (new side): setFeeHandler refuses any address with bytecode. Intent is to
+        // prevent rotating the receiver back into a master fee handler (or any other contract) on
+        // tokens where the indexer's isDirectFeeHandlerEOA flag is true.
+        ILivoFactory.FeeShare[] memory fs = _fsDirect(alice);
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+        vm.prank(creator);
+        address token = factoryV2Unified.createToken(
+            "EOA", "EA", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+        );
+
+        vm.expectRevert(LivoToken.FeeHandlerMustBeEOA.selector);
+        vm.prank(admin);
+        ILivoToken(token).setFeeHandler(address(smartReceiver));
+
+        // The master fee handler itself is also a contract → rejected.
+        vm.expectRevert(LivoToken.FeeHandlerMustBeEOA.selector);
+        vm.prank(admin);
+        ILivoToken(token).setFeeHandler(address(feeHandler));
+    }
+
+    function test_setFeeHandler_masterRoutedTokenIsImmutable() public {
+        // EOA-only gate (current side): a master-handler-routed token has `feeHandler = master`
+        // (a contract), so the precondition `current.code.length == 0` fails — the rotation is
+        // impossible. Effectively makes the fee-handler immutable for master-routed tokens.
+        ILivoFactory.FeeShare[] memory fs = _fs(alice); // single non-direct → master-routed
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+        vm.prank(creator);
+        address token = factoryV2Unified.createToken(
+            "Lock", "LK", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+        );
+        assertEq(ILivoToken(token).feeHandler(), address(feeHandler), "preflight: master-routed");
+
+        // Even rotating to a valid EOA reverts, because the *current* feeHandler is a contract.
+        vm.expectRevert(LivoToken.FeeHandlerMustBeEOA.selector);
+        vm.prank(admin);
+        ILivoToken(token).setFeeHandler(bob);
     }
 
     // ============================================================
