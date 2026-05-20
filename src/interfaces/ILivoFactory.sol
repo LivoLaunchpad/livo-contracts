@@ -41,6 +41,13 @@ interface ILivoFactory {
         uint256[] amounts
     );
 
+    /// @notice Emitted only when a token is deployed with a single fee receiver whose
+    ///         `directFeesEnabled` is true AND the venue uses the direct-handler path (currently
+    ///         V2 taxable only). For these tokens `token.feeHandler() == receiver` (not the master
+    ///         fee handler), and the master fee handler is never registered. The indexer uses this
+    ///         event to seed the per-token FeeSplitterShare row and flag `isDirectFeeHandlerEOA`.
+    event DirectSingleFeeReceiver(address indexed token, address receiver);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();

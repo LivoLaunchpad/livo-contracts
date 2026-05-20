@@ -235,10 +235,16 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev Shared postamble: asks the token to self-register its fee config with the master
     ///      handler, then performs the deployer buy (if any). Event order: `SharesUpdated` fires
     ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
+    /// @dev Skips master-handler registration when `token.feeHandler()` already points at a
+    ///      direct receiver (returned by `_resolveFeeHandlerForInit` on the derived factory).
+    ///      Those tokens never have a registered config on the master handler; receiver rotation
+    ///      goes through `LivoToken.setFeeHandler` instead.
     function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
         internal
     {
-        ILivoToken(token).registerFees(feeReceivers);
+        if (ILivoToken(token).feeHandler() == address(MASTER_FEE_HANDLER)) {
+            ILivoToken(token).registerFees(feeReceivers);
+        }
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
@@ -254,20 +260,25 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
     ///      `TokenCreated` is emitted BEFORE `initialize()` because the indexer creates the TokenData
     ///      entity from that event; events emitted inside `initialize()` depend on it.
+    /// @dev The `feeHandler` address baked into both the `TokenCreated` event and `InitializeParams`
+    ///      comes from `_resolveFeeHandlerForInit`. Defaults to the master fee handler; derived
+    ///      factories override the hook to bypass the master handler for specific configurations
+    ///      (currently V2 taxable + single-direct-receiver).
     function _cloneAndCreateToken(
         address impl,
         string calldata name,
         string calldata symbol,
         bytes32 salt,
-        address tokenOwner
+        address tokenOwner,
+        FeeShare[] calldata feeReceivers
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
-        emit TokenCreated(
-            token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), address(MASTER_FEE_HANDLER)
-        );
+        address feeHandler = _resolveFeeHandlerForInit(impl, feeReceivers);
+
+        emit TokenCreated(token, name, symbol, tokenOwner, address(LAUNCHPAD), address(GRADUATOR), feeHandler);
 
         params = ILivoToken.InitializeParams({
             name: name,
@@ -275,8 +286,26 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             tokenOwner: tokenOwner,
             graduator: address(GRADUATOR),
             launchpad: address(LAUNCHPAD),
-            feeHandler: address(MASTER_FEE_HANDLER)
+            feeHandler: feeHandler
         });
+    }
+
+    /// @dev Resolves the `feeHandler` baked into the token at init. Defaults to the master fee
+    ///      handler; derived factories override to return a single direct receiver's address when
+    ///      they want to bypass the master handler entirely (currently `LivoFactoryUniV2Unified`
+    ///      for V2 taxable + single-direct-receiver). When this hook returns a value other than
+    ///      `address(MASTER_FEE_HANDLER)`, `_finalizeCreation` automatically skips
+    ///      `registerFees`, and the derived factory should emit `DirectSingleFeeReceiver` so the
+    ///      indexer learns about it.
+    function _resolveFeeHandlerForInit(address impl, FeeShare[] calldata feeReceivers)
+        internal
+        view
+        virtual
+        returns (address)
+    {
+        impl; // silence unused-var warning when override doesn't use it
+        feeReceivers;
+        return address(MASTER_FEE_HANDLER);
     }
 
     /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
@@ -331,14 +360,15 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
+        FeeShare[] calldata feeReceivers,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            token = _initializeTaxToken(impl, name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+            token = _initializeTaxToken(impl, name, symbol, salt, tokenOwner, feeReceivers, taxCfg, antiSniperCfg);
         } else {
-            token = _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, antiSniperCfg);
+            token = _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, feeReceivers, antiSniperCfg);
         }
     }
 
@@ -352,11 +382,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
+        FeeShare[] calldata feeReceivers,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, feeReceivers);
 
         if (_isAntiSniperConfigured(antiSniperCfg)) {
             ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
@@ -374,10 +405,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string calldata symbol,
         bytes32 salt,
         address tokenOwner,
+        FeeShare[] calldata feeReceivers,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, feeReceivers);
 
         if (_isAntiSniperConfigured(antiSniperCfg)) {
             LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);

@@ -18,6 +18,8 @@ Unified factories register fee config automatically during token creation:
 
 `LivoMasterFeeHandler.registerToken` emits any initial direct-receiver events first, then `SharesUpdated`.
 
+**Direct-handler exception (V2 taxable, single direct receiver).** `LivoFactoryUniV2Unified` overrides `_resolveFeeHandlerForInit` to bake the receiver's address into `token.feeHandler` whenever the deploy uses one of the V2 taxable implementations AND `feeReceivers.length == 1` AND that receiver has `directFeesEnabled = true`. In that case `_finalizeCreation` skips `registerFees`, the master fee handler is never registered for this token, and the factory emits `DirectSingleFeeReceiver(token, receiver)` instead of the `DirectReceiverRegistered` / `SharesUpdated` pair. Swap-backs then push ETH directly to the receiver via a plain ETH transfer.
+
 ## Active event emitters covered here
 
 - `LivoFactoryUniV2Unified` / `LivoFactoryUniV4Unified`
@@ -42,6 +44,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`LivoTaxableToken.setTaxBps`](#10-livotaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
 11. [`LivoMasterFeeHandler.receive` (plain ETH)](#11-livomasterfeehandlerreceive-plain-eth)
+12. [`LivoToken.setFeeHandler`](#12-livotokensetfeehandleraddress-newfeehandler)
 
 ---
 
@@ -62,6 +65,7 @@ For both unified factories, the common Livo event order is:
 5. Initial fee config is registered through the token into `LivoMasterFeeHandler`:
    - Zero or more **`LivoMasterFeeHandler.DirectReceiverRegistered`** (`token, receiver`) — one per initial direct receiver.
    - **`LivoMasterFeeHandler.SharesUpdated`** (`token, recipients, sharesBps`).
+   - **Direct-handler path only (V2 taxable + single direct receiver):** `registerFees` is skipped entirely. Instead the factory emits a single **`LivoFactory.DirectSingleFeeReceiver`** (`token, receiver`). The master handler emits nothing for this token at deploy; `token.feeHandler() == receiver` from this point.
 
 Notes:
 
@@ -190,9 +194,11 @@ Indexer-relevant points:
 - **Auto- or manual-triggered swap-back** runs `IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens` against the pair and then routes proceeds to the master fee handler. Livo event order:
   1. ERC20 transfer from `address(token)` to `pair` for the swap input.
   2. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
-  3. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted before fees are deposited. `ethAmount` is the ETH that the token will push to the master fee handler via a plain ETH transfer (no `depositFees` call), i.e. the tax accrued to the creator (and any direct receivers) for the swap window covered by this back-swap.
+  3. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted before fees are deposited. `ethAmount` is the ETH that the token will push to its fee handler via a plain ETH transfer (no `depositFees` call), i.e. the tax accrued to the creator (and any direct receivers) for the swap window covered by this back-swap.
   4. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethAmount`) emitted by the handler's `receive()` (attribution via `msg.sender = token`).
   5. Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
+
+  **Direct-handler variant (V2 taxable + single direct receiver).** When the token was deployed on the direct-handler path (see §1.1), `token.feeHandler` is the receiver itself and the swap-back's plain ETH transfer never reaches the master handler. Only steps 1–3 above happen on-chain — `LivoMasterFeeHandler.CreatorFeesDeposited` and `CreatorClaimed` are NOT emitted in this variant. The indexer relies solely on `CreatorTaxSwapback` (paired with the `TokenFeeData.isDirectFeeHandlerEOA` flag set at deploy) to advance `accountedEth` + `accruedEth` + `claimedEth` in one go.
 - The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger only if the token has a non-zero owner. Factory-deployed V2 tokens are ownerless, so this manual path is inaccessible there.
 - Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the `CreatorTaxSwapback` path is not entered.
 
@@ -240,6 +246,14 @@ The same event order applies to every successful non-zero deposit, regardless of
 
 Zero-value `depositFees(token)` (or `receive()` from a token) calls are no-ops and emit no fee events, including for unregistered tokens.
 
+### 9.1 Direct-handler tokens (no master-handler registration)
+
+V2 taxable tokens deployed with a single `directFeesEnabled = true` receiver via `LivoFactoryUniV2Unified` are NOT registered in the master fee handler — `token.feeHandler() == receiver` (the receiver address itself, possibly an EOA). On every fee accrual (`accrueFees` or the V2 auto-swap-back), the token's `_accrueFees` performs a plain ETH transfer to the receiver and NONE of the events listed in §9 fire. The only fee-related events for these tokens are:
+
+- **`LivoFactory.DirectSingleFeeReceiver`** (`token, receiver`) — emitted once, at token creation (see §1.1).
+- **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted on every swap-back (see §6.3 direct-handler variant).
+- **`LivoToken.FeeHandlerChanged`** — emitted when `setFeeHandler` rotates the receiver (see §12).
+
 ---
 
 ## 10. `LivoTaxableToken.setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps)`
@@ -267,3 +281,15 @@ Event order on a successful non-zero deposit:
 
 1. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token=msg.sender, amount`).
 2. For each direct receiver with a non-zero slice: optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, sliceAmount`) on a successful synchronous forward. A failed forward (including a recursive `receive()` blocked by the `nonReentrant` guard) silently records the slice as pending instead.
+
+---
+
+## 12. `LivoToken.setFeeHandler(address newFeeHandler)`
+
+Rotates the fee-handler address on the token. Callable by the current token `owner` OR by `launchpad.owner()`. V2-family tokens are deployed ownerless (`tokenOwner = address(0)`), so on those tokens only the launchpad-owner branch is reachable. Reverts on `newFeeHandler == address(0)` with `InvalidFeeHandler`.
+
+On success a single event is emitted:
+
+1. **`LivoToken.FeeHandlerChanged`** (`oldFeeHandler, newFeeHandler`).
+
+Primary use case: rotate the single direct receiver of a V2 taxable token deployed via the direct-handler path (§1.1 exception). The function does not gate by current state — admin can also redirect a master-routed token away from the master handler, which orphans the master handler's recipient set; existing pending claims there remain claimable but no new fees will arrive. Pointing back at the master handler when the token was never registered there will brick swap-backs (master handler's `_depositSingle` reverts on the unregistered config). Both are admin foot-guns.

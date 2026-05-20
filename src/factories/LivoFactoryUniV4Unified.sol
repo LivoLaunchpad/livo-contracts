@@ -60,7 +60,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateTaxConfig(taxCfg);
 
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
-        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, feeReceivers, taxCfg, antiSniperCfg);
 
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, feeReceivers, supplyShares);

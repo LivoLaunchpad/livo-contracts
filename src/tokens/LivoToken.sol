@@ -83,6 +83,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error CannotSelfTransfer();
     error Unauthorized();
     error EthTransferFailed();
+    error InvalidFeeHandler();
 
     //////////////////////////////////////////////////////
 
@@ -188,12 +189,26 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         require(ok, EthTransferFailed());
     }
 
-    //////////////////////// view functions ////////////////////////
-
-    /// @notice Returns the underlying fee receiver addresses and their share in basis points
-    function getFeeReceivers() external view returns (address[] memory, uint256[] memory) {
-        return ILivoMasterFeeHandler(feeHandler).getRecipients(address(this));
+    /// @notice Rotates the fee-handler address. Callable by the token owner OR by the launchpad
+    ///         owner. V2-family tokens are deployed ownerless (`tokenOwner = address(0)`), so on
+    ///         those tokens only the launchpad owner can call.
+    /// @dev    Primary use case: rotate the single direct receiver of a V2 taxable token deployed
+    ///         via `LivoFactoryUniV2Unified`'s direct-handler path (`token.feeHandler == receiver`).
+    ///         Pointing back at the master fee handler when this token was never registered there
+    ///         will brick swapbacks (master handler's `_depositSingle` reverts on the unregistered
+    ///         config). Redirecting a master-routed token away from the master handler drains all
+    ///         future fee flow to the new address; the master handler's stored recipient set is
+    ///         orphaned (existing pending claims remain claimable). Both are admin foot-guns; the
+    ///         function trusts the caller and does not gate by current state.
+    function setFeeHandler(address newFeeHandler) external {
+        require(msg.sender == owner || msg.sender == launchpad.owner(), Unauthorized());
+        require(newFeeHandler != address(0), InvalidFeeHandler());
+        address old = feeHandler;
+        feeHandler = newFeeHandler;
+        emit FeeHandlerChanged(old, newFeeHandler);
     }
+
+    //////////////////////// view functions ////////////////////////
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}

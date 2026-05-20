@@ -11,6 +11,11 @@ interface ILivoToken is IERC20 {
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
+    /// @notice Emitted by `setFeeHandler`. Lets the indexer rotate `TokenFeeData.feeHandler`,
+    ///         rewrite the per-token FeeSplitterShare row when this token is in direct-handler
+    ///         mode, and recompute `isDirectFeeHandlerEOA`.
+    event FeeHandlerChanged(address oldFeeHandler, address newFeeHandler);
+
     /// @notice Shared initialization parameters for Livo token clones
     struct InitializeParams {
         string name;
@@ -49,6 +54,12 @@ interface ILivoToken is IERC20 {
     /// @notice Allows the current owner to permanently renounce ownership
     function renounceOwnership() external;
 
+    /// @notice Rotates the fee handler address. Auth: current `owner` OR the launchpad owner.
+    /// @dev    Primary use case: rotate the single direct receiver of a V2-taxable token deployed
+    ///         via the direct-handler path. Pointing back at the master fee handler when the token
+    ///         was never registered there will brick swapbacks — admin's responsibility.
+    function setFeeHandler(address newFeeHandler) external;
+
     ////////////////// VIEW FUNCTIONS ////////////////////
 
     /// @notice Returns the tax configuration for this token
@@ -74,11 +85,6 @@ interface ILivoToken is IERC20 {
     /// @notice Address who can accept ownership of the token
     /// @dev It can be address(0) if no owner is proposed
     function proposedOwner() external view returns (address);
-
-    /// @notice Returns the underlying fee receiver addresses and their share in basis points
-    /// @dev Sourced from the master fee handler's per-token config: returns every current
-    ///      recipient (direct + claimable) with their BPS share. Sum of shares is always 10_000.
-    function getFeeReceivers() external view returns (address[] memory receivers, uint256[] memory sharesBps);
 
     /// @notice Returns the maximum amount of tokens `buyer` can purchase right now on the bonding curve.
     /// @dev Sniper-protected variants enforce per-tx and per-wallet caps during the protection window;
