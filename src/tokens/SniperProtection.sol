@@ -15,10 +15,13 @@ struct AntiSniperConfigs {
 }
 
 /// @title SniperProtection
-/// @notice Reusable anti-sniper mixin for Livo tokens. Applies configurable max-buy-per-tx and
-///         max-wallet caps during a configurable window after token creation, only on buys from
-///         the bonding curve (i.e. transfers whose `from` is the launchpad), and only before
-///         graduation.
+/// @notice Reusable anti-sniper mixin for Livo tokens, active during a configurable window after
+///         token creation and only before graduation. Enforces two caps:
+///           - Per-wallet cap: applied on EVERY incoming transfer (regardless of source), so a
+///             sniper cannot sybil-buy from many wallets and consolidate into one.
+///           - Per-tx cap: applied only on bonding-curve buys (`from == launchpad`), to throttle
+///             a single oversized buy. Wallet-to-wallet transfers are not subject to it —
+///             consolidation is already contained by the per-wallet cap.
 /// @dev Intended to be inherited by opt-in token variants. The inheriting token is responsible
 ///      for calling `_initializeSniperProtection(cfg)` in its initializer and
 ///      `_checkSniperProtection(...)` at the top of its `_update()` override.
@@ -104,23 +107,36 @@ abstract contract SniperProtection {
     /// @param to Transfer recipient (as passed to `_update`).
     /// @param amount Transfer amount.
     /// @param launchpadAddr Address of the launchpad (the bonding-curve counterparty).
-    /// @param factoryAddr Address of the factory that deployed this token (deployer-buy recipient).
-    ///        Sourced by the caller from the host token's `tokenFactory` (transient): non-zero
-    ///        only inside the same tx that initialized the token, which is the only window in
-    ///        which the launchpad → factory hop happens. After that tx it reads `address(0)`,
-    ///        which never appears as a `to` in real transfers — so the exemption naturally
-    ///        applies once and only once.
+    /// @param factoryAddr Address of the factory that deployed this token. Sourced by the caller
+    ///        from the host token's `tokenFactory` (transient): non-zero only inside the same tx
+    ///        that initialized the token, which is the only window in which the launchpad →
+    ///        factory → supplyShares deployer-buy hops happen. After that tx it reads
+    ///        `address(0)`.
     /// @param graduatorAddr Address of the graduator (graduation-reserve recipient).
     /// @param graduated True if the token has already graduated.
     /// @param toBalance Recipient's balance BEFORE this transfer is applied (`balanceOf(to)`).
-    /// @dev The factory recipient is exempt so the deployer-buy path (launchpad → factory →
-    ///      supplyShares, atomically in `createToken`) can move up to the factory's own
-    ///      deployer-buy cap without tripping the anti-sniper limits.
-    /// @dev The graduator recipient is exempt for the same reason: graduation moves the entire
-    ///      graduation reserve (~80% of supply) from the launchpad to the graduator in a single
-    ///      hop before `markGraduated()` flips the gate, so without this exemption a graduation
-    ///      triggered inside the protection window would always revert with `MaxBuyPerTxExceeded`.
-    /// @dev The sniper protection limits ignore the launchpad fees for simplicity
+    /// @dev The per-wallet cap applies to every incoming transfer (modulo the bypass list); the
+    ///      per-tx cap applies only when the source is the launchpad (i.e. on bonding-curve
+    ///      buys). This lets a sniper-fragmented buy still be consolidation-blocked while
+    ///      keeping ordinary wallet-to-wallet movement free of an artificial per-tx ceiling.
+    /// @dev `to` exemptions (skip the entire check):
+    ///        - `launchpadAddr`: sellers returning tokens to the curve (and the recipient of
+    ///          the initial mint, although that path is also exempt via the `launchTimestamp ==
+    ///          0` early-return below).
+    ///        - `factoryAddr`: deployer-buy hop `launchpad → factory`, atomic with `createToken`.
+    ///        - `graduatorAddr`: graduation moves the entire graduation reserve (~80% of supply)
+    ///          from the launchpad to the graduator in a single hop BEFORE `markGraduated()`
+    ///          flips the gate; without this, graduation inside the window would always revert.
+    ///        - `sniperBypass[to]`: dev-supplied whitelist.
+    /// @dev `from` exemptions (skip the entire check):
+    ///        - `factoryAddr`: factory → supplyShare recipients during the deployer-buy split.
+    ///          These splits are dev-configured and may legitimately exceed the per-wallet cap.
+    ///        - `graduatorAddr`: defense in depth for any pre-`markGraduated` graduator moves.
+    /// @dev Mints (`from == 0`) only happen inside `_initializeLivoToken` before
+    ///      `_initializeSniperProtection` runs, when `launchTimestamp == 0`, so the window
+    ///      early-return covers them. Burns (`to == 0`) are rejected by OZ ERC20 v5 before
+    ///      reaching `_update`; they can only shrink balances anyway.
+    /// @dev The sniper protection limits ignore the launchpad fees for simplicity.
     function _checkSniperProtection(
         address from,
         address to,
@@ -131,19 +147,32 @@ abstract contract SniperProtection {
         bool graduated,
         uint256 toBalance
     ) internal view {
-        // `from == launchpadAddr` already excludes mints (where `from == 0`), so no explicit
-        // `from != address(0)` check is needed: the launchpad address is never zero.
-        if (!graduated && from == launchpadAddr && block.timestamp < launchTimestamp + protectionWindowSeconds) {
-            if (to == factoryAddr) return;
-            if (to == graduatorAddr) return;
-            if (sniperBypass[to]) return;
+        if (graduated) return;
+        if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return;
 
+        // sells (to launchpad) not affected
+        if (to == launchpadAddr) return;
+
+        // required by either the token creation or graduation steps
+        if (to == factoryAddr) return;
+        if (to == graduatorAddr) return;
+        if (from == factoryAddr) return;
+        if (from == graduatorAddr) return;
+
+        if (sniperBypass[to]) return;
+
+        // Per-tx cap: only on curve buys. Wallet-to-wallet transfers don't trip it; the
+        // per-wallet cap below already bounds the receivable amount to `maxWallet` per address.
+        // Checked before the per-wallet cap so an oversized buy reverts with the more specific
+        // `MaxBuyPerTxExceeded` rather than `MaxWalletExceeded`.
+        if (from == launchpadAddr) {
             uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
             require(amount <= maxTx, MaxBuyPerTxExceeded());
-
-            uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
-            require(toBalance + amount <= maxWallet, MaxWalletExceeded());
         }
+
+        // Per-wallet cap: every non-bypassed incoming transfer.
+        uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
+        require(toBalance + amount <= maxWallet, MaxWalletExceeded());
     }
 
     /// @notice Largest token amount `buyer` may receive from the launchpad right now without
@@ -152,11 +181,11 @@ abstract contract SniperProtection {
     /// @dev Does not account for launchpad-side limits (available supply, graduation excess
     ///      cap). Callers should `min()` with `LivoLaunchpad.getMaxEthToSpend` converted to
     ///      tokens via the bonding curve.
-    /// @dev The `factory` and `graduator` recipient exemptions in `_checkSniperProtection` are
-    ///      intentionally NOT mirrored here: neither address ever buys via
+    /// @dev The `factory` / `graduator` / `launchpad` exemptions in `_checkSniperProtection`
+    ///      are intentionally NOT mirrored here: none of those addresses ever buys via
     ///      `LivoLaunchpad.buyTokensWithExactEth` (factory only receives during the
-    ///      `createToken` deployer-buy hop, graduator only at graduation), so spending storage
-    ///      reads to model that case is unnecessary.
+    ///      `createToken` deployer-buy hop, graduator only at graduation, launchpad is the
+    ///      seller), so spending storage reads to model those cases is unnecessary.
     function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
         if (graduated) return type(uint256).max;
         if (sniperBypass[buyer]) return type(uint256).max;
