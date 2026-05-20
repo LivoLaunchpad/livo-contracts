@@ -27,12 +27,12 @@ library DeploymentsSepolia {
     address internal constant TAXABLE_TOKEN_IMPL = 0xCcc99765d31A6023E279b98f19e3dFB8430D401f;
 
     /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0x237EB36efFBc522a19FD8A5581e74661C484Dfe0;
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xfe587A3397e43a92C5bacEBE4bED4bF1e9f8344F;
+    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xE90318026ea1D2865A5359386a75B75acB054B52;
+    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0x791A685EDCE8839C29Fe87Ad8b4ea84E3D1d98C0;
 
     /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
     address internal constant TAXABLE_TOKEN_V2_IMPL = 0x90FcBc67563B6e6950439a28D32964a47503Eb35;
-    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0x5998c89a95207Db08653504138abA3ec8420ADA2;
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0x9d73bb0fF3DbdCd727fD84E8CB424Ad83920C202;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -42,8 +42,8 @@ library DeploymentsSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xE5D83D4ea61624a847cbC00720926362a5e6105a;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x68AE1B6257F3cEdFffe6FA2efcC5C726d4493213;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x60653929Cc5b5053e428311FD4182882244901b0;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x76133EFc6563047e9D990c902063e1746601e2D3;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
