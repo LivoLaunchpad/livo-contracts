@@ -151,18 +151,100 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(seller), 0);
     }
 
-    /// Wallet-to-wallet transfers within the protection window must be uncapped: the check only
-    /// gates `from == launchpad`. Receiver may end up holding more than `maxWallet`, and the
-    /// transfer amount may exceed `maxBuyPerTx`.
-    function test_walletToWalletUnaffected_withinWindow() public {
+    /// Wallet-to-wallet transfers within the protection window are subject to the same caps as
+    /// curve buys. A transfer that keeps the recipient under both caps is allowed.
+    function test_walletToWallet_underCap_succeeds_withinWindow() public {
         _curveBuy(buyer, MAX_BUY_PER_TX);
-        _curveBuy(seller, MAX_BUY_PER_TX);
-
         assertLt(block.timestamp, SniperProtection(address(_token())).launchTimestamp() + DEFAULT_WINDOW);
 
         vm.prank(buyer);
-        _token().transfer(seller, MAX_BUY_PER_TX);
-        assertEq(_token().balanceOf(seller), MAX_BUY_PER_TX * 2);
+        _token().transfer(buyer2, MAX_BUY_PER_TX);
+        assertEq(_token().balanceOf(buyer2), MAX_BUY_PER_TX);
+    }
+
+    /// The per-tx cap is intentionally NOT applied to wallet-to-wallet transfers — only to
+    /// bonding-curve buys. With asymmetric configs (maxBuyPerTx < maxWallet), a wallet holding
+    /// > maxBuyPerTx can push the full balance to a fresh recipient in one transfer as long as
+    /// the recipient stays under `maxWallet`.
+    function test_walletToWallet_perTxCap_notEnforcedWithinWindow() public {
+        // 1% per-tx, 3% per-wallet, default window.
+        uint16 tightBuyBps = 100; // 1% → 10_000_000e18
+        uint16 tightWalletBps = 300; // 3% → 30_000_000e18
+        address[] memory wl = new address[](1);
+        wl[0] = whitelisted1;
+        LivoToken t = _deployCustom(tightBuyBps, tightWalletBps, DEFAULT_WINDOW, wl);
+
+        uint256 tightMaxBuy = (TOTAL_SUPPLY * tightBuyBps) / 10_000;
+        uint256 tightMaxWallet = (TOTAL_SUPPLY * tightWalletBps) / 10_000;
+
+        // Load `whitelisted1` with `tightMaxWallet` (bypasses per-tx and per-wallet caps).
+        vm.prank(launchpad);
+        t.transfer(whitelisted1, tightMaxWallet);
+
+        // Wallet-to-wallet transfer of an amount above the per-tx cap is allowed as long as the
+        // recipient ends up under the per-wallet cap.
+        assertGt(tightMaxWallet, tightMaxBuy);
+        vm.prank(whitelisted1);
+        t.transfer(buyer, tightMaxWallet);
+        assertEq(t.balanceOf(buyer), tightMaxWallet);
+    }
+
+    /// A wallet-to-wallet transfer whose recipient would end up over the per-wallet cap must
+    /// revert, even if the amount itself is under the per-tx cap. This is the primary defense
+    /// against the sybil-buy → consolidate attack: a sniper cannot fragment buys across many
+    /// wallets and then transfer them all to a single wallet.
+    function test_walletToWallet_perWalletCap_revertsWithinWindow() public {
+        _curveBuy(buyer, MAX_WALLET);
+        _curveBuy(seller, MAX_BUY_PER_TX);
+
+        // `seller` is at maxBuyPerTx (< maxWallet here — but with default 3%/3% configs they're
+        // equal). Any non-zero transfer to `buyer` would push `buyer` above the wallet cap.
+        vm.prank(seller);
+        vm.expectRevert(SniperProtection.MaxWalletExceeded.selector);
+        _token().transfer(buyer, 1);
+    }
+
+    /// End-to-end sybil consolidation attempt: multiple wallets each buy at the cap, then try to
+    /// funnel into one wallet. The consolidating transfer must revert.
+    function test_walletToWallet_sybilConsolidation_blockedWithinWindow() public {
+        address sybil1 = makeAddr("sybil1");
+        address sybil2 = makeAddr("sybil2");
+        address sink = makeAddr("sink");
+
+        _curveBuy(sybil1, MAX_WALLET);
+        _curveBuy(sybil2, MAX_WALLET);
+        _curveBuy(sink, MAX_WALLET);
+
+        // Each sybil sitting at maxWallet attempts to push everything to `sink`.
+        vm.prank(sybil1);
+        vm.expectRevert(SniperProtection.MaxWalletExceeded.selector);
+        _token().transfer(sink, MAX_WALLET);
+    }
+
+    /// After the window expires, wallet-to-wallet transfers of any size are allowed.
+    function test_walletToWallet_afterWindow_uncapped() public {
+        _curveBuy(buyer, MAX_WALLET);
+        _curveBuy(buyer2, MAX_WALLET);
+
+        uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
+        vm.warp(launchTs + DEFAULT_WINDOW + 1);
+
+        vm.prank(buyer);
+        _token().transfer(buyer2, MAX_WALLET);
+        assertEq(_token().balanceOf(buyer2), MAX_WALLET * 2);
+    }
+
+    /// Whitelisted recipient bypasses caps on wallet-to-wallet transfers too, not just on curve
+    /// buys.
+    function test_walletToWallet_whitelistedRecipient_bypassesCaps() public {
+        _curveBuy(buyer, MAX_WALLET);
+        _curveBuy(buyer2, MAX_WALLET);
+
+        vm.prank(buyer);
+        _token().transfer(whitelisted1, MAX_WALLET);
+        vm.prank(buyer2);
+        _token().transfer(whitelisted1, MAX_WALLET);
+        assertEq(_token().balanceOf(whitelisted1), MAX_WALLET * 2);
     }
 
     function test_windowExpiry_capsLift() public {
@@ -222,10 +304,42 @@ abstract contract SniperProtectionBaseTest is Test {
         freshToken.transfer(deployingFactory, deployerBuyAmount);
         assertEq(freshToken.balanceOf(deployingFactory), deployerBuyAmount);
 
-        // Factory → deployer (from != launchpad): sniper check is inactive regardless.
+        // Factory → deployer: passes via the `from == factoryAddr` exemption, which exists so the
+        // factory's intra-`createToken` distribution to supplyShare recipients isn't capped.
         vm.prank(deployingFactory);
         freshToken.transfer(deployer, deployerBuyAmount);
         assertEq(freshToken.balanceOf(deployer), deployerBuyAmount);
+    }
+
+    /// Once `createToken` has finished, the transient `tokenFactory` slot reads `address(0)`,
+    /// so the `from == factoryAddr` exemption no longer applies to the deploying address. A wallet
+    /// holding the deployer-buy amount cannot use that exemption to flood another wallet during
+    /// the protection window.
+    /// @dev Simulated in-test by using `_curveBuy` (still inside the same test tx, so the slot is
+    ///      set) to load a recipient up; then the recipient — which is NOT the factory — tries to
+    ///      push past the wallet cap and reverts.
+    function test_deployerBuyRecipient_stillCappedOnRetransfer() public {
+        // The deployer-buy recipient is `deployer`. Whitelist them so they can receive 10% from
+        // the launchpad without tripping the per-tx cap on the inbound transfer.
+        address[] memory wl = new address[](1);
+        wl[0] = deployer;
+        LivoToken t = _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
+
+        vm.prank(launchpad);
+        t.transfer(deployer, TOTAL_SUPPLY / 10);
+
+        // `deployer` now holds 10% of supply. Pushing >maxWallet to a fresh wallet reverts on the
+        // per-wallet cap (the per-tx cap doesn't apply to wallet-to-wallet transfers).
+        vm.prank(deployer);
+        vm.expectRevert(SniperProtection.MaxWalletExceeded.selector);
+        t.transfer(buyer, MAX_WALLET + 1);
+
+        // Filling a wallet exactly to the cap is fine; one wei more reverts.
+        vm.prank(deployer);
+        t.transfer(buyer, MAX_WALLET);
+        vm.prank(deployer);
+        vm.expectRevert(SniperProtection.MaxWalletExceeded.selector);
+        t.transfer(buyer, 1);
     }
 
     /// Non-factory, non-whitelisted recipients are still capped — ensures the bypass is scoped.

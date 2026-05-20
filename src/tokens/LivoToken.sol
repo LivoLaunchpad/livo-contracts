@@ -44,24 +44,30 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     ///      end of tx, so a second `registerFees` attempt from any future tx finds it zeroed
     ///      and reverts on the `msg.sender == 0` check.
     /// @dev SECURITY ASSUMPTION (sniper-protected variants): `SniperProtection._checkSniperProtection`
-    ///      reads this slot to exempt the launchpad → factory deployer-buy hop from the per-tx /
-    ///      per-wallet caps. Outside the deploy tx the slot reads `address(0)`, so the exemption
-    ///      check effectively becomes `if (to == address(0)) return;`. This is currently safe
-    ///      ONLY because OZ ERC20 v5's `transfer` / `transferFrom` revert with
-    ///      `ERC20InvalidReceiver` before reaching `_update` whenever `to == address(0)`, which
-    ///      makes a sniper-checked transfer with a zero recipient unreachable in practice.
-    /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `from == launchpad`
-    ///      and `to == address(0)` would silently bypass the sniper caps. Concrete cases to
-    ///      watch out for:
-    ///        - a `LaunchpadV2` that exposes a buyer-supplied `receiver` parameter and forwards
-    ///          it to the token without rejecting `address(0)`;
-    ///        - a custom token transfer override (or alternate ERC20 base) that drops the
-    ///          zero-recipient guard;
-    ///        - any new internal call site that issues `_update(launchpad, address(0), x)`
-    ///          directly (e.g. a "burn from launchpad" admin path).
+    ///      reads this slot to exempt the deployer-buy hops `launchpad → factory → supplyShares`
+    ///      from the per-tx / per-wallet caps (both `to == factoryAddr` and `from == factoryAddr`
+    ///      branches). Outside the deploy tx the slot reads `address(0)`, so the exemption checks
+    ///      effectively become `if (to == address(0)) return;` and `if (from == address(0))
+    ///      return;`. This is currently safe because:
+    ///        - `to == 0`: OZ ERC20 v5's `transfer`/`transferFrom` revert with
+    ///          `ERC20InvalidReceiver` before reaching `_update`, so the `to == factoryAddr`
+    ///          branch is unreachable with `factoryAddr == 0`.
+    ///        - `from == 0`: the only mint is `_initializeLivoToken`'s initial mint to the
+    ///          launchpad, which runs BEFORE `_initializeSniperProtection` sets `launchTimestamp`.
+    ///          At that moment the window-active check returns early on its own, so the
+    ///          `from == factoryAddr` branch is unreachable with `factoryAddr == 0`.
+    /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `to == address(0)`
+    ///      OR with `from == address(0)` AFTER `launchTimestamp` is set would silently bypass
+    ///      the sniper caps. Concrete cases to watch out for:
+    ///        - a custom transfer override (or alternate ERC20 base) that drops the
+    ///          zero-recipient guard, enabling burns through `_update`;
+    ///        - any new `_mint` call site that runs after init (e.g. a rebase or inflation
+    ///          hook), since post-init mints have `from == address(0)`;
+    ///        - any new internal call site that issues `_update(*, address(0), x)` directly
+    ///          (e.g. a "burn from launchpad" admin path).
     ///      If any such path is introduced, harden the exemption: pass a non-zero sentinel
-    ///      for the cleared state, or have `_checkSniperProtection` add an explicit
-    ///      `factoryAddr != address(0)` guard around the `to == factoryAddr` short-circuit.
+    ///      for the cleared state, or have `_checkSniperProtection` add explicit
+    ///      `factoryAddr != address(0)` guards around the factoryAddr short-circuits.
     address internal transient tokenFactory;
 
     /// @notice Token name
@@ -105,8 +111,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         pair = ILivoGraduator(params.graduator).initialize(address(this));
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
-        // reads it sees the real value. The mint itself is not gated by the sniper-protection check
-        // (it has `from == address(0)`, which the check explicitly bypasses).
+        // reads it sees the real value. The mint itself is not gated by the sniper-protection check:
+        // `_initializeSniperProtection` runs after this initializer, so `launchTimestamp == 0` here
+        // and the check's window-active early-return covers the mint.
         launchpad = LivoLaunchpad(params.launchpad);
 
         _mint(params.launchpad, TOTAL_SUPPLY);
