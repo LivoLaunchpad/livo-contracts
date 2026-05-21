@@ -44,7 +44,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`LivoTaxableToken.setTaxBps`](#10-livotaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
 11. [`LivoMasterFeeHandler.receive` (plain ETH)](#11-livomasterfeehandlerreceive-plain-eth)
-12. [`LivoToken.accrueFees` — `RouteFees`](#12-livotokenaccruefees--redirectfees)
+12. [`LivoToken._accrueFees` — `RouteFees`](#12-livotoken_accruefees--routefees)
 
 ---
 
@@ -284,10 +284,13 @@ Event order on a successful non-zero deposit:
 
 ---
 
-## 12. `LivoToken.accrueFees` — `RouteFees`
+## 12. `LivoToken._accrueFees` — `RouteFees`
 
-External `LivoToken.accrueFees()` emits **`LivoToken.RouteFees`** (`feeHandler, amount=msg.value`) before forwarding ETH to `feeHandler`. The event fires unconditionally on every call (including `msg.value == 0`) and is emitted regardless of whether the downstream ETH push to `feeHandler` succeeds — `_accrueFees` swallows transfer failures (see contract NatSpec).
+Every fee push to `feeHandler` that goes through `LivoToken._accrueFees` (the shared internal helper) emits **`LivoToken.RouteFees`** (`feeHandler, amount`) immediately before the ETH `call`. Zero-value calls return early and emit nothing. The event is emitted regardless of whether the downstream ETH push succeeds — `_accrueFees` swallows transfer failures (see contract NatSpec).
 
-Callers that route through `LivoToken.accrueFees()` include the graduators (`CreatorGraduationFeeCollected` paths in §§3–4) and `LivoSwapHook` (§§6.1–6.2). The V2 in-token swap-back path (§6.3) bypasses the external entry point and calls `_accrueFees` directly, so it does NOT emit `RouteFees`.
+All paths that route fees to `feeHandler` go through this helper, so `RouteFees` fires on:
+
+- External `LivoToken.accrueFees()` calls — used by the graduators (`CreatorGraduationFeeCollected` paths in §§3–4) and `LivoSwapHook` (§§6.1–6.2).
+- The V2 taxable in-token swap-back path (§6.3), which calls `_accrueFees` directly with the contract's ETH balance after the swap.
 
 The indexer does not currently consume `RouteFees`; downstream accounting still relies on `LivoMasterFeeHandler.CreatorFeesDeposited` / `CreatorClaimed` (or the direct-handler signals in §9.1).

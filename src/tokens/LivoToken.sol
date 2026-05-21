@@ -59,18 +59,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     ///          launchpad, which runs BEFORE `_initializeSniperProtection` sets `launchTimestamp`.
     ///          At that moment the window-active check returns early on its own, so the
     ///          `from == factoryAddr` branch is unreachable with `factoryAddr == 0`.
-    /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `to == address(0)`
-    ///      OR with `from == address(0)` AFTER `launchTimestamp` is set would silently bypass
-    ///      the sniper caps. Concrete cases to watch out for:
-    ///        - a custom transfer override (or alternate ERC20 base) that drops the
-    ///          zero-recipient guard, enabling burns through `_update`;
-    ///        - any new `_mint` call site that runs after init (e.g. a rebase or inflation
-    ///          hook), since post-init mints have `from == address(0)`;
-    ///        - any new internal call site that issues `_update(*, address(0), x)` directly
-    ///          (e.g. a "burn from launchpad" admin path).
-    ///      If any such path is introduced, harden the exemption: pass a non-zero sentinel
-    ///      for the cleared state, or have `_checkSniperProtection` add explicit
-    ///      `factoryAddr != address(0)` guards around the factoryAddr short-circuits.
     address internal transient tokenFactory;
 
     /// @notice Token name
@@ -178,8 +166,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @dev Thin external wrapper around `_accrueFees` so subclasses (and internal callers like
     ///      taxable-token swap-backs) can push fees without re-entering the external function.
     function accrueFees() external payable {
-        // No indexer handler for now; informational only.
-        emit RouteFees(feeHandler, msg.value);
         _accrueFees(msg.value);
     }
 
@@ -195,6 +181,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     ///      future swap-back / accrual that lands successfully.
     function _accrueFees(uint256 amount) internal {
         if (amount == 0) return;
+        // No indexer handler for now; informational only.
+        emit RouteFees(feeHandler, amount);
         // Failure ignored intentionally — ETH stays in the contract and rolls into the next push.
         // forge-lint: disable-next-line(unchecked-call)
         (bool ok,) = feeHandler.call{value: amount}("");
