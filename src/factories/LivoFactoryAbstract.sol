@@ -237,8 +237,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
     /// @dev Skips master-handler registration when `token.feeHandler()` already points at a
     ///      direct receiver (returned by `_resolveFeeHandlerForInit` on the derived factory).
-    ///      Those tokens never have a registered config on the master handler; receiver rotation
-    ///      goes through `LivoToken.setFeeHandler` instead.
+    ///      Those tokens never have a registered config on the master handler, and the receiver
+    ///      address is immutable post-init.
     function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
         internal
     {

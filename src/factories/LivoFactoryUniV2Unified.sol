@@ -50,8 +50,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///      swapback path's `_accrueFees` then becomes a plain ETH transfer to that address, so
     ///      Dexscreener-style scanners no longer flag the swap-back transfer as an external call
     ///      into an unknown contract. The master handler is never registered for these tokens
-    ///      (`_finalizeCreation` skips `registerFees`); admin rotates the receiver via
-    ///      `LivoToken.setFeeHandler`.
+    ///      (`_finalizeCreation` skips `registerFees`); the receiver baked in at init time is
+    ///      immutable for the life of the token.
     ///
     ///      Trade-offs:
     ///      - No fallback like the master handler's pending-claims path: a malicious contract

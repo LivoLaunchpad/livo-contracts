@@ -11,11 +11,6 @@ interface ILivoToken is IERC20 {
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
-    /// @notice Emitted by `setFeeHandler`. Lets the indexer rotate `TokenFeeData.feeHandler`,
-    ///         rewrite the per-token FeeSplitterShare row when this token is in direct-handler
-    ///         mode, and recompute `isDirectFeeHandlerEOA`.
-    event FeeHandlerChanged(address oldFeeHandler, address newFeeHandler);
-
     /// @notice Shared initialization parameters for Livo token clones
     struct InitializeParams {
         string name;
@@ -53,12 +48,6 @@ interface ILivoToken is IERC20 {
 
     /// @notice Allows the current owner to permanently renounce ownership
     function renounceOwnership() external;
-
-    /// @notice Rotates the fee handler address. Auth: current `owner` OR the launchpad owner.
-    /// @dev    Primary use case: rotate the single direct receiver of a V2-taxable token deployed
-    ///         via the direct-handler path. Pointing back at the master fee handler when the token
-    ///         was never registered there will brick swapbacks — admin's responsibility.
-    function setFeeHandler(address newFeeHandler) external;
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 

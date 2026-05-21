@@ -5,13 +5,11 @@ import "forge-std/Test.sol";
 import {LaunchpadBaseTests} from "test/launchpad/base.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
 
 /// @notice Coverage for the V2 taxable + single-direct-receiver path in `LivoFactoryUniV2Unified`.
 ///         The factory's `_resolveFeeHandlerForInit` override sets `token.feeHandler = receiver`
 ///         (bypassing the master fee handler) and emits `DirectSingleFeeReceiver`. Negative paths
-///         assert all other configurations still register with the master handler. Also covers
-///         the new `LivoToken.setFeeHandler` admin-rotation entry point.
+///         assert all other configurations still register with the master handler.
 contract LivoFactoryUniV2DirectFeeReceiverTest is LaunchpadBaseTests {
     AcceptingReceiver internal smartReceiver;
     RejectingReceiver internal rejectingReceiver;
@@ -103,104 +101,6 @@ contract LivoFactoryUniV2DirectFeeReceiverTest is LaunchpadBaseTests {
 
         assertEq(address(rejectingReceiver).balance, receiverBefore, "rejecting receiver got nothing");
         assertEq(token.balance, tokenBefore + 1 ether, "ETH stays on the token contract");
-    }
-
-    // ============================================================
-    // setFeeHandler — admin rotation entry point
-    // ============================================================
-
-    function test_setFeeHandler_launchpadOwnerCanRotateDirectReceiver() public {
-        ILivoFactory.FeeShare[] memory fs = _fsDirect(alice);
-        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        vm.prank(creator);
-        address token = factoryV2Unified.createToken(
-            "Rot", "RT", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
-        );
-
-        vm.expectEmit(true, true, true, true, token);
-        emit ILivoToken.FeeHandlerChanged(alice, bob);
-        vm.prank(admin); // launchpad.owner() is admin
-        ILivoToken(token).setFeeHandler(bob);
-
-        assertEq(ILivoToken(token).feeHandler(), bob, "feeHandler rotated to bob");
-
-        uint256 bobBefore = bob.balance;
-        uint256 aliceBefore = alice.balance;
-        vm.deal(buyer, 0.25 ether);
-        vm.prank(buyer);
-        ILivoToken(token).accrueFees{value: 0.25 ether}();
-        assertEq(bob.balance, bobBefore + 0.25 ether, "bob now receives fees");
-        assertEq(alice.balance, aliceBefore, "alice no longer receives");
-    }
-
-    function test_setFeeHandler_unauthorizedCallerReverts() public {
-        ILivoFactory.FeeShare[] memory fs = _fsDirect(alice);
-        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        vm.prank(creator);
-        address token = factoryV2Unified.createToken(
-            "Auth", "AU", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
-        );
-
-        // V2 tokens are ownerless, so creator isn't `owner` and admin is the only valid caller.
-        vm.expectRevert(LivoToken.Unauthorized.selector);
-        vm.prank(buyer);
-        ILivoToken(token).setFeeHandler(bob);
-
-        vm.expectRevert(LivoToken.Unauthorized.selector);
-        vm.prank(creator);
-        ILivoToken(token).setFeeHandler(bob);
-    }
-
-    function test_setFeeHandler_rejectsZeroAddress() public {
-        ILivoFactory.FeeShare[] memory fs = _fsDirect(alice);
-        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        vm.prank(creator);
-        address token = factoryV2Unified.createToken(
-            "Zero", "ZR", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
-        );
-
-        vm.expectRevert(LivoToken.InvalidFeeHandler.selector);
-        vm.prank(admin);
-        ILivoToken(token).setFeeHandler(address(0));
-    }
-
-    function test_setFeeHandler_rejectsContractReceiver() public {
-        // EOA-only gate (new side): setFeeHandler refuses any address with bytecode. Intent is to
-        // prevent rotating the receiver back into a master fee handler (or any other contract) on
-        // tokens where the indexer's isDirectFeeHandlerEOA flag is true.
-        ILivoFactory.FeeShare[] memory fs = _fsDirect(alice);
-        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        vm.prank(creator);
-        address token = factoryV2Unified.createToken(
-            "EOA", "EA", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
-        );
-
-        vm.expectRevert(LivoToken.FeeHandlerMustBeEOA.selector);
-        vm.prank(admin);
-        ILivoToken(token).setFeeHandler(address(smartReceiver));
-
-        // The master fee handler itself is also a contract → rejected.
-        vm.expectRevert(LivoToken.FeeHandlerMustBeEOA.selector);
-        vm.prank(admin);
-        ILivoToken(token).setFeeHandler(address(feeHandler));
-    }
-
-    function test_setFeeHandler_masterRoutedTokenIsImmutable() public {
-        // EOA-only gate (current side): a master-handler-routed token has `feeHandler = master`
-        // (a contract), so the precondition `current.code.length == 0` fails — the rotation is
-        // impossible. Effectively makes the fee-handler immutable for master-routed tokens.
-        ILivoFactory.FeeShare[] memory fs = _fs(alice); // single non-direct → master-routed
-        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        vm.prank(creator);
-        address token = factoryV2Unified.createToken(
-            "Lock", "LK", salt, fs, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
-        );
-        assertEq(ILivoToken(token).feeHandler(), address(feeHandler), "preflight: master-routed");
-
-        // Even rotating to a valid EOA reverts, because the *current* feeHandler is a contract.
-        vm.expectRevert(LivoToken.FeeHandlerMustBeEOA.selector);
-        vm.prank(admin);
-        ILivoToken(token).setFeeHandler(bob);
     }
 
     // ============================================================

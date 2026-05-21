@@ -35,7 +35,10 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
-    /// @notice Contract handling fees for this token
+    /// @notice Contract handling fees for this token. Set once at initialization and immutable
+    ///         thereafter — there is no admin path to rotate it. For master-routed tokens this is
+    ///         the `LivoMasterFeeHandler`; for V2 taxable single-direct-receiver tokens it is the
+    ///         receiver address itself.
     address public feeHandler;
 
     /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
@@ -82,8 +85,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error Unauthorized();
-    error InvalidFeeHandler();
-    error FeeHandlerMustBeEOA();
 
     //////////////////////////////////////////////////////
 
@@ -196,27 +197,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         // forge-lint: disable-next-line(unchecked-call)
         (bool ok,) = feeHandler.call{value: amount}("");
         ok;
-    }
-
-    /// @notice Rotates the fee-handler address. Callable by the token owner OR by the launchpad
-    ///         owner. V2-family tokens are deployed ownerless (`tokenOwner = address(0)`), so on
-    ///         those tokens only the launchpad owner can call.
-    /// @dev    Requires BOTH the current and the new `feeHandler` to be EOAs
-    ///         (`code.length == 0`). Consequence:
-    ///         - Master-fee-handler-routed tokens cannot rotate at all (current is a contract,
-    ///           so the precondition fails) — fee-handler is effectively immutable for them.
-    ///         - Direct-handler tokens (single-direct-receiver path) can only rotate to another
-    ///           EOA — never back into a master fee handler.
-    ///         Keeps the indexer's `TokenFeeData.isDirectFeeHandlerEOA` trivially correct
-    ///         post-rotation: a rotation can only ever happen between EOAs, so the flag stays
-    ///         `true` and the swap-back handler remains the sole accounting signal.
-    function setFeeHandler(address newFeeHandler) external {
-        require(msg.sender == owner || msg.sender == launchpad.owner(), Unauthorized());
-        require(newFeeHandler != address(0), InvalidFeeHandler());
-        require(feeHandler.code.length == 0 && newFeeHandler.code.length == 0, FeeHandlerMustBeEOA());
-        address old = feeHandler;
-        feeHandler = newFeeHandler;
-        emit FeeHandlerChanged(old, newFeeHandler);
     }
 
     //////////////////////// view functions ////////////////////////
