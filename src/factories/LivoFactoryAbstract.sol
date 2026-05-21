@@ -232,13 +232,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         }
     }
 
-    /// @dev Shared postamble: asks the token to self-register its fee config with the master
-    ///      handler, then performs the deployer buy (if any). Event order: `SharesUpdated` fires
-    ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
-    /// @dev Skips master-handler registration when `token.feeHandler()` already points at a
-    ///      direct receiver (returned by `_resolveFeeHandlerForInit` on the derived factory).
-    ///      Those tokens never have a registered config on the master handler, and the receiver
-    ///      address is immutable post-init.
+    /// @dev Shared postamble: registers the token's fee config with the master handler and runs
+    ///      the deployer buy. Event order: `SharesUpdated` after `TokenLaunched`, deployer-buy
+    ///      events last. Registration is skipped when `_resolveFeeHandlerForInit` bypassed the
+    ///      master handler (direct-receiver path).
     function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
         internal
     {
@@ -255,15 +252,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
     }
 
-    /// @dev Clones the resolved token implementation deterministically, enforces the `0x1110` vanity
-    ///      suffix, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
-    ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
-    ///      `TokenCreated` is emitted BEFORE `initialize()` because the indexer creates the TokenData
-    ///      entity from that event; events emitted inside `initialize()` depend on it.
-    /// @dev The `feeHandler` address baked into both the `TokenCreated` event and `InitializeParams`
-    ///      comes from `_resolveFeeHandlerForInit`. Defaults to the master fee handler; derived
-    ///      factories override the hook to bypass the master handler for specific configurations
-    ///      (currently V2 taxable + single-direct-receiver).
+    /// @dev Clones the impl deterministically, enforces the `0x1110` vanity suffix, emits
+    ///      `TokenCreated`, and returns the token plus a populated `InitializeParams`.
+    ///      `TokenCreated` MUST fire before `initialize()` — the indexer creates the TokenData
+    ///      entity from it, and `initialize()`'s events depend on it.
+    ///      The baked-in `feeHandler` comes from `_resolveFeeHandlerForInit` (master by default;
+    ///      overridden for the V2 taxable + single-direct-receiver path).
     function _cloneAndCreateToken(
         address impl,
         string calldata name,
@@ -290,13 +284,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         });
     }
 
-    /// @dev Resolves the `feeHandler` baked into the token at init. Defaults to the master fee
-    ///      handler; derived factories override to return a single direct receiver's address when
-    ///      they want to bypass the master handler entirely (currently `LivoFactoryUniV2Unified`
-    ///      for V2 taxable + single-direct-receiver). When this hook returns a value other than
-    ///      `address(MASTER_FEE_HANDLER)`, `_finalizeCreation` automatically skips
-    ///      `registerFees`, and the derived factory should emit `DirectSingleFeeReceiver` so the
-    ///      indexer learns about it.
+    /// @dev Resolves the `feeHandler` baked into the token at init. Defaults to the master
+    ///      handler; overrides may bypass it (currently `LivoFactoryUniV2Unified` for V2 taxable
+    ///      + single-direct-receiver). When this returns a non-master address, `_finalizeCreation`
+    ///      skips `registerFees` and the derived factory should emit `DirectSingleFeeReceiver`.
     function _resolveFeeHandlerForInit(address impl, FeeShare[] calldata feeReceivers)
         internal
         view

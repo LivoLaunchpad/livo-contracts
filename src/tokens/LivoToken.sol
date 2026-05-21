@@ -35,10 +35,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
-    /// @notice Contract handling fees for this token. Set once at initialization and immutable
-    ///         thereafter — there is no admin path to rotate it. For master-routed tokens this is
-    ///         the `LivoMasterFeeHandler`; for V2 taxable single-direct-receiver tokens it is the
-    ///         receiver address itself.
+    /// @notice Fee handler for this token. Set at init and immutable thereafter (no rotation
+    ///         path). Usually `LivoMasterFeeHandler`; for V2 taxable single-direct-receiver
+    ///         tokens it's the receiver address itself.
     address public feeHandler;
 
     /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
@@ -163,27 +162,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @notice Routes ETH fees to the fee handler for this token.
-    /// @dev Thin external wrapper around `_accrueFees` so subclasses (and internal callers like
-    ///      taxable-token swap-backs) can push fees without re-entering the external function.
     function accrueFees() external payable {
         _accrueFees(msg.value);
     }
 
-    /// @dev Sends `amount` wei to the fee handler with empty calldata. The handler's `receive()`
-    ///      attributes the deposit to `msg.sender` (this token), so the redundant `address(this)`
-    ///      argument is no longer needed. No-op on zero.
-    /// @dev The `.call` result is intentionally ignored. If the transfer fails (e.g. a malicious
-    ///      contract receiver reverts on `receive()`, or the master handler reverts on an
-    ///      unregistered config), the ETH stays in this contract instead of bubbling the revert.
-    ///      The V2 swap-back path sources its push from `address(this).balance`, so any residual
-    ///      from a failed transfer is rolled into the next swap-back automatically. External
-    ///      callers of `accrueFees()` should consider the residual likewise recoverable on a
-    ///      future swap-back / accrual that lands successfully.
+    /// @dev Plain ETH push to the fee handler; the handler's `receive()` attributes the deposit
+    ///      via `msg.sender`. Transfer failures (e.g. hostile direct receiver reverting on
+    ///      `receive()`) are intentionally swallowed so they don't bubble into swap-backs or
+    ///      `accrueFees` callers — residual ETH stays on the contract and rolls into the next
+    ///      successful push (V2 swap-back sources from `address(this).balance`).
     function _accrueFees(uint256 amount) internal {
         if (amount == 0) return;
-        // No indexer handler for now; informational only.
         emit RouteFees(feeHandler, amount);
-        // Failure ignored intentionally — ETH stays in the contract and rolls into the next push.
         // forge-lint: disable-next-line(unchecked-call)
         (bool ok,) = feeHandler.call{value: amount}("");
         ok;

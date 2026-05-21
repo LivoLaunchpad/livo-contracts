@@ -45,18 +45,13 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     }
 
     /// @inheritdoc LivoFactoryAbstract
-    /// @dev When a V2 *taxable* token is deployed with exactly one fee receiver whose
-    ///      `directFeesEnabled` is true, point `token.feeHandler` straight at the receiver. The
-    ///      swapback path's `_accrueFees` then becomes a plain ETH transfer to that address, so
-    ///      Dexscreener-style scanners no longer flag the swap-back transfer as an external call
-    ///      into an unknown contract. The master handler is never registered for these tokens
-    ///      (`_finalizeCreation` skips `registerFees`); the receiver baked in at init time is
-    ///      immutable for the life of the token.
-    ///
-    ///      Trade-offs:
-    ///      - No fallback like the master handler's pending-claims path: a malicious contract
-    ///        receiver that reverts on `receive()` can DoS swap-backs.
-    ///      - `setShares` is unavailable: routing is locked to a single receiver address.
+    /// @dev V2 taxable + exactly one fee receiver with `directFeesEnabled = true`: point
+    ///      `token.feeHandler` straight at the receiver. Swap-backs become a plain ETH transfer
+    ///      to that address, so scanners no longer flag the transfer as an external call into an
+    ///      unknown contract. The receiver is immutable for the life of the token.
+    ///      Trade-offs: no pending-claims fallback (the token's `_accrueFees` swallows transfer
+    ///      failures, so ETH stays on the token until the next swap-back); `setShares` is
+    ///      unavailable; routing is locked to a single address.
     function _resolveFeeHandlerForInit(address impl, FeeShare[] calldata feeReceivers)
         internal
         view
@@ -72,13 +67,11 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
-    /// @notice Deploys a V2-family Livo token and registers it in the launchpad.
-    ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
-    ///         The per-token fee config is registered with the master fee handler at deploy time,
-    ///         UNLESS the V2 taxable + single-direct-receiver path is taken (see
-    ///         `_resolveFeeHandlerForInit`), in which case `token.feeHandler` points at the
-    ///         receiver and `DirectSingleFeeReceiver` is emitted instead.
-    ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
+    /// @notice Deploys a V2-family Livo token and registers it in the launchpad. Dispatches
+    ///         between four impls based on `taxCfg` and `antiSniperCfg`. Fee config is registered
+    ///         with the master handler unless the V2 taxable + single-direct-receiver path is
+    ///         taken (see `_resolveFeeHandlerForInit`) — in that case `DirectSingleFeeReceiver`
+    ///         fires instead. If `msg.value > 0`, buys supply and distributes per `supplyShares`.
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -97,9 +90,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
 
         token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, feeReceivers, taxCfg, antiSniperCfg);
 
-        // Emit DirectSingleFeeReceiver iff the resolver picked the direct path. Reading the
-        // initialized `feeHandler` keeps the hook as the single source of truth (no risk of the
-        // event drifting from what was actually baked into the token).
+        // Read the initialized `feeHandler` so the resolver hook remains the single source of
+        // truth (the event can't drift from what was actually baked into the token).
         if (ILivoToken(token).feeHandler() != address(MASTER_FEE_HANDLER)) {
             emit DirectSingleFeeReceiver(token, feeReceivers[0].account);
         }

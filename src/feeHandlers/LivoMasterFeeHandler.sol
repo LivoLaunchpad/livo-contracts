@@ -62,35 +62,29 @@ contract LivoMasterFeeHandler is ILivoMasterFeeHandler, Ownable2Step, Reentrancy
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
-    /// @notice Deposits ETH fees for `token`. For direct receivers the slice is forwarded
-    ///         synchronously; for claimable recipients the accumulator is advanced.
-    /// @dev Kept for callers that need to attribute a deposit to a token other than `msg.sender`
-    ///      (e.g. router/forwarder integrations). Token contracts themselves can instead send ETH
-    ///      with empty calldata, which hits `receive()` and is attributed via `msg.sender`.
-    /// @dev `CreatorFeesDeposited` is emitted before any forward attempt for non-zero deposits;
-    ///      zero-value calls are no-ops and emit nothing. There is intentionally no explicit
-    ///      registration check on this swap-hot path: registered configs always contain at least one
-    ///      recipient, while an unregistered positive-value deposit reaches `_depositSingle` and
-    ///      reverts with Solidity's array-out-of-bounds panic when reading `claimableRecipients[0]`.
-    ///      The transient `nonReentrant` guard is shared with `setShares`, `claim` and `receive` —
-    ///      any nested call from a direct-receiver hook into those functions reverts, which
-    ///      prevents iteration corruption in `_depositSplit`.
+    /// @notice Deposits ETH fees for `token`. Direct slices forward synchronously; claimable
+    ///         recipients advance the accumulator.
+    /// @dev Use this when the caller needs to attribute the deposit to a token other than itself
+    ///      (e.g. router/forwarder integrations). Tokens can also push ETH with empty calldata,
+    ///      hitting `receive()` and being attributed via `msg.sender`.
+    /// @dev Zero-value calls are no-ops. No explicit registration check on this swap-hot path —
+    ///      unregistered positive deposits revert in `_depositSingle` via OOB on
+    ///      `claimableRecipients[0]`. The shared `nonReentrant` transient guard (with `setShares`,
+    ///      `claim`, `receive`) blocks direct-receiver re-entry that would corrupt iteration.
     function depositFees(address token) external payable nonReentrant {
         _depositFees(token);
     }
 
-    /// @notice Plain ETH receiver: attributes the deposit to `msg.sender` (the calling token).
-    /// @dev Lets tokens push fees with a bare value-call (`feeHandler.call{value: x}("")`) instead
-    ///      of `depositFees(address(this))` — the `address(this)` argument was redundant. Shares
-    ///      the same `nonReentrant` transient guard as `depositFees`, `setShares` and `claim`.
-    /// @dev Reverts for non-registered tokens with a clear OOB panic from the attempted read of `claimableRecipients[0]` in `_depositSingle`,
-    ///      which is an acceptable failure mode for misconfigured tokens.
+    /// @notice Plain ETH receiver. Attributes the deposit to `msg.sender` (the calling token),
+    ///         so tokens can push fees with a bare value-call instead of `depositFees(address(this))`.
+    ///         Same `nonReentrant` guard as `depositFees` / `setShares` / `claim`.
+    /// @dev Unregistered senders revert with an OOB panic from `_depositSingle` reading
+    ///      `claimableRecipients[0]` — acceptable failure mode for misconfigured tokens.
     receive() external payable nonReentrant {
         _depositFees(msg.sender);
     }
 
-    /// @dev Shared deposit body for `depositFees` and `receive`. Caller must hold the `nonReentrant`
-    ///      guard.
+    /// @dev Shared body for `depositFees` and `receive`. Caller must hold the `nonReentrant` guard.
     function _depositFees(address token) internal {
         if (msg.value == 0) return;
 

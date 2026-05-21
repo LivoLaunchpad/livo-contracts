@@ -21,12 +21,10 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// potentially immutable //////////////////
 
-    /// @notice Buy tax rate in basis points. Set during initialization; the owner can lower it later
-    ///         via `setTaxBps` (decrease-only — increases revert).
+    /// @notice Buy tax in basis points. Owner can lower it via `setTaxBps` (decrease-only).
     uint16 public buyTaxBps;
 
-    /// @notice Sell tax rate in basis points. Set during initialization; the owner can lower it later
-    ///         via `setTaxBps` (decrease-only — increases revert).
+    /// @notice Sell tax in basis points. Owner can lower it via `setTaxBps` (decrease-only).
     uint16 public sellTaxBps;
 
     /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
@@ -42,9 +40,8 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     /// @notice Emitted once during init with the dev-supplied tax config.
     event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
 
-    /// @notice Emitted whenever `setTaxBps` successfully updates the buy/sell tax rates. Only the
-    ///         new values are carried; indexers can resolve old values from the prior
-    ///         `LivoTaxableTokenInitialized` event or the most recent prior `TaxBpsUpdated`.
+    /// @notice Emitted on each successful `setTaxBps`. Old values are recoverable from the prior
+    ///         `LivoTaxableTokenInitialized` or `TaxBpsUpdated`.
     event TaxBpsUpdated(uint16 newBuyTaxBps, uint16 newSellTaxBps);
 
     //////////////////////// Errors //////////////////////
@@ -70,45 +67,31 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         emit Graduated();
     }
 
-    /// @notice Allows the token owner OR the launchpad owner to rescue stuck balances.
-    /// @dev Two restrictions:
-    ///      (1) Self-token rescue is disallowed — the caller must NEVER be able to siphon accrued
-    ///          tax balance ahead of a swap-back.
-    ///      (2) ETH stuck in the contract is treated as un-routed fees and pushed back through
-    ///          `_accrueFees` (plain ETH transfer to the fee handler, attributed via `msg.sender`)
-    ///          so it lands on the configured fee receivers, never on the caller. Preserves the
-    ///          project's pull-over-push invariant for ETH.
-    /// @dev The launchpad owner is included so the protocol admin can sweep stuck balances on
-    ///      factory-deployed V2 tokens, where `owner == address(0)` makes the token-owner path
-    ///      unreachable. The destination is unchanged regardless of caller: ETH → fee handler,
-    ///      ERC20s → `owner` (which may be `address(0)`, in which case the transfer reverts —
-    ///      acceptable, as a stuck-balance rescue with no recipient is a no-op anyway).
+    /// @notice Rescues stuck balances. Callable by token owner OR launchpad owner (the latter so
+    ///         admins can sweep on factory-deployed tokens where `owner == address(0)`).
+    /// @dev Stuck ETH is pushed through `_accrueFees` so it lands on the fee receivers, never on
+    ///      the caller — preserves the pull-over-push invariant. Self-token rescue is disallowed
+    ///      to block siphoning accrued tax balance ahead of a swap-back. ERC20s go to `owner`
+    ///      (reverts if `address(0)`, which is acceptable).
     /// @param token Token to rescue. Pass `address(0)` for ETH.
     function rescueTokens(address token) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
 
         if (token == address(0)) {
-            // route any stuck ETH back through the fee handler under this token's accounting
             _accrueFees(address(this).balance);
         } else if (token == address(this)) {
-            // disallow rescuing the token's own balance to prevent siphoning accrued taxes
             revert CannotRescueSelfToken();
         } else {
             IERC20(token).safeTransfer(owner, IERC20(token).balanceOf(address(this)));
         }
     }
 
-    /// @notice Updates `buyTaxBps` and/or `sellTaxBps`. Today this is decrease-only — any attempt
-    ///         to raise either rate reverts with `TaxBpsCanOnlyDecrease`. Passing a value equal to
-    ///         the current one is allowed (no-op for that side). `taxDurationSeconds` and
-    ///         `graduationTimestamp` are untouched.
-    /// @dev The function name is intentionally generic (`setTaxBps`) even though the body enforces
-    ///      a narrower decrease-only rule. This keeps the ABI stable if the policy is ever relaxed.
-    /// @dev Callable by the token owner OR the launchpad owner — same dual-auth pattern as
-    ///      `swapBack` / `rescueTokens`. On factory-deployed tokens (`owner == address(0)`) only
-    ///      the launchpad-owner branch is reachable, which is intentional.
-    /// @param newBuyTaxBps New buy tax rate in basis points. Must be `<= buyTaxBps`.
-    /// @param newSellTaxBps New sell tax rate in basis points. Must be `<= sellTaxBps`.
+    /// @notice Updates `buyTaxBps` / `sellTaxBps`. Decrease-only — increases revert with
+    ///         `TaxBpsCanOnlyDecrease`. Equal values are a no-op. `taxDurationSeconds` and
+    ///         `graduationTimestamp` are untouched. Callable by token owner OR launchpad owner.
+    /// @dev Name is generic to keep the ABI stable if the decrease-only rule is later relaxed.
+    /// @param newBuyTaxBps Must be `<= buyTaxBps`.
+    /// @param newSellTaxBps Must be `<= sellTaxBps`.
     function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         require(newBuyTaxBps <= buyTaxBps && newSellTaxBps <= sellTaxBps, TaxBpsCanOnlyDecrease());
