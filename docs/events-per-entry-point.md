@@ -44,6 +44,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`LivoTaxableToken.setTaxBps`](#10-livotaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
 11. [`LivoMasterFeeHandler.receive` (plain ETH)](#11-livomasterfeehandlerreceive-plain-eth)
+12. [`LivoToken.accrueFees` — `RouteFees`](#12-livotokenaccruefees--redirectfees)
 
 ---
 
@@ -197,7 +198,7 @@ Indexer-relevant points:
   4. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethAmount`) emitted by the handler's `receive()` (attribution via `msg.sender = token`).
   5. Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
 
-  **Direct-handler variant (V2 taxable + single direct receiver).** When the token was deployed on the direct-handler path (see §1.1), `token.feeHandler` is the receiver itself and the swap-back's plain ETH transfer never reaches the master handler. Only steps 1–3 above happen on-chain — `LivoMasterFeeHandler.CreatorFeesDeposited` and `CreatorClaimed` are NOT emitted in this variant. The indexer relies solely on `CreatorTaxSwapback` (paired with the `TokenFeeData.isDirectFeeHandlerEOA` flag set at deploy) to advance `accountedEth` + `accruedEth` + `claimedEth` in one go.
+  **Direct-handler variant (V2 taxable + single direct receiver).** When the token was deployed on the direct-handler path (see §1.1), `token.feeHandler` is the receiver itself and the swap-back's plain ETH transfer never reaches the master handler. Only steps 1–3 above happen on-chain — `LivoMasterFeeHandler.CreatorFeesDeposited` and `CreatorClaimed` are NOT emitted in this variant. The indexer relies solely on `CreatorTaxSwapback` (paired with the `TokenFeeData.directFeeHandlerIsNotMasterFeeHandler` flag set at deploy) to advance `accountedEth` + `accruedEth` + `claimedEth` in one go.
 - The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger only if the token has a non-zero owner. Factory-deployed V2 tokens are ownerless, so this manual path is inaccessible there.
 - Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the `CreatorTaxSwapback` path is not entered.
 
@@ -251,6 +252,7 @@ V2 taxable tokens deployed with a single `directFeesEnabled = true` receiver via
 
 - **`LivoFactory.DirectSingleFeeReceiver`** (`token, receiver`) — emitted once, at token creation (see §1.1).
 - **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted on every swap-back (see §6.3 direct-handler variant).
+- **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount`) — emitted by the graduator just before its `accrueFees()` push to the token at graduation time. The indexer treats this as the direct-handler bookkeeping signal for the graduation fee on these tokens (master-routed tokens get the equivalent accounting via the master handler's downstream `CreatorFeesDeposited` / `CreatorClaimed`).
 
 ---
 
@@ -279,3 +281,13 @@ Event order on a successful non-zero deposit:
 
 1. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token=msg.sender, amount`).
 2. For each direct receiver with a non-zero slice: optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, sliceAmount`) on a successful synchronous forward. A failed forward (including a recursive `receive()` blocked by the `nonReentrant` guard) silently records the slice as pending instead.
+
+---
+
+## 12. `LivoToken.accrueFees` — `RouteFees`
+
+External `LivoToken.accrueFees()` emits **`LivoToken.RouteFees`** (`feeHandler, amount=msg.value`) before forwarding ETH to `feeHandler`. The event fires unconditionally on every call (including `msg.value == 0`) and is emitted regardless of whether the downstream ETH push to `feeHandler` succeeds — `_accrueFees` swallows transfer failures (see contract NatSpec).
+
+Callers that route through `LivoToken.accrueFees()` include the graduators (`CreatorGraduationFeeCollected` paths in §§3–4) and `LivoSwapHook` (§§6.1–6.2). The V2 in-token swap-back path (§6.3) bypasses the external entry point and calls `_accrueFees` directly, so it does NOT emit `RouteFees`.
+
+The indexer does not currently consume `RouteFees`; downstream accounting still relies on `LivoMasterFeeHandler.CreatorFeesDeposited` / `CreatorClaimed` (or the direct-handler signals in §9.1).

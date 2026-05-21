@@ -178,6 +178,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @dev Thin external wrapper around `_accrueFees` so subclasses (and internal callers like
     ///      taxable-token swap-backs) can push fees without re-entering the external function.
     function accrueFees() external payable {
+        // No indexer handler for now; informational only.
+        emit RouteFees(feeHandler, msg.value);
         _accrueFees(msg.value);
     }
 

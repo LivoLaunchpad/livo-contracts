@@ -10,6 +10,7 @@ interface ILivoToken is IERC20 {
     event Graduated();
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
+    event RouteFees(address feeHandler, uint256 amount);
 
     /// @notice Shared initialization parameters for Livo token clones
     struct InitializeParams {
