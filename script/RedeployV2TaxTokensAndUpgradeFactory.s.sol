@@ -142,8 +142,8 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         );
         console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
 
-        UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(fresh.factoryV2Impl, "");
-        console.log("| V2 proxy upgraded to                          |", fresh.factoryV2Impl);
+        // UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(fresh.factoryV2Impl, "");
+        // console.log("| V2 proxy upgraded to                          |", fresh.factoryV2Impl);
 
         vm.stopBroadcast();
 
