@@ -58,17 +58,10 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        // V2-family tokens are always deployed ownerless.
-        address tokenOwner = address(0);
-
-        _validateInputs(name, symbol, feeReceivers, supplyShares);
-        _validateAntiSniperConfig(antiSniperCfg);
-        _validateTaxConfig(taxCfg);
-
-        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
-
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
-        _finalizeCreation(token, feeReceivers, supplyShares);
+        // V2-family tokens are always deployed ownerless. Routes through the shared `_createToken`
+        // umbrella so this overload and the struct-based overload below share the same internal flow.
+        TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
+        token = _createToken(tokenSetup, address(0), supplyShares, taxCfg, antiSniperCfg);
     }
 
     /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
