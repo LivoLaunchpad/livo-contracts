@@ -15,11 +15,14 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     /// @notice V4-specific config bundle for the struct-based `createToken` overload.
     /// @dev `lpFeeBps` is reserved for future use — today the LP fee is a constant in
     ///      `LivoSwapHook` (100 bps). The field is accepted for ABI forward-compatibility but is
-    ///      not wired through; callers should pass `100` to match current behaviour.
+    ///      not wired through; `_validateUniv4Configs` enforces `lpFeeBps == 100` so misuse is loud
+    ///      until the field is honoured by the hook.
     struct UniV4Configs {
         bool renounceOwnership;
         uint16 lpFeeBps;
     }
+
+    error InvalidLpFeeBps();
 
     constructor(
         address launchpad,
@@ -81,8 +84,18 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         SupplyShare[] calldata buyOnDeployShares,
         AntiSniperConfigs calldata antiSniperConfigs
     ) external payable returns (address token) {
+        _validateUniv4Configs(univ4Configs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
         token = _createToken(tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs);
+    }
+
+    ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
+
+    /// @dev V4-specific config validation. Today only pins `lpFeeBps == 100` because the LP fee is
+    ///      still hardcoded in `LivoSwapHook`; reject anything else so misconfiguration is loud
+    ///      instead of silently ignored. Add further V4-only invariants here as the struct grows.
+    function _validateUniv4Configs(UniV4Configs calldata configs) internal pure {
+        require(configs.lpFeeBps == 100, InvalidLpFeeBps());
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
