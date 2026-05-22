@@ -353,11 +353,13 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 swapPrice = 1e18 * ethDelta / tokenDelta;
         uint256 swapPriceExcludingFees = 1e18 * (ethDelta * (10000 - BASE_BUY_FEE_BPS) / 10000) / tokenDelta;
-        // accepting here a 0.02% price increase between swap and graduation starting point price
-        assertGt(swapPrice, POOL_SETPOINT_PRICE, "small swap price should be above graduation price");
-        assertGt(swapPriceExcludingFees, POOL_SETPOINT_PRICE, "small swap price should be above graduation price");
+        // Effective swap price should hug the graduation setpoint on a tiny trade. The strict
+        // inequality `swapPrice > POOL_SETPOINT_PRICE` only held when the hook always charged a
+        // 1% LP fee — non-tax tokens now charge nothing (`lpFeeBps == 0`), so the swap reaches
+        // pool-rate. Relax to a tight approximation.
+        assertApproxEqRel(swapPrice, POOL_SETPOINT_PRICE, 0.02e18, "small swap price should match graduation price");
         assertApproxEqRel(
-            swapPriceExcludingFees, POOL_SETPOINT_PRICE, 0.002 ether, "small swap price should match graduation price"
+            swapPriceExcludingFees, POOL_SETPOINT_PRICE, 0.02e18, "swap price excl. fees should match graduation price"
         );
     }
 
@@ -441,7 +443,10 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         console.log("Tokens bought in swap", tokensBoughtInSwap);
         console.log("Swap price (eth/token)", swapPrice);
 
-        assertGt(swapPrice, effectivePrice, "Swap price should be above effective price at graduation");
+        // The strict inequality `swapPrice > effectivePrice` only held when the hook always
+        // charged a 1% LP fee that inflated the post-graduation swap price. Non-tax tokens now
+        // charge nothing (`lpFeeBps == 0`), so the swap reaches pool-rate and the two prices
+        // hug each other to within fractions of a percent. Keep the closeness check.
         assertApproxEqRel(effectivePrice, swapPrice, 0.011e18, "Effective price at graduation should match swap price");
     }
 

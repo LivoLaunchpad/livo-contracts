@@ -502,7 +502,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
         } else {
-            require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
+            // Sentinel consistency: an unset tax config must be entirely zeroed out so
+            // the dispatch flag (`taxDurationSeconds == 0`) is the single source of truth.
+            require(t.buyTaxBps == 0 && t.sellTaxBps == 0 && t.lpFeeBps == 0, InvalidTaxConfig());
         }
     }
 

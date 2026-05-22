@@ -24,6 +24,12 @@ library DeploymentsSepolia {
     address internal constant SWAP_HOOK_0P5 = 0xC04Bb5bA43795330e54efaC7244ce40318FD80cc;
     address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;
 
+    /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`. Splits LP fees between the
+    ///         protocol treasury and the per-token creator using a marketcap-tiered policy.
+    address internal constant LP_FEE_ROUTER = address(0);
+    /// @notice Implementation currently set behind `LP_FEE_ROUTER`. Tracked for verification only.
+    address internal constant LP_FEE_ROUTER_IMPL = address(0);
+
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x51711129C86b5f1D374B48F14f033cb38f6946F6;
     address internal constant TAXABLE_TOKEN_IMPL = 0xaA783a3dd27F87d506103593BE28125dE0D68c49;

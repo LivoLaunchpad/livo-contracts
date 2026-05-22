@@ -194,6 +194,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
+    /// @dev TODO: when `LivoSwapHook` is enabled for non-taxable variants, this override must
+    ///      return a non-zero `lpFeeBps` (e.g. 100 = 1%) so the hook charges the protocol's
+    ///      default LP fee on swaps. The hook intentionally treats `lpFeeBps == 0` as "no LP
+    ///      fee" — adding the default here requires bumping a new `LivoToken` implementation +
+    ///      redeploying token impls + repointing the factories. Tracked for the post-hook-
+    ///      whitelist follow-up since the current PR's goal is the hook upgrade itself.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
 
     /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.

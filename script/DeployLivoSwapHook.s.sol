@@ -26,19 +26,20 @@ contract DeployLivoSwapHook is Script {
     address internal constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
-        (address poolManager, address launchpad) = _resolveAddresses();
+        (address poolManager, address router) = _resolveAddresses();
+        require(router != address(0), "LP_FEE_ROUTER not set; deploy LivoLpFeeRouter first");
 
         console.log("=== Deploy LivoSwapHook ===");
         console.log("Chain ID:    %d", block.chainid);
         console.log("PoolManager: %s", poolManager);
-        console.log("Launchpad:   %s", launchpad);
+        console.log("LpFeeRouter: %s", router);
 
         uint160 flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                 | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
 
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), launchpad);
+        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), router);
         bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining hook salt (this may take 30-60s)...");
@@ -47,7 +48,7 @@ contract DeployLivoSwapHook is Script {
         console.log("Salt:          %x", uint256(salt));
 
         vm.startBroadcast();
-        LivoSwapHook hook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), launchpad);
+        LivoSwapHook hook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), router);
         vm.stopBroadcast();
 
         require(address(hook) == minedAddress, "Deployed address mismatch");
@@ -63,13 +64,13 @@ contract DeployLivoSwapHook is Script {
         console.log("Then: just export-deployments");
     }
 
-    function _resolveAddresses() internal view returns (address poolManager, address launchpad) {
+    function _resolveAddresses() internal view returns (address poolManager, address router) {
         if (block.chainid == DeploymentAddressesMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-            launchpad = DeploymentsMainnet.LAUNCHPAD;
+            router = DeploymentsMainnet.LP_FEE_ROUTER;
         } else if (block.chainid == DeploymentAddressesSepolia.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
-            launchpad = DeploymentsSepolia.LAUNCHPAD;
+            router = DeploymentsSepolia.LP_FEE_ROUTER;
         } else {
             revert("Unsupported chain ID");
         }

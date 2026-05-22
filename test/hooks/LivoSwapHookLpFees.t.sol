@@ -9,8 +9,38 @@ import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-/// @notice PoC tests for hook-based LP fees (1% charged by LivoSwapHook, split 50/50 creator/treasury)
+/// @notice Test-only router stub that reverts on every call. Used with `vm.etch` to exercise the
+///         hook's `try/catch` fallback to `ILivoToken.accrueFees`.
+contract RevertingRouter {
+    fallback() external payable {
+        revert("router down");
+    }
+}
+
+/// @notice Test-only router stub that burns all forwarded gas in an infinite hash loop.
+///         Used with `vm.etch` to exercise the hook's `ROUTER_GAS_LIMIT` defense — the OOG
+///         inside the bounded call should still leave enough gas in the catch frame to run the
+///         `accrueFees` fallback.
+contract GasBurningRouter {
+    fallback() external payable {
+        bytes32 h = bytes32(uint256(1));
+        // Loop until OOG. The router-side OOG must NOT propagate to the caller's frame.
+        while (true) {
+            h = keccak256(abi.encode(h));
+        }
+    }
+}
+
+/// @notice Tests for hook-based LP fees (1% charged by LivoSwapHook).
+/// @dev    All these tests run with marketcap below tier 1 (30 ETH), so the active split is
+///         tier 0: 40% treasury / 60% creator.
 contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
+    /// @dev Tier-0 treasury BPS — keep tests symbolic so a future tier rebalance only touches one place.
+    uint16 constant TIER0_TREASURY_BPS = 4000;
+    /// @dev Tier-0 creator BPS = 10_000 - TIER0_TREASURY_BPS.
+    uint16 constant TIER0_CREATOR_BPS = 10_000 - TIER0_TREASURY_BPS;
+    uint16 constant LP_FEE_BPS = 100; // 1%
+
     function setUp() public override {
         super.setUp();
     }
@@ -21,7 +51,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(tokens, creator)[0];
     }
 
-    /// @notice Buy charges 1% LP fee: 0.5% to creator (via fee handler), 0.5% to treasury (direct)
+    /// @notice Buy charges 1% LP fee, split 40/60 treasury/creator at tier 0.
     function test_buyChargesLpFee_splitCreatorTreasury() public createDefaultTaxToken {
         _graduateToken();
 
@@ -38,20 +68,23 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 creatorLpFee = creatorFeesAfter - creatorFeesBefore;
         uint256 treasuryLpFee = treasuryAfter - treasuryBefore;
 
-        // Each should be ~0.5% of buy amount
-        assertApproxEqAbs(creatorLpFee, buyAmount / 200, 1, "Creator should receive ~0.5% LP fee on buy");
-        assertApproxEqAbs(treasuryLpFee, buyAmount / 200, 1, "Treasury should receive ~0.5% LP fee on buy");
-        assertApproxEqAbs(creatorLpFee + treasuryLpFee, buyAmount / 100, 1, "Total LP fee should be ~1%");
+        uint256 totalLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasury = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreator = totalLpFee - expectedTreasury;
+
+        assertApproxEqAbs(creatorLpFee, expectedCreator, 1, "Creator should receive tier-0 LP fee share");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 1, "Treasury should receive tier-0 LP fee share");
+        assertApproxEqAbs(creatorLpFee + treasuryLpFee, totalLpFee, 1, "Total LP fee should be ~1%");
     }
 
-    /// @notice Sell charges 1% LP fee (split 50/50)
+    /// @notice Sell charges 1% LP fee split per tier-0.
     function test_sellChargesLpFee() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
         _graduateToken();
 
-        // Warp past tax period so only LP fee applies
+        // Warp past tax period so only LP fee applies.
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
 
         uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
@@ -66,15 +99,16 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
         uint256 totalLpFee = creatorLpFee + treasuryLpFee;
 
-        // LP fee is 1% of gross ETH output; gross = ethReceived + totalLpFee
+        // LP fee is 1% of gross ETH output; gross = ethReceived + totalLpFee.
         uint256 grossEth = ethReceived + totalLpFee;
-        uint256 expectedLpFee = grossEth / 100;
+        uint256 expectedLpFee = (grossEth * LP_FEE_BPS) / 10_000;
 
         assertApproxEqAbs(totalLpFee, expectedLpFee, 2, "Total LP fee should be ~1% of gross ETH");
-        assertApproxEqAbs(creatorLpFee, treasuryLpFee, 1, "Creator and treasury shares should be ~equal");
+        uint256 expectedTreasury = (expectedLpFee * TIER0_TREASURY_BPS) / 10_000;
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "Treasury share should match tier-0");
     }
 
-    /// @notice Sell stacks LP fee + sell tax during active tax period
+    /// @notice Sell stacks LP fee + sell tax during active tax period.
     function test_sellStacksLpFeeAndSellTax() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
@@ -92,32 +126,31 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 creatorFeesAccrued = _pendingCreatorFees(testToken) - creatorFeesBefore;
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
-        // Creator fees = LP fee share (0.5%) + sell tax (5%), all deposited via accrueFees
-        // Treasury gets only LP fee share (0.5%)
-        // Gross ETH = ethReceived + creatorFeesAccrued + treasuryLpFee
+        // Creator fees = tier-0 LP creator share + 100% of sell tax.
+        // Treasury gets only tier-0 LP treasury share.
         uint256 grossEth = ethReceived + creatorFeesAccrued + treasuryLpFee;
 
-        uint256 expectedTreasuryLpFee = grossEth / 200; // 0.5%
-        uint256 expectedCreatorLpFee = grossEth / 200; // 0.5%
-        uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10000; // 5%
+        uint256 totalLpFee = (grossEth * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
+        uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10_000;
 
-        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "Treasury should get ~0.5% LP fee");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "Treasury should get tier-0 LP fee share");
         assertApproxEqAbs(
             creatorFeesAccrued,
             expectedCreatorLpFee + expectedSellTax,
             2,
-            "Creator should get ~0.5% LP fee + ~5% sell tax"
+            "Creator should get tier-0 LP fee share + sell tax"
         );
     }
 
-    /// @notice After tax period expires, only LP fee remains (no sell tax)
+    /// @notice After tax period expires, only LP fee remains (no sell tax).
     function test_onlyLpFeeAfterTaxExpires() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
         _graduateToken();
 
-        // Warp past tax period
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
 
         uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
@@ -133,19 +166,20 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 totalLpFee = creatorLpFee + treasuryLpFee;
         uint256 grossEth = ethReceived + totalLpFee;
 
-        // No sell tax, only LP fee
-        assertApproxEqAbs(totalLpFee, grossEth / 100, 2, "Only LP fee (~1%) should be charged after tax expires");
-        assertApproxEqAbs(creatorLpFee, treasuryLpFee, 1, "LP fee split should be ~50/50");
+        uint256 expectedLpFee = (grossEth * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasury = (expectedLpFee * TIER0_TREASURY_BPS) / 10_000;
+
+        assertApproxEqAbs(totalLpFee, expectedLpFee, 2, "Only LP fee (~1%) should be charged after tax expires");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "LP fee split should follow tier-0");
     }
 
-    /// @notice Swaps revert before graduation
+    /// @notice Swaps revert before graduation.
     function test_noFeesBeforeGraduation() public createDefaultTaxToken {
         deal(buyer, 1 ether);
-        // Swap should revert because token hasn't graduated
         _swapBuy(buyer, 1 ether, 0, false);
     }
 
-    /// @notice Buy charges LP fee (50/50 split) + buy tax (100% creator) during active tax period
+    /// @notice Buy charges tier-0 LP fee split + buy tax (100% creator) during active tax period.
     function test_buyChargesBuyTaxAndLpFee() public {
         uint16 buyTax = 300; // 3%
         testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
@@ -161,28 +195,23 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 creatorFeesAccrued = _pendingCreatorFees(testToken) - creatorFeesBefore;
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
-        // LP fee = 1% of buyAmount, split 50/50
-        // Buy tax = 3% of buyAmount, 100% to creator
-        uint256 expectedTreasuryLpFee = buyAmount / 200; // 0.5%
-        uint256 expectedCreatorLpFee = buyAmount / 200; // 0.5%
-        uint256 expectedBuyTax = (buyAmount * buyTax) / 10000; // 3%
+        uint256 totalLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
+        uint256 expectedBuyTax = (buyAmount * buyTax) / 10_000;
 
-        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 1, "Treasury should get ~0.5% LP fee");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 1, "Treasury should get tier-0 LP fee share");
         assertApproxEqAbs(
-            creatorFeesAccrued,
-            expectedCreatorLpFee + expectedBuyTax,
-            1,
-            "Creator should get ~0.5% LP fee + ~3% buy tax"
+            creatorFeesAccrued, expectedCreatorLpFee + expectedBuyTax, 1, "Creator should get LP share + buy tax"
         );
     }
 
-    /// @notice After tax period expires, buy only charges LP fee (no buy tax)
+    /// @notice After tax period expires, buy only charges LP fee (no buy tax).
     function test_buyOnlyLpFeeAfterTaxExpires() public {
-        uint16 buyTax = 300; // 3%
+        uint16 buyTax = 300;
         testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
         _graduateToken();
 
-        // Warp past tax period
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
 
         uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
@@ -196,17 +225,18 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
         uint256 totalLpFee = creatorLpFee + treasuryLpFee;
 
-        // Only LP fee, no buy tax
-        assertApproxEqAbs(totalLpFee, buyAmount / 100, 1, "Only LP fee (~1%) should be charged after tax expires");
-        assertApproxEqAbs(creatorLpFee, treasuryLpFee, 1, "LP fee split should be ~50/50");
+        uint256 expectedLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasury = (expectedLpFee * TIER0_TREASURY_BPS) / 10_000;
+
+        assertApproxEqAbs(totalLpFee, expectedLpFee, 1, "Only LP fee (~1%) should be charged after tax expires");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 1, "LP fee split should follow tier-0");
     }
 
-    /// @notice Both buy and sell are taxed during active tax period
+    /// @notice Both buy and sell are taxed during active tax period.
     function test_buyAndSellBothTaxed() public {
-        uint16 buyTax = 300; // 3%
+        uint16 buyTax = 300;
         testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
-        // Buy on bonding curve first so buyer has tokens
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
@@ -223,10 +253,15 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 creatorFeesFromBuy = _pendingCreatorFees(testToken) - creatorFeesBefore;
         uint256 treasuryFromBuy = treasury.balance - treasuryBefore;
 
-        // Buy should have LP fee + buy tax
-        uint256 expectedBuyTax = (buyAmount * buyTax) / 10000;
-        assertGt(creatorFeesFromBuy, treasuryFromBuy, "Creator should get more than treasury on taxed buy");
-        assertApproxEqAbs(creatorFeesFromBuy - treasuryFromBuy, expectedBuyTax, 1, "Difference should be ~buy tax");
+        uint256 totalLpFeeBuy = (buyAmount * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasuryLpBuy = (totalLpFeeBuy * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreatorLpBuy = totalLpFeeBuy - expectedTreasuryLpBuy;
+        uint256 expectedBuyTax = (buyAmount * buyTax) / 10_000;
+
+        assertApproxEqAbs(treasuryFromBuy, expectedTreasuryLpBuy, 1, "Treasury LP share mismatch on buy");
+        assertApproxEqAbs(
+            creatorFeesFromBuy, expectedCreatorLpBuy + expectedBuyTax, 1, "Creator LP+tax mismatch on buy"
+        );
 
         // --- Sell ---
         creatorFeesBefore = _pendingCreatorFees(testToken);
@@ -240,11 +275,15 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 creatorFeesFromSell = _pendingCreatorFees(testToken) - creatorFeesBefore;
         uint256 treasuryFromSell = treasury.balance - treasuryBefore;
 
-        // Sell should have LP fee + sell tax
         uint256 grossEth = ethReceived + creatorFeesFromSell + treasuryFromSell;
-        uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10000;
+        uint256 totalLpFeeSell = (grossEth * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasuryLpSell = (totalLpFeeSell * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreatorLpSell = totalLpFeeSell - expectedTreasuryLpSell;
+        uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10_000;
+
+        assertApproxEqAbs(treasuryFromSell, expectedTreasuryLpSell, 2, "Treasury LP share mismatch on sell");
         assertApproxEqAbs(
-            creatorFeesFromSell - treasuryFromSell, expectedSellTax, 2, "Sell creator excess should be ~sell tax"
+            creatorFeesFromSell, expectedCreatorLpSell + expectedSellTax, 2, "Creator LP+tax mismatch on sell"
         );
     }
 
@@ -262,7 +301,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         revert("event not found");
     }
 
-    /// @notice Buy emits LivoSwapBuy with correct fields
+    /// @notice Buy emits LivoSwapBuy with correct fields.
     function test_buyEmitsLivoSwapBuy() public createDefaultTaxToken {
         _graduateToken();
 
@@ -273,26 +312,23 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _swapBuy(buyer, buyAmount, 0, true);
         Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
 
-        // Indexed: token
         assertEq(address(uint160(uint256(log.topics[1]))), testToken, "token mismatch");
 
-        // Data: (ethIn, tokensOut, ethFees)
         (uint256 ethIn, uint256 tokensOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
         assertEq(ethIn, buyAmount, "ethIn should be buy amount");
         assertGt(tokensOut, 0, "tokensOut should be > 0");
-        // No buy tax on default token, only 1% LP fee
+        // No buy tax on default token, only 1% LP fee.
         assertEq(ethFees, buyAmount / 100, "ethFees should be 1% LP fee");
     }
 
-    /// @notice Sell emits LivoSwapSell with correct fields
+    /// @notice Sell emits LivoSwapSell with correct fields.
     function test_sellEmitsLivoSwapSell() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
         _graduateToken();
 
-        // Warp past tax period so only LP fee applies
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
 
         uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 2;
@@ -301,21 +337,18 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _swapSell(buyer, sellAmount, 0, true);
         Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_SELL_SIG);
 
-        // Indexed: token
         assertEq(address(uint160(uint256(log.topics[1]))), testToken, "token mismatch");
 
-        // Data: (tokensIn, ethOut, ethFees)
         (uint256 tokensIn, uint256 ethOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
         assertEq(tokensIn, sellAmount, "tokensIn should be sell amount");
         assertGt(ethOut, 0, "ethOut should be > 0");
-        // LP fee = 1% of ethOut
         assertApproxEqAbs(ethFees, ethOut / 100, 1, "ethFees should be ~1% LP fee");
     }
 
-    /// @notice Buy with tax emits correct fee amount
+    /// @notice Buy with tax emits correct fee amount.
     function test_buyWithTaxEmitsCorrectFees() public {
-        uint16 buyTax = 300; // 3%
+        uint16 buyTax = 300;
         testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
         _graduateToken();
 
@@ -328,12 +361,11 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         (,, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
-        // LP fee 1% + buy tax 3% = 4%
-        uint256 expectedFees = (buyAmount * (100 + buyTax)) / 10000;
+        uint256 expectedFees = (buyAmount * (LP_FEE_BPS + buyTax)) / 10_000;
         assertEq(ethFees, expectedFees, "ethFees should be LP fee + buy tax");
     }
 
-    /// @notice Sell with tax emits correct fee amount
+    /// @notice Sell with tax emits correct fee amount.
     function test_sellWithTaxEmitsCorrectFees() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
@@ -348,27 +380,86 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         (, uint256 ethOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
-        // LP fee 1% + sell tax 5% = 6% of gross ETH
-        uint256 expectedFees = (ethOut * (100 + DEFAULT_SELL_TAX_BPS)) / 10000;
+        uint256 expectedFees = (ethOut * (LP_FEE_BPS + DEFAULT_SELL_TAX_BPS)) / 10_000;
         assertApproxEqAbs(ethFees, expectedFees, 2, "ethFees should be LP fee + sell tax");
     }
 
-    /// @notice Accurate fee amounts: buy 10 ETH, verify exactly 0.05 ETH to each of creator and treasury
+    // ───────────────────────── router-failure defenses ────────────────────────
+
+    /// @notice If the router reverts, the swap still succeeds and the full LP fee falls back to
+    ///         the creator via `ILivoToken.accrueFees`. Treasury gets nothing in this path.
+    function test_swapSucceeds_whenRouterReverts() public createDefaultTaxToken {
+        _graduateToken();
+
+        // Plant a contract that reverts on every call at the router's address.
+        address routerAddr = address(taxHook.ROUTER());
+        vm.etch(routerAddr, type(RevertingRouter).runtimeCode);
+
+        uint256 creatorBefore = _pendingCreatorFees(testToken);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true); // must not revert
+
+        uint256 expectedLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
+        assertEq(
+            _pendingCreatorFees(testToken) - creatorBefore,
+            expectedLpFee,
+            "creator should receive the entire LP fee via the accrueFees fallback"
+        );
+        assertEq(treasury.balance, treasuryBefore, "treasury must not receive funds on the fallback path");
+    }
+
+    /// @notice If the router consumes its entire gas budget (e.g. an infinite loop in a hostile
+    ///         upgrade), the swap still succeeds. The `ROUTER_GAS_LIMIT` cap reserves enough
+    ///         gas in the catch frame to run the `accrueFees` fallback.
+    function test_swapSucceeds_whenRouterBurnsAllForwardedGas() public createDefaultTaxToken {
+        _graduateToken();
+
+        address routerAddr = address(taxHook.ROUTER());
+        vm.etch(routerAddr, type(GasBurningRouter).runtimeCode);
+
+        uint256 creatorBefore = _pendingCreatorFees(testToken);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        // Give the swap a generous gas headroom; the router will OOG inside the 300k cap and the
+        // catch frame should still have plenty to finish the swap.
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 expectedLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
+        assertEq(
+            _pendingCreatorFees(testToken) - creatorBefore,
+            expectedLpFee,
+            "creator should receive the entire LP fee via the accrueFees fallback after router OOG"
+        );
+        assertEq(treasury.balance, treasuryBefore, "treasury must not receive funds when router OOGs");
+    }
+
+    // ───────────────────────── accurate amounts ─────────────────────────────
+
+    /// @notice Accurate fee amounts: buy 1 ETH (small enough that the post-swap marketcap stays
+    ///         below tier 1 = 30 ETH), verify tier-0 split on the 0.01 ETH LP fee.
     function test_accurateFeeAmounts() public createDefaultTaxToken {
         _graduateToken();
 
         uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
         uint256 treasuryBefore = treasury.balance;
 
-        uint256 buyAmount = 10 ether;
+        uint256 buyAmount = 1 ether;
         deal(buyer, buyAmount);
         _swapBuy(buyer, buyAmount, 0, true);
 
         uint256 creatorLpFee = _pendingCreatorFees(testToken) - creatorFeesBefore;
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
-        // 1% of 10 ETH = 0.1 ETH total, split 50/50 = 0.05 ETH each
-        assertEq(creatorLpFee, 0.05 ether, "Creator should receive exactly 0.05 ETH");
-        assertEq(treasuryLpFee, 0.05 ether, "Treasury should receive exactly 0.05 ETH");
+        uint256 totalLpFee = (buyAmount * LP_FEE_BPS) / 10_000; // 0.01 ETH
+        uint256 expectedTreasury = (totalLpFee * TIER0_TREASURY_BPS) / 10_000; // 0.004 ETH
+        uint256 expectedCreator = totalLpFee - expectedTreasury; // 0.006 ETH
+
+        assertEq(creatorLpFee, expectedCreator, "Creator should receive tier-0 creator share");
+        assertEq(treasuryLpFee, expectedTreasury, "Treasury should receive tier-0 treasury share");
     }
 }

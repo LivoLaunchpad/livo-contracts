@@ -63,12 +63,16 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         uint256 treasuryDelta = treasury.balance - treasuryBefore; // LP treasury share
         uint256 gross = Y + creatorDelta + treasuryDelta; // total ETH from pool
 
-        // creatorDelta = lpCreatorShare + taxAmount; treasuryDelta = lpTreasuryShare ≈ lpCreatorShare
-        // so taxOnly ≈ creatorDelta - treasuryDelta
-        uint256 taxOnly = creatorDelta - treasuryDelta;
+        // creatorDelta = lpCreatorShare + taxAmount; treasuryDelta = lpTreasuryShare
+        // total LP fee = creatorDelta - taxAmount + treasuryDelta, so
+        // taxOnly = creatorDelta + treasuryDelta - totalLpFee
+        uint256 totalLpFee = (gross * LP_FEE_BPS_DEFAULT) / 10_000;
+        uint256 taxOnly = creatorDelta + treasuryDelta - totalLpFee;
 
-        // taxOnly / gross == 5%
-        assertApproxEqRel(taxOnly * 10_000, gross * DEFAULT_SELL_TAX_BPS, 0.0000001e18, "tax/gross should be ~5%");
+        // taxOnly / gross == DEFAULT_SELL_TAX_BPS
+        assertApproxEqRel(
+            taxOnly * 10_000, gross * DEFAULT_SELL_TAX_BPS, 0.0001e18, "tax/gross should be ~DEFAULT_SELL_TAX_BPS"
+        );
     }
 
     /// @notice Verify that buys have no sell tax, only 1% LP fees
@@ -81,7 +85,9 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
 
         uint256 claimableDelta = _creatorClaimable() - claimableBefore;
 
-        // Creator gets 0.5% LP fees on buys (half of 1% total LP fee)
-        assertApproxEqAbs(claimableDelta, buyAmount / 200, 1, "buy claimable should be ~0.5% LP fee share");
+        // Creator gets tier-0 LP fee share on buys.
+        assertApproxEqAbs(
+            claimableDelta, _lpCreatorShareTier0(buyAmount), 1, "buy claimable should be tier-0 LP fee share"
+        );
     }
 }

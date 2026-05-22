@@ -30,6 +30,11 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///         via `setTaxBps` (decrease-only — increases revert).
     uint16 public sellTaxBps;
 
+    /// @notice LP fee rate in basis points charged by LivoSwapHook on every swap.
+    ///         Set during initialization, cannot be changed. 0 means "use the hook's default"
+    ///         (100 bps = 1%); the hook caps any non-zero value at its hard ceiling.
+    uint16 public lpFeeBps;
+
     /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
     uint40 public taxDurationSeconds;
 
@@ -41,6 +46,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     //////////////////////// Events //////////////////////
 
     /// @notice Emitted once during init with the dev-supplied tax config.
+    /// @dev Signature preserved for indexer compatibility — `lpFeeBps` is stored on the token and
+    ///      can be read via `getTaxConfig()` / the public `lpFeeBps()` getter; it is intentionally
+    ///      not part of this event.
     event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
 
     /// @notice Emitted whenever `setTaxBps` successfully updates the buy/sell tax rates. Only the
@@ -129,6 +137,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         config = TaxConfig({
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
+            lpFeeBps: lpFeeBps,
             taxDurationSeconds: taxDurationSeconds,
             graduationTimestamp: graduationTimestamp
         });
@@ -151,12 +160,13 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     }
 
     /// @notice Internal helper to store tax configuration.
-    /// @dev Tax-bps and duration bounds are enforced upstream in the factory.
+    /// @dev Tax-bps, lpFeeBps and duration bounds are enforced upstream in the factory.
     function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
         emit LivoTaxableTokenInitialized(cfg.buyTaxBps, cfg.sellTaxBps, uint40(cfg.taxDurationSeconds));
 
         buyTaxBps = cfg.buyTaxBps;
         sellTaxBps = cfg.sellTaxBps;
+        lpFeeBps = cfg.lpFeeBps;
         taxDurationSeconds = uint40(cfg.taxDurationSeconds);
     }
 }

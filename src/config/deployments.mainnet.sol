@@ -23,6 +23,12 @@ library DeploymentsMainnet {
     address internal constant SWAP_HOOK_0P5 = 0x068241d20c59980AbEAeDED990d2441F05f5C0Cc;
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;
 
+    /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`. Splits LP fees between the
+    ///         protocol treasury and the per-token creator using a marketcap-tiered policy.
+    address internal constant LP_FEE_ROUTER = address(0);
+    /// @notice Implementation currently set behind `LP_FEE_ROUTER`. Tracked for verification only.
+    address internal constant LP_FEE_ROUTER_IMPL = address(0);
+
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x7F485770f390f8E98584B820d3e2C8d2091F9eE5;
     address internal constant TAXABLE_TOKEN_IMPL = 0x88138021037Fb70921FcBC4183d151381BC434Cb;

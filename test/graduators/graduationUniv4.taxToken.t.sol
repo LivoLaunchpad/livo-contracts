@@ -98,10 +98,12 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 buyerEthBalanceAfter = buyer.balance;
         uint256 ethReceived = buyerEthBalanceAfter - buyerEthBalanceBefore;
 
-        // Creator delta includes LP creator share (0.5%) + sell tax
+        // Creator delta includes tier-0 LP creator share + sell tax
         // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS - taxBps)
         uint256 denominator = 10000 - 100 - DEFAULT_SELL_TAX_BPS;
-        uint256 expectedCreatorTotal = (ethReceived * (50 + DEFAULT_SELL_TAX_BPS)) / denominator;
+        // BPS-of-gross taken by the creator's LP share = LP_FEE_BPS_DEFAULT * (1 - tier0_treasuryFraction)
+        uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TIER0_TREASURY_BPS)) / 10_000;
+        uint256 expectedCreatorTotal = (ethReceived * (creatorLpBpsOfGross + DEFAULT_SELL_TAX_BPS)) / denominator;
 
         uint256 creatorTaxAccrued = _pendingTaxes(testToken, creator) - creatorTaxesBefore;
         assertGt(creatorTaxAccrued, 0, "Creator should accrue sell tax + LP fees");
@@ -197,10 +199,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         uint256 ethReceived = buyerEthBalanceAfter - buyerEthBalanceBefore;
 
-        // Creator delta includes LP creator share (0.5%) + sell tax (4%)
+        // Creator delta includes tier-0 LP creator share + sell tax (4%)
         // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS - taxBps)
         uint256 denominator = 10000 - 100 - 400;
-        uint256 expectedCreatorTotal = (ethReceived * (50 + 400)) / denominator;
+        uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TIER0_TREASURY_BPS)) / 10_000;
+        uint256 expectedCreatorTotal = (ethReceived * (creatorLpBpsOfGross + 400)) / denominator;
 
         // Verify sell tax + LP fees were collected
         assertGt(sellTaxCollected, 0, "Sell tax + LP fees should be accrued");
@@ -208,7 +211,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             sellTaxCollected,
             expectedCreatorTotal,
             0.00015e18, // 15% tolerance for pool math variance
-            "Creator should accrue approximately 4% sell tax + 0.5% LP share"
+            "Creator should accrue approximately 4% sell tax + tier-0 LP creator share"
         );
     }
 
@@ -247,10 +250,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
         uint256 ethReceived = buyer.balance - buyerEthBalanceBefore;
 
-        // With 0% sell tax, the sell leg accrues only the LP creator share (0.5% of gross).
+        // With 0% sell tax, the sell leg accrues only the tier-0 LP creator share.
         // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS)
         uint256 denominator = 10000 - 100; // only LP fee, no sell tax
-        uint256 expectedCreatorShare = (ethReceived * 50) / denominator;
+        uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TIER0_TREASURY_BPS)) / 10_000;
+        uint256 expectedCreatorShare = (ethReceived * creatorLpBpsOfGross) / denominator;
 
         uint256 creatorAccrued = _pendingTaxes(testToken, creator) - creatorTaxesBefore;
         assertGt(creatorAccrued, 0, "Creator should accrue LP creator share even with 0% sell tax");
@@ -258,7 +262,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             creatorAccrued,
             expectedCreatorShare,
             0.0000015e18, // 0.015% tolerance for pool math variance
-            "Creator should accrue only LP creator share (0.5%), no sell tax"
+            "Creator should accrue only tier-0 LP creator share, no sell tax"
         );
     }
 
@@ -446,16 +450,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 ethReceived = buyerEthBalanceAfter - buyerEthBalanceBefore;
         uint256 sellTaxCollected = _pendingTaxes(testToken, creator) - creatorTaxesBefore;
 
-        // Creator delta includes LP creator share (0.5%) + sell tax (4%)
+        // Creator delta includes tier-0 LP creator share + sell tax (4%)
         uint256 denominator = 10000 - 100 - 400;
-        uint256 expectedCreatorTotal = (ethReceived * (50 + 400)) / denominator;
+        uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TIER0_TREASURY_BPS)) / 10_000;
+        uint256 expectedCreatorTotal = (ethReceived * (creatorLpBpsOfGross + 400)) / denominator;
 
-        // Verify ~4% sell tax + 0.5% LP share accrued
+        // Verify max sell tax + tier-0 LP creator share accrued.
         assertApproxEqRel(
             sellTaxCollected,
             expectedCreatorTotal,
             0.00015e18, // 15% tolerance for pool math variance
-            "Max sell tax + LP share should accrue ~4.5%"
+            "Max sell tax + tier-0 LP creator share should accrue ~4.6%"
         );
     }
 
@@ -582,7 +587,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        // Perform buy swap to generate LP fees (1% total: 0.5% creator, 0.5% treasury)
+        // Perform buy swap to generate LP fees (1% total, split per tier-0)
         uint256 buyAmount = 1 ether;
         deal(buyer, buyAmount);
         _swapBuy(buyer, buyAmount, 0, true);
@@ -592,7 +597,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         tokens[0] = testToken;
         uint256[] memory fees = feeHandler.getClaimable(tokens, creator);
         assertGt(fees[0], 0, "Fees should have accumulated");
-        assertApproxEqAbs(fees[0] - graduationDeposit, buyAmount / 200, 1, "Expected ~0.5% of buy amount");
+        assertApproxEqAbs(
+            fees[0] - graduationDeposit, _lpCreatorShareTier0(buyAmount), 1, "Expected tier-0 creator share of buy"
+        );
 
         // Claim LP fees
         _collectFees(testToken);
@@ -600,20 +607,20 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
 
-        // Verify creator received graduation deposit + ~0.5% of buy amount
+        // Verify creator received graduation deposit + tier-0 LP creator share of buy.
         assertApproxEqAbs(
             creatorEthBalanceAfter - creatorEthBalanceBefore - graduationDeposit,
-            buyAmount / 200,
+            _lpCreatorShareTier0(buyAmount),
             1,
-            "Creator should receive ~0.5% LP fees"
+            "Creator should receive tier-0 LP creator share"
         );
 
-        // Verify treasury received ~0.5% of buy amount (sent directly on accrual)
+        // Verify treasury received its tier-0 share (sent directly on accrual)
         assertApproxEqAbs(
             treasuryEthBalanceAfter - treasuryEthBalanceBefore,
-            buyAmount / 200,
+            _lpTreasuryShareTier0(buyAmount),
             1,
-            "Treasury should receive ~0.5% LP fees"
+            "Treasury should receive tier-0 LP fee share"
         );
     }
 
@@ -646,11 +653,14 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         tokens[0] = testToken;
         uint256[] memory claimableFees = feeHandler.getClaimable(tokens, creator);
         assertApproxEqAbs(
-            claimableFees[0] - graduationDeposit, buyAmount / 200, 5, "LP fees should be ~0.5% of buy amount in ETH"
+            claimableFees[0] - graduationDeposit,
+            _lpCreatorShareTier0(buyAmount),
+            5,
+            "LP fees should match tier-0 creator share of buy amount in ETH"
         );
 
         // Perform sell swap during active tax period
-        // This generates both: sell tax (accrued in graduator) + LP fees (ETH ~0.5%)
+        // This generates both: sell tax (accrued in graduator) + tier-0 LP creator share
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         uint256 sellAmount = buyerTokenBalance / 4;
         _swapSell(buyer, sellAmount, 0, true);
@@ -845,9 +855,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
         assertApproxEqAbs(
             _pendingTaxes(testToken, creator) - tokenOwnerTaxesBefore,
-            1 ether / 200,
+            _lpCreatorShareTier0(1 ether),
             1,
-            "Claimable should increase only by LP fee share on buy"
+            "Claimable should increase only by tier-0 LP creator share on buy"
         );
         assertEq(
             IERC20(testToken).balanceOf(creator),
@@ -909,13 +919,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
 
-        // Buy tax (3%) + LP creator share (0.5%) = 3.5% of buyAmount
-        uint256 expectedCreatorTotal = (buyAmount * (50 + 300)) / 10000;
+        // Buy tax (3%) + tier-0 LP creator share (60% of 1% = 0.6%) = 3.6% of buyAmount.
+        uint256 expectedCreatorTotal = _lpCreatorShareTier0(buyAmount) + (buyAmount * 300) / 10_000;
         assertApproxEqRel(
             creatorDelta,
             expectedCreatorTotal,
             0.0000015e18, // 0.015% tolerance
-            "Creator should accrue buy tax (3%) + LP share (0.5%)"
+            "Creator should accrue buy tax (3%) + tier-0 LP creator share"
         );
     }
 
@@ -934,15 +944,21 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
         uint256 treasuryDelta = treasury.balance - treasuryBefore;
 
-        // Treasury only gets LP share (0.5%)
-        assertApproxEqAbs(treasuryDelta, buyAmount / 200, 1, "Treasury should receive only ~0.5% LP fee");
-        // Creator gets LP share (0.5%) + buy tax (3%)
+        // Treasury only gets its tier-0 LP share
         assertApproxEqAbs(
-            creatorDelta, (buyAmount * (50 + 300)) / 10000, 1, "Creator should receive LP share + buy tax"
+            treasuryDelta, _lpTreasuryShareTier0(buyAmount), 1, "Treasury should receive tier-0 LP share only"
         );
-        // Isolated buy tax = creator - treasury
-        uint256 taxOnly = creatorDelta - treasuryDelta;
-        assertApproxEqAbs(taxOnly, (buyAmount * 300) / 10000, 1, "Isolated buy tax should be ~3%");
+        // Creator gets tier-0 LP creator share + buy tax (3%)
+        assertApproxEqAbs(
+            creatorDelta,
+            _lpCreatorShareTier0(buyAmount) + (buyAmount * 300) / 10_000,
+            1,
+            "Creator should receive tier-0 LP creator share + buy tax"
+        );
+        // Isolated buy tax = creator - treasury - LP-fee balance offset
+        uint256 totalLpFee = (buyAmount * LP_FEE_BPS_DEFAULT) / 10_000;
+        uint256 taxOnly = creatorDelta + treasuryDelta - totalLpFee;
+        assertApproxEqAbs(taxOnly, (buyAmount * 300) / 10_000, 1, "Isolated buy tax should be ~3%");
     }
 
     /// @notice Test that no buy tax is charged after the tax period expires
@@ -961,8 +977,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
 
-        // After expiry, creator only gets LP share (0.5%), no buy tax
-        assertApproxEqAbs(creatorDelta, buyAmount / 200, 1, "Creator should only accrue LP share after tax expiry");
+        // After expiry, creator only gets tier-0 LP creator share, no buy tax
+        assertApproxEqAbs(
+            creatorDelta,
+            _lpCreatorShareTier0(buyAmount),
+            1,
+            "Creator should only accrue tier-0 LP share after tax expiry"
+        );
     }
 
     /// @notice Test full claim flow: creator receives buy tax + LP fees as ETH after claiming
@@ -986,8 +1007,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorEthAfter = creator.balance;
         uint256 creatorReceived = creatorEthAfter - creatorEthBefore;
 
-        // Creator should receive graduation deposit + LP share (0.5%) + buy tax (3%)
-        uint256 expectedFees = (buyAmount * (50 + 300)) / 10000;
+        // Creator should receive graduation deposit + tier-0 LP creator share + buy tax (3%)
+        uint256 expectedFees = _lpCreatorShareTier0(buyAmount) + (buyAmount * 300) / 10_000;
         assertApproxEqAbs(
             creatorReceived,
             graduationDeposit + expectedFees,
@@ -1040,7 +1061,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorReceived = creator.balance - creatorEthBefore;
 
         // Creator total should exceed LP-only amount (graduation + both LP shares)
-        uint256 lpOnlyAmount = graduationDeposit + buyAmount / 200; // graduation + buy LP share only
+        uint256 lpOnlyAmount = graduationDeposit + _lpCreatorShareTier0(buyAmount); // graduation + tier-0 buy LP share only
         assertGt(creatorReceived, lpOnlyAmount, "Creator should receive more than LP-only amount (taxes included)");
 
         // Total fees (excl graduation) should include buy tax + sell tax + LP shares

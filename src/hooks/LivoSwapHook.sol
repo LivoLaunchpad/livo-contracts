@@ -12,59 +12,87 @@ import {
     toBeforeSwapDelta
 } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoLpFeeRouter} from "src/interfaces/ILivoLpFeeRouter.sol";
 
 /// @title LivoSwapHook
-/// @notice Uniswap V4 hook that collects LP fees and time-limited sell taxes on token swaps
-/// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4
-/// @dev Hook charges 1% LP fee (split 50/50 creator/treasury) on all swaps, plus sell tax during tax period
+/// @notice Uniswap V4 hook that collects LP fees and time-limited sell taxes on token swaps.
+/// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4.
+/// @dev The LP fee rate is read per-token from `ILivoToken.getTaxConfig().lpFeeBps`. Any non-zero
+///      value is capped at `MAX_LP_FEE_BPS` (100 bps) so a misconfigured token cannot overcharge.
+///      A zero `lpFeeBps` is taken literally — the hook charges no LP fee.
+/// @dev The collected LP fee is forwarded to `LivoLpFeeRouter`, which splits it between the
+///      protocol treasury and the creator (via the token's master-fee-handler) using a
+///      marketcap-tiered policy. The hook itself is unaware of the split — it only forwards.
 contract LivoSwapHook is BaseHook {
     error NoSwapsBeforeGraduation();
-    error EthTransferFailed();
 
-    /// @notice Emitted when creator taxes are accrued from a taxed swap
+    /// @notice Emitted when creator taxes are accrued from a taxed swap.
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
-    /// @notice Emitted when LP fees are accrued
-    event LpFeesAccrued(address indexed token, uint256 creatorShare, uint256 treasuryShare);
-    /// @notice Emitted on every buy for off-chain indexing
+    /// @notice Emitted when LP fees are forwarded out of the hook on a swap leg.
+    /// @dev The split between creator / treasury / (future) liquidity is reported by the router
+    ///      in `LivoLpFeeRouter.LpFeesRouted`. On the fallback path (router reverts) this event
+    ///      still fires but no `LpFeesRouted` is emitted — indexers can detect the fallback by
+    ///      the absence of the router event in the same tx. The hook event signature is
+    ///      different from the old hook's `LpFeesAccrued(token, creator, treasury)` on purpose:
+    ///      it lives at a fresh hook address, so legacy tokens (tied to the old hook) and new
+    ///      tokens (tied to this hook) never collide on the indexer.
+    event LpFeesForwarded(address indexed token, uint256 amount);
+    /// @notice Emitted on every buy for off-chain indexing.
     event LivoSwapBuy(
         address indexed token, address indexed txOrigin, uint256 ethIn, uint256 tokensOut, uint256 ethFees
     );
-    /// @notice Emitted on every sell for off-chain indexing
+    /// @notice Emitted on every sell for off-chain indexing.
     event LivoSwapSell(
         address indexed token, address indexed txOrigin, uint256 tokensIn, uint256 ethOut, uint256 ethFees
     );
 
-    /// @notice Basis points denominator (10000 = 100%)
+    /// @notice Basis points denominator (10000 = 100%).
     uint256 private constant BASIS_POINTS = 10000;
 
-    /// @notice LP fee rate in basis points (1%)
-    uint256 private constant LP_FEE_BPS = 100;
+    /// @notice Hard ceiling on the per-token LP fee. Any `getTaxConfig().lpFeeBps` above this is
+    ///         clamped down to this value — a misconfigured token can never overcharge users.
+    /// @dev A zero `lpFeeBps` is taken literally (no LP fee charged).
+    uint16 private constant MAX_LP_FEE_BPS = 100; // 1%
 
-    /// @notice Cached buy fee between beforeSwap and afterSwap to avoid redundant _getTaxParams call
-    uint256 private transient _cachedBuyFee;
+    /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized to cover the router's
+    ///         worst-case path with margin, then capped so a misbehaving router cannot drain the
+    ///         remaining gas and starve the fallback path.
+    /// @dev Worst-case router work: one `treasury.call` (recipient gets the 2300-gas stipend) +
+    ///      `token.accrueFees` → `LivoMasterFeeHandler.depositFees` → optional direct-receiver
+    ///      forward (handler caps that branch at `DIRECT_FORWARD_GAS = 100_000`). 300k provides
+    ///      a comfortable ceiling. The remainder of the tx's gas stays available for the
+    ///      `accrueFees` fallback if the router reverts.
+    uint256 private constant ROUTER_GAS_LIMIT = 300_000;
 
-    /// @notice Launchpad contract for resolving treasury address
-    address public immutable LAUNCHPAD;
+    /// @notice Cached LP fee taken from the input on a buy, carried from beforeSwap to afterSwap.
+    /// @dev    Used for the router accrual (in afterSwap, when `tokensOut` is finally known) and
+    ///         for the `LivoSwapBuy.ethFees` field.
+    uint256 private transient _cachedBuyLpFee;
 
-    /// @notice Initializes the hook with the pool manager and launchpad addresses
-    /// @param _poolManager The Uniswap V4 pool manager contract
-    /// @param _launchpad The Livo launchpad contract
-    constructor(IPoolManager _poolManager, address _launchpad) BaseHook(_poolManager) {
-        LAUNCHPAD = _launchpad;
+    /// @notice Cached buy tax taken from the input on a buy, carried from beforeSwap to afterSwap.
+    uint256 private transient _cachedBuyTax;
+
+    /// @notice LP fee router that splits forwarded fees between treasury and creator.
+    /// @dev Resolved at swap time; upgrade the router via its own UUPS proxy without redeploying
+    ///      this hook.
+    ILivoLpFeeRouter public immutable ROUTER;
+
+    /// @notice Initializes the hook with the pool manager and LP fee router addresses.
+    constructor(IPoolManager _poolManager, address _router) BaseHook(_poolManager) {
+        ROUTER = ILivoLpFeeRouter(_router);
     }
 
-    /// @notice Allows contract to receive ETH from `poolManager.take()`
-    /// @dev ETH should never remain in this contract between transactions. If it does, it is accepted as stuck.
-    ///      Adding a rescue mechanism would require `Ownable`, which is avoided to keep this singleton hook minimal and ownerless.
+    /// @notice Allows contract to receive ETH from `poolManager.take()`.
+    /// @dev ETH should never remain in this contract between transactions. If it does, it is
+    ///      accepted as stuck. Adding a rescue mechanism would require `Ownable`, which is
+    ///      avoided to keep this singleton hook minimal and ownerless.
     receive() external payable {}
 
-    /// @notice Returns the hook permissions indicating which callbacks are implemented
-    /// @dev Hook address must have these permission flags encoded in its address (via CREATE2)
-    /// @return Permissions struct with beforeSwap, afterSwap, beforeSwapReturnDelta, and afterSwapReturnDelta set to true
+    /// @notice Returns the hook permissions indicating which callbacks are implemented.
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
@@ -84,12 +112,8 @@ contract LivoSwapHook is BaseHook {
         });
     }
 
-    /// @notice Hook callback executed before each swap to check graduation and charge LP fees on buys
-    /// @param key The pool key identifying the pool
-    /// @param params The swap parameters including direction
-    /// @return bytes4 The function selector
-    /// @return BeforeSwapDelta The delta representing ETH taken as LP fee (buys only)
-    /// @return uint24 Always 0 (no dynamic fee override)
+    /// @notice Hook callback executed before each swap to check graduation and charge LP + buy-tax
+    ///         fees on the input currency for buys. Sell-leg fees are taken in `_afterSwap`.
     function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
         override
@@ -97,49 +121,40 @@ contract LivoSwapHook is BaseHook {
     {
         address tokenAddress = Currency.unwrap(key.currency1);
 
-        // Check if token has graduated. Swaps not allowed before graduation
+        // Swaps not allowed before graduation.
         if (!ILivoToken(tokenAddress).graduated()) {
             revert NoSwapsBeforeGraduation();
         }
 
-        // Only charge LP fee on buys (swapping ETH→tokens, zeroForOne=true)
-        // Sells are handled in afterSwap where we know the ETH output amount
+        // Sells: nothing to do here — both the fee deduction and the router accrual run in afterSwap.
         if (!params.zeroForOne) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // BUY: charge 1% LP fee on ETH input before the swap
-        // amountSpecified is negative for exact-input swaps
+        // BUY: pull LP fee + (optional) buy tax out of the input ETH before the swap so the swap
+        // sees a smaller effective `ethIn`. The router accrual is deferred to `_afterSwap` so we
+        // can pass the avg swap price (ethNet / tokensOut) without reading the pool's slot0.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absAmount = uint256(-params.amountSpecified);
-        uint256 feeAmount = (absAmount * LP_FEE_BPS) / BASIS_POINTS;
+        ILivoToken.TaxConfig memory cfg = ILivoToken(tokenAddress).getTaxConfig();
+        (uint256 lpFee, uint256 taxAmount) = _computeFees(absAmount, cfg, true);
 
-        // Calculate buy tax if applicable
-        (bool shouldTax, uint16 taxBps) = _getTaxParams(tokenAddress, true);
-        uint256 taxAmount = shouldTax ? (absAmount * taxBps) / BASIS_POINTS : 0;
+        uint256 totalFee = lpFee + taxAmount;
+        _cachedBuyLpFee = lpFee;
+        _cachedBuyTax = taxAmount;
 
-        uint256 totalFee = feeAmount + taxAmount;
+        if (totalFee > 0) {
+            poolManager.take(key.currency0, address(this), totalFee);
+        }
 
-        // Cache totalFee for afterSwap event emission
-        _cachedBuyFee = totalFee;
-
-        // Take ETH from the pool to this contract
-        poolManager.take(key.currency0, address(this), totalFee);
-
-        // Split and deposit LP fee + buy tax
-        _accrue(tokenAddress, feeAmount, taxAmount);
-
-        // Return delta: positive deltaSpecified means hook is taking from the specified (input) currency
+        // Return delta: positive deltaSpecified means hook is taking from the specified (input) currency.
         // forge-lint: disable-next-line(unsafe-typecast)
         return (IHooks.beforeSwap.selector, toBeforeSwapDelta(int128(uint128(totalFee)), 0), 0);
     }
 
-    /// @notice Hook callback executed after each swap to collect sell taxes and LP fees on sells
-    /// @param key The pool key identifying the pool
-    /// @param params The swap parameters including direction
-    /// @param delta The balance changes from the swap
-    /// @return bytes4 The function selector to indicate successful execution
-    /// @return int128 The total fee amount taken from the pool (positive = hook took from pool)
+    /// @notice Hook callback executed after each swap to (a) accrue buy-side fees that were
+    ///         taken in `_beforeSwap` now that `tokensOut` is known, and (b) compute & take
+    ///         sell-side LP + sell-tax fees on the ETH output.
     function _afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
         internal
         override
@@ -147,93 +162,125 @@ contract LivoSwapHook is BaseHook {
     {
         address tokenAddress = Currency.unwrap(key.currency1);
 
-        // BUY: fees already charged in beforeSwap, just emit event
         if (params.zeroForOne) {
+            // BUY: fees were already taken from the input in beforeSwap. Now that we know the
+            // tokens received, route the accrual using the avg-swap-price `(ethNet, tokensOut)`.
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 ethIn = uint256(-params.amountSpecified);
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 tokensOut = uint256(uint128(delta.amount1()));
 
-            emit LivoSwapBuy(tokenAddress, tx.origin, ethIn, tokensOut, _cachedBuyFee);
+            uint256 lpFee = _cachedBuyLpFee;
+            uint256 taxAmount = _cachedBuyTax;
+            uint256 totalFee = lpFee + taxAmount;
+            // `ethNet` is the ETH that actually crossed into the pool (after we deducted fees).
+            uint256 ethNet = ethIn - totalFee;
+
+            _accrue(tokenAddress, lpFee, taxAmount, ethNet, tokensOut);
+
+            emit LivoSwapBuy(tokenAddress, tx.origin, ethIn, tokensOut, totalFee);
             return (IHooks.afterSwap.selector, 0);
         }
 
-        // SELL: charge fees on ETH output
-        // ETH output from the swap (amount0 is positive for sells = ETH going out)
+        // SELL: take fees from the ETH output.
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 absEthAmount = uint256(uint128(delta.amount0()));
-
-        // Calculate LP fee on gross ETH output
-        uint256 lpFee = (absEthAmount * LP_FEE_BPS) / BASIS_POINTS;
-
-        // Calculate sell tax if applicable
-        (bool shouldTax, uint16 taxBps) = _getTaxParams(tokenAddress, false);
-        uint256 taxAmount = shouldTax ? (absEthAmount * taxBps) / BASIS_POINTS : 0;
-
-        // stack fees and taxes on top of each other
-        uint256 totalFee = lpFee + taxAmount;
-
-        // Take total fee from pool
-        poolManager.take(key.currency0, address(this), totalFee);
-
-        // Deposit LP fee (50/50 creator/treasury) + sell tax (100% creator) in a single accrueFees call
-        _accrue(tokenAddress, lpFee, taxAmount);
-
+        uint256 ethGross = uint256(uint128(delta.amount0()));
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 tokensIn = uint256(uint128(-delta.amount1()));
+        ILivoToken.TaxConfig memory cfg = ILivoToken(tokenAddress).getTaxConfig();
+        (uint256 sellLpFee, uint256 sellTax) = _computeFees(ethGross, cfg, false);
+        uint256 sellTotalFee = sellLpFee + sellTax;
 
-        emit LivoSwapSell(tokenAddress, tx.origin, tokensIn, absEthAmount, totalFee);
+        if (sellTotalFee > 0) {
+            poolManager.take(key.currency0, address(this), sellTotalFee);
+        }
+
+        // `ethNetSell` is the ETH that effectively left the pool against `tokensIn` (gross minus our fees).
+        uint256 ethNetSell = ethGross - sellTotalFee;
+        _accrue(tokenAddress, sellLpFee, sellTax, ethNetSell, tokensIn);
+
+        emit LivoSwapSell(tokenAddress, tx.origin, tokensIn, ethGross, sellTotalFee);
 
         // forge-lint: disable-next-line(unsafe-typecast)
-        return (IHooks.afterSwap.selector, int128(uint128(totalFee)));
+        return (IHooks.afterSwap.selector, int128(uint128(sellTotalFee)));
     }
 
-    /// @notice Get tax parameters for a token
-    /// @return shouldTax Whether tax should be collected
-    /// @return taxBps The tax rate in basis points
-    function _getTaxParams(address tokenAddress, bool isBuy) internal view returns (bool shouldTax, uint16 taxBps) {
-        ILivoToken.TaxConfig memory config = ILivoToken(tokenAddress).getTaxConfig();
-
-        // Check if token has graduated
-        if (config.graduationTimestamp == 0) {
-            return (false, 0);
+    /// @notice Computes the LP fee + tax amounts on a given gross ETH amount.
+    /// @dev    Reads the LP fee rate from the token's tax config. A zero value is taken literally
+    ///         (no LP fee). A value above `MAX_LP_FEE_BPS` is clamped to that ceiling.
+    function _computeFees(uint256 grossEth, ILivoToken.TaxConfig memory cfg, bool isBuy)
+        internal
+        view
+        returns (uint256 lpFee, uint256 taxAmount)
+    {
+        uint16 lpFeeBps = cfg.lpFeeBps;
+        if (lpFeeBps > MAX_LP_FEE_BPS) {
+            lpFeeBps = MAX_LP_FEE_BPS;
         }
+        lpFee = (grossEth * lpFeeBps) / BASIS_POINTS;
 
-        // Check if tax period has expired
-        if (block.timestamp > config.graduationTimestamp + config.taxDurationSeconds) {
-            return (false, 0);
+        // Tax window check: only active between graduation and graduation+duration.
+        if (cfg.graduationTimestamp == 0) return (lpFee, 0);
+        if (block.timestamp > uint256(cfg.graduationTimestamp) + uint256(cfg.taxDurationSeconds)) {
+            return (lpFee, 0);
         }
-
-        taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
-        if (taxBps == 0) {
-            return (false, 0);
-        }
-
-        return (true, taxBps);
+        uint16 taxBps = isBuy ? cfg.buyTaxBps : cfg.sellTaxBps;
+        if (taxBps == 0) return (lpFee, 0);
+        taxAmount = (grossEth * taxBps) / BASIS_POINTS;
     }
 
-    /// @notice Deposit LP fee (50/50 creator/treasury) and optional sell tax (100% creator) in a single accrueFees call
-    /// @param tokenAddress The token whose creator receives fees
-    /// @param lpFeeAmount The total LP fee to split 50/50
-    /// @param taxAmount The sell tax amount (100% to creator), 0 on buys
-    function _accrue(address tokenAddress, uint256 lpFeeAmount, uint256 taxAmount) internal {
-        uint256 treasuryShare = lpFeeAmount / 2;
-        uint256 creatorLpShare = lpFeeAmount - treasuryShare;
-
-        // Single accrueFees call: creator LP share + sell tax
-        uint256 creatorTotal = creatorLpShare + taxAmount;
-
-        // emit events for accounting purposes
-        emit LpFeesAccrued(tokenAddress, creatorLpShare, treasuryShare);
+    /// @notice Forwards the LP fee through the router and the tax slice straight to the creator.
+    /// @dev    The router call is the only place this contract trusts external code. It is
+    ///         hardened against every failure mode that can come back from
+    ///         `LivoLpFeeRouter.depositLpFees`:
+    ///
+    ///         - **Revert with revert-data** (custom error, `require`, `revert(string)`): caught
+    ///           by `try/catch`; the LP fee falls through to `ILivoToken.accrueFees`.
+    ///         - **Out-of-gas inside the router**: gas forwarded is capped at `ROUTER_GAS_LIMIT`,
+    ///           so the post-catch frame keeps `gasleft() - ROUTER_GAS_LIMIT` to run the
+    ///           `accrueFees` fallback. Defends against gas griefing by a hostile upgrade.
+    ///         - **Router proxy has no code** (impl pointer points to `address(0)`): Solidity's
+    ///           high-level call inserts an `extcodesize` check that reverts; caught.
+    ///         - **Router exists but its current impl does not implement `depositLpFees`**: the
+    ///           router contract intentionally ships without a `fallback()` function, so a call
+    ///           with an unknown selector reverts at the proxy level and is caught here. *This
+    ///           is a router-side invariant that future router upgrades MUST preserve* — adding
+    ///           a payable fallback to the router would silently strand the LP fee on the proxy.
+    ///         - **Interface return-value mismatch**: the interface declares no return values,
+    ///           so there is no decode step that could mis-interpret bytes from a wrong impl.
+    ///
+    ///         If `accrueFees` itself also reverts the whole swap fails — by design, since a
+    ///         simultaneous outage of the router AND the master fee handler is a protocol-wide
+    ///         failure that warrants a clear, observable revert rather than silently stranding
+    ///         ETH in this contract.
+    /// @param ethSwapAmount   Net ETH that crossed the pool during this swap leg (gross minus
+    ///                        fees). Together with `tokenSwapAmount` it lets the router derive
+    ///                        the swap's avg price without reading slot0.
+    /// @param tokenSwapAmount Token amount that crossed the pool during this swap leg.
+    function _accrue(
+        address tokenAddress,
+        uint256 lpFee,
+        uint256 taxAmount,
+        uint256 ethSwapAmount,
+        uint256 tokenSwapAmount
+    ) internal {
+        if (lpFee > 0) {
+            emit LpFeesForwarded(tokenAddress, lpFee);
+            try ROUTER.depositLpFees{value: lpFee, gas: ROUTER_GAS_LIMIT}(
+                tokenAddress, ethSwapAmount, tokenSwapAmount
+            ) {
+            // happy path — router emitted its own `LpFeesRouted` with the breakdown.
+            }
+            catch {
+                // Fallback: send through `accrueFees` so the LP fee reaches the configured fee
+                // receivers even on router failure. The creator effectively receives the entire
+                // LP fee in this degenerate case.
+                ILivoToken(tokenAddress).accrueFees{value: lpFee}();
+            }
+        }
         if (taxAmount > 0) {
             emit CreatorTaxesAccrued(tokenAddress, taxAmount);
+            ILivoToken(tokenAddress).accrueFees{value: taxAmount}();
         }
-
-        ILivoToken(tokenAddress).accrueFees{value: creatorTotal}();
-
-        // Treasury share via direct transfer
-        address treasury = ILivoLaunchpad(LAUNCHPAD).treasury();
-        (bool success,) = treasury.call{value: treasuryShare}("");
-        require(success, EthTransferFailed());
     }
 }

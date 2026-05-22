@@ -144,7 +144,7 @@ contract InvariantsHelperLaunchpad is Test {
     }
 
     function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, lpFeeBps: 0, taxDurationSeconds: 0});
     }
 
     function _emptyAntiSniperCfg() internal pure returns (AntiSniperConfigs memory) {

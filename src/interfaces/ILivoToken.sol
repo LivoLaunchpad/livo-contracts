@@ -26,9 +26,13 @@ interface ILivoToken is IERC20 {
     }
 
     /// @notice Tax configuration for a token
+    /// @dev All five fields pack into a single storage slot (2+2+2+5+5 = 16 bytes ≤ 32).
     struct TaxConfig {
         uint16 buyTaxBps; // Buy tax in basis points (max 500 = 5%)
         uint16 sellTaxBps; // Sell tax in basis points (max 500 = 5%)
+        uint16 lpFeeBps; // LP fee in basis points charged by LivoSwapHook on every swap.
+        // 0 means "use the hook's default" (currently 100 bps = 1%); the hook caps any non-zero
+        // value at its hard ceiling so a misconfigured token can never overcharge.
         uint40 taxDurationSeconds; // Duration after graduation during which taxes apply
         uint40 graduationTimestamp; // Timestamp when token graduated (0 if not graduated)
     }
