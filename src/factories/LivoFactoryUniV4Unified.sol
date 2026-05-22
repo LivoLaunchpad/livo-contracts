@@ -68,10 +68,11 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
         // Routes through the shared `_createToken` umbrella so this overload and the struct-based
-        // overload below share the same internal flow.
+        // overload below share the same internal flow. `lpFeeBps = 100` matches the value hardcoded
+        // in `LivoSwapHook` today; the struct overload reads it from `UniV4Configs` instead.
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
-        token = _createToken(tokenSetup, tokenOwner, supplyShares, taxCfg, antiSniperCfg);
+        token = _createToken(tokenSetup, tokenOwner, supplyShares, taxCfg, antiSniperCfg, 100);
     }
 
     /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
@@ -86,7 +87,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         _validateUniv4Configs(univ4Configs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        token = _createToken(tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs);
+        token = _createToken(
+            tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs, univ4Configs.lpFeeBps
+        );
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////

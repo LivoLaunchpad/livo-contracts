@@ -51,6 +51,11 @@ interface ILivoFactory {
         uint256[] amounts
     );
 
+    /// @notice Per-token Uniswap V4 LP fee in basis points. Emitted only by the V4 unified factory
+    ///         (V2 has no LP-fee concept). Today the V4 hook hardcodes 100 bps; this event lets
+    ///         indexers attach the value as a per-token attribute ahead of the field being honoured.
+    event LpFeeBpsSet(address indexed token, uint16 lpFeeBps);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();

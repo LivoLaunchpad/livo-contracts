@@ -66,6 +66,7 @@ For both unified factories, the common Livo event order is:
 5. Initial fee config is registered through the token into `LivoMasterFeeHandler`:
    - Zero or more **`LivoMasterFeeHandler.DirectReceiverRegistered`** (`token, receiver`) — one per initial direct receiver.
    - **`LivoMasterFeeHandler.SharesUpdated`** (`token, recipients, sharesBps`).
+6. V4 only: **`LivoFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — emitted by `LivoFactoryUniV4Unified` for every created token. `V2` callers pass `lpFeeBps = 0`, which the umbrella treats as a skip sentinel, so V2 deploys do not emit this event.
 
 Notes:
 
