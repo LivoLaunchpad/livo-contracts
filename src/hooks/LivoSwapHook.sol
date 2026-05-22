@@ -131,9 +131,17 @@ contract LivoSwapHook is BaseHook {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // BUY: pull LP fee + (optional) buy tax out of the input ETH before the swap so the swap
-        // sees a smaller effective `ethIn`. The router accrual is deferred to `_afterSwap` so we
-        // can pass the avg swap price (ethNet / tokensOut) without reading the pool's slot0.
+        // Exact-output buys (amountSpecified > 0): the input ETH is not known here. Defer the
+        // entire fee path to afterSwap, where the actual ETH consumed is read from
+        // `-delta.amount0()`. Charging here would underflow `uint256(-params.amountSpecified)`.
+        if (params.amountSpecified > 0) {
+            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
+
+        // BUY exact-input: pull LP fee + (optional) buy tax out of the input ETH before the swap
+        // so the swap sees a smaller effective `ethIn`. The router accrual is deferred to
+        // `_afterSwap` so we can pass the avg swap price (ethNet / tokensOut) without reading
+        // the pool's slot0.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absAmount = uint256(-params.amountSpecified);
         ILivoToken.TaxConfig memory cfg = ILivoToken(tokenAddress).getTaxConfig();
@@ -163,23 +171,36 @@ contract LivoSwapHook is BaseHook {
         address tokenAddress = Currency.unwrap(key.currency1);
 
         if (params.zeroForOne) {
-            // BUY: fees were already taken from the input in beforeSwap. Now that we know the
-            // tokens received, route the accrual using the avg-swap-price `(ethNet, tokensOut)`.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 ethIn = uint256(-params.amountSpecified);
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 tokensOut = uint256(uint128(delta.amount1()));
 
-            uint256 lpFee = _cachedBuyLpFee;
-            uint256 taxAmount = _cachedBuyTax;
-            uint256 totalFee = lpFee + taxAmount;
-            // `ethNet` is the ETH that actually crossed into the pool (after we deducted fees).
-            uint256 ethNet = ethIn - totalFee;
+            // BUY exact-input: fees were already taken from the input in beforeSwap. Route the
+            // accrual using the avg-swap-price `(ethNet, tokensOut)`.
+            if (params.amountSpecified < 0) {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                uint256 ethIn = uint256(-params.amountSpecified);
+                uint256 lpFee = _cachedBuyLpFee;
+                uint256 taxAmount = _cachedBuyTax;
+                uint256 totalFee = lpFee + taxAmount;
+                // `ethNet` is the ETH that actually crossed into the pool (after we deducted fees).
+                uint256 ethNet = ethIn - totalFee;
 
-            _accrue(tokenAddress, lpFee, taxAmount, ethNet, tokensOut);
+                _accrue(tokenAddress, lpFee, taxAmount, ethNet, tokensOut);
 
-            emit LivoSwapBuy(tokenAddress, tx.origin, ethIn, tokensOut, totalFee);
-            return (IHooks.afterSwap.selector, 0);
+                emit LivoSwapBuy(tokenAddress, tx.origin, ethIn, tokensOut, totalFee);
+                return (IHooks.afterSwap.selector, 0);
+            }
+
+            // BUY exact-output: charge LP fee (+ active buy tax) on the actual ETH the pool
+            // consumed. `delta.amount0()` is negative for buys (ETH paid by swapper).
+            // Extracted into a helper to keep this frame under the stack limit.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 ethInExactOut = uint256(uint128(-delta.amount0()));
+            uint256 buyTotalFee = _chargeExactOutputBuyFee(key, tokenAddress, ethInExactOut, tokensOut);
+
+            emit LivoSwapBuy(tokenAddress, tx.origin, ethInExactOut, tokensOut, buyTotalFee);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return (IHooks.afterSwap.selector, int128(uint128(buyTotalFee)));
         }
 
         // SELL: take fees from the ETH output.
@@ -203,6 +224,26 @@ contract LivoSwapHook is BaseHook {
 
         // forge-lint: disable-next-line(unsafe-typecast)
         return (IHooks.afterSwap.selector, int128(uint128(sellTotalFee)));
+    }
+
+    /// @dev Charges the LP fee (+ active buy tax) on the ETH actually consumed by an exact-output
+    ///      buy and forwards the accrual. Extracted from `_afterSwap` to keep that frame within
+    ///      the EVM stack limit.
+    function _chargeExactOutputBuyFee(PoolKey calldata key, address tokenAddress, uint256 ethIn, uint256 tokensOut)
+        internal
+        returns (uint256 totalFee)
+    {
+        ILivoToken.TaxConfig memory cfg = ILivoToken(tokenAddress).getTaxConfig();
+        (uint256 lpFee, uint256 taxAmount) = _computeFees(ethIn, cfg, true);
+        totalFee = lpFee + taxAmount;
+
+        if (totalFee > 0) {
+            poolManager.take(key.currency0, address(this), totalFee);
+        }
+
+        // `ethNet` is the ETH that actually crossed into the pool against `tokensOut`.
+        uint256 ethNet = ethIn - totalFee;
+        _accrue(tokenAddress, lpFee, taxAmount, ethNet, tokensOut);
     }
 
     /// @notice Computes the LP fee + tax amounts on a given gross ETH amount.
