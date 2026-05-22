@@ -12,6 +12,15 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         Replaces `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV4SniperProtected`,
 ///         and `LivoFactoryTaxTokenSniperProtected`.
 contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
+    /// @notice V4-specific config bundle for the struct-based `createToken` overload.
+    /// @dev `lpFeeBps` is reserved for future use — today the LP fee is a constant in
+    ///      `LivoSwapHook` (100 bps). The field is accepted for ABI forward-compatibility but is
+    ///      not wired through; callers should pass `100` to match current behaviour.
+    struct UniV4Configs {
+        bool renounceOwnership;
+        uint16 lpFeeBps;
+    }
+
     constructor(
         address launchpad,
         address tokenImplBase,
@@ -64,6 +73,20 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, feeReceivers, supplyShares);
+    }
+
+    /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
+    ///         keep the ABI extensible without hitting stack-too-deep when new features add inputs.
+    ///         `univ4Configs.lpFeeBps` is reserved for future use (see `UniV4Configs`).
+    function createToken(
+        TokenSetup calldata tokenSetup,
+        TaxConfigInit calldata taxConfigs,
+        UniV4Configs calldata univ4Configs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs
+    ) external payable returns (address token) {
+        address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
+        token = _createToken(tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.

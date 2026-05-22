@@ -242,6 +242,31 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
+    /// @dev Shared `createToken` body for the struct-based overload on each unified factory.
+    ///      Centralises validation → dispatch → launch → finalize so the struct path emits the same
+    ///      events in the same order as the legacy positional path. Takes structs (not flat args)
+    ///      so future fields can be added to `TokenSetup`/configs without growing this function's
+    ///      stack frame. Callers derive `tokenOwner` per their venue policy (V2: always
+    ///      `address(0)`; V4: `msg.sender` unless renounced).
+    function _createToken(
+        TokenSetup calldata tokenSetup,
+        address tokenOwner,
+        SupplyShare[] calldata buyOnDeployShares,
+        TaxConfigInit calldata taxConfigs,
+        AntiSniperConfigs calldata antiSniperConfigs
+    ) internal returns (address token) {
+        _validateInputs(tokenSetup.name, tokenSetup.symbol, tokenSetup.feeShares, buyOnDeployShares);
+        _validateAntiSniperConfig(antiSniperConfigs);
+        _validateTaxConfig(taxConfigs);
+
+        token = _dispatchAndInitialize(
+            tokenSetup.name, tokenSetup.symbol, tokenSetup.salt, tokenOwner, taxConfigs, antiSniperConfigs
+        );
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+        _finalizeCreation(token, tokenSetup.feeShares, buyOnDeployShares);
+    }
+
     /// @dev Shared name/symbol validation. Single source of truth — called once from `_validateInputs`
     ///      for both V2 and V4 factories.
     function _validateNameSymbol(string calldata name, string calldata symbol) internal pure {

@@ -45,6 +45,12 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
+Each unified factory exposes two `createToken` overloads with different selectors:
+- **Legacy positional**: `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4.
+- **Struct-based**: `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs)` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep.
+
+Both overloads share the same internal flow and emit the events listed below in the same order.
+
 ### 1.1 Common sequence
 
 For both unified factories, the common Livo event order is:

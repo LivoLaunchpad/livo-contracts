@@ -71,6 +71,19 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         _finalizeCreation(token, feeReceivers, supplyShares);
     }
 
+    /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
+    ///         keep the ABI extensible without hitting stack-too-deep when new features add inputs.
+    ///         Inputs and behaviour are identical to the positional form.
+    function createToken(
+        TokenSetup calldata tokenSetup,
+        TaxConfigInit calldata taxConfigs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs
+    ) external payable returns (address token) {
+        // V2-family tokens are always deployed ownerless.
+        token = _createToken(tokenSetup, address(0), buyOnDeployShares, taxConfigs, antiSniperConfigs);
+    }
+
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
     /// @dev Mirrors the full `createToken` input set minus the identity fields (`name`, `symbol`,
     ///      `salt`) so the ABI stays stable when future features change which inputs participate in

@@ -20,6 +20,16 @@ interface ILivoFactory {
         uint256 shares;
     }
 
+    /// @notice Token-identity bundle for the struct-based `createToken` overload. Groups the inputs
+    ///         that define the token itself (name, symbol, deterministic salt) and its fee receivers.
+    ///         `feeShares` must be non-empty — every token has at least one receiver.
+    struct TokenSetup {
+        string name;
+        string symbol;
+        bytes32 salt;
+        FeeShare[] feeShares;
+    }
+
     ////////////////// Events //////////////////////
 
     event TokenCreated(
