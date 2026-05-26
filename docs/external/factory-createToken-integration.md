@@ -123,7 +123,7 @@ All errors are `error Foo()` (4-byte selectors).
 | Condition | Revert |
 |---|---|
 | `bytes(name).length == 0` or `bytes(symbol).length == 0` | `InvalidNameOrSymbol` |
-| `bytes(symbol).length > 32` | `InvalidNameOrSymbol` |
+| `bytes(symbol).length > 96` | `InvalidNameOrSymbol` |
 | Cloned address does not end in `0x1110` (wrong salt for dispatched impl) | `InvalidTokenAddress` |
 
 ### Fee receivers (`feeReceivers`)

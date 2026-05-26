@@ -283,7 +283,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      for both V2 and V4 factories.
     function _validateNameSymbol(string memory name, string memory symbol) internal pure {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
-        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
+        require(bytes(symbol).length <= 96, InvalidNameOrSymbol());
     }
 
     /// @dev Clones the resolved token implementation deterministically, enforces the `0x1110` vanity
