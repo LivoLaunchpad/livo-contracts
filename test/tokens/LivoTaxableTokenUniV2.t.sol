@@ -261,136 +261,146 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertEq(IERC20(testToken).balanceOf(address(taxToken)), expectedResidual);
     }
 
-    // ─────────────────────────── Swapback cooldown ───────────────────────────────
+    // ─────────────────────────── Swapback per-block cap ──────────────────────────
 
-    function test_swapbackCooldown_sameBlockDoubleSell_onlyOneSwapback() public {
+    function test_swapbackCap_sameBlockUpToMaxSwapbacks_thenSilent() public {
         _setupGraduatedTokenWithBuyer();
 
-        // Seed the contract above `2 * SWAP_THRESHOLD` so two consecutive sells would each
-        // satisfy the auto-trigger balance condition. Without the cooldown both would swap;
-        // with the 12s cooldown only the first does.
-        deal(testToken, address(taxToken), 3 * taxToken.SWAP_THRESHOLD());
+        // Seed well above `MAX_SWAPBACKS_PER_BLOCK * 2 * SWAP_THRESHOLD` so each consecutive
+        // sell still finds `balanceOf(address(this)) >= SWAP_THRESHOLD` at the auto-trigger.
+        // With MAX=2 the first two sells swap; the third hits the counter cap and silently
+        // skips.
+        deal(testToken, address(taxToken), 8 * taxToken.SWAP_THRESHOLD());
 
         uint256 sellAmount = 500_000e18;
+        uint8 maxPerBlock = taxToken.MAX_SWAPBACKS_PER_BLOCK();
+        assertEq(maxPerBlock, 2, "test assumes MAX_SWAPBACKS_PER_BLOCK == 2");
 
-        // First sell: auto-swap fires (lastSwapbackTimestamp was 0).
-        vm.recordLogs();
-        _swapSellV2(buyer, testToken, sellAmount, 0, true);
-        uint256 firstSwapEventCount = _countCreatorTaxSwapbackEvents();
-        assertEq(firstSwapEventCount, 1, "first sell should emit exactly one CreatorTaxSwapback");
-
-        // Capture state after first swap. Residual = (seeded - cap) + tax-from-first-sell.
-        uint256 balanceAfterFirst = IERC20(testToken).balanceOf(address(taxToken));
-        assertGe(balanceAfterFirst, taxToken.SWAP_THRESHOLD(), "residual after first swap must still trigger auto-path");
-        assertEq(uint256(taxToken.lastSwapbackTimestamp()), block.timestamp, "timestamp set on first swap");
-
-        // Second sell IN THE SAME BLOCK (no vm.warp) — block.timestamp is unchanged, so the
-        // cooldown check `T >= T + 12` is false. The auto-trigger is silently skipped.
-        vm.recordLogs();
-        _swapSellV2(buyer, testToken, sellAmount, 0, true);
-        uint256 secondSwapEventCount = _countCreatorTaxSwapbackEvents();
-        assertEq(secondSwapEventCount, 0, "same-block second sell must NOT trigger a swapback");
-
-        // The residual + the tax from the second sell is still sitting on the contract.
-        uint256 balanceAfterSecond = IERC20(testToken).balanceOf(address(taxToken));
-        uint256 expectedTaxFromSecondSell = sellAmount * SELL_BPS / 10_000;
-        assertEq(
-            balanceAfterSecond,
-            balanceAfterFirst + expectedTaxFromSecondSell,
-            "residual must accumulate when cooldown blocks the second swap"
-        );
-    }
-
-    function test_swapbackCooldown_adjacentBlocks_bothSwap() public {
-        _setupGraduatedTokenWithBuyer();
-
-        // Seed enough balance so two back-to-back swaps are both possible.
-        deal(testToken, address(taxToken), 3 * taxToken.SWAP_THRESHOLD());
-
-        uint256 sellAmount = 500_000e18;
-
+        // First sell: counter resets to 0 (new block), swap fires, counter becomes 1.
         vm.recordLogs();
         _swapSellV2(buyer, testToken, sellAmount, 0, true);
         assertEq(_countCreatorTaxSwapbackEvents(), 1, "first sell swaps");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 1, "counter == 1 after first swap");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), block.number, "block stamped on first swap");
 
-        // Advance past the cooldown boundary, then sell again — the auto-trigger should fire.
-        vm.warp(block.timestamp + taxToken.SWAPBACK_COOLDOWN() + 1);
+        assertGe(
+            IERC20(testToken).balanceOf(address(taxToken)),
+            taxToken.SWAP_THRESHOLD(),
+            "residual after first swap must still trigger auto-path"
+        );
 
+        // Second sell IN THE SAME BLOCK — counter goes from 1 to 2, swap still fires.
         vm.recordLogs();
         _swapSellV2(buyer, testToken, sellAmount, 0, true);
-        assertEq(_countCreatorTaxSwapbackEvents(), 1, "second sell across cooldown also swaps");
+        assertEq(_countCreatorTaxSwapbackEvents(), 1, "second same-block sell still swaps (counter at cap)");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 2, "counter == 2 after second swap");
+
+        uint256 balanceAfterSecond = IERC20(testToken).balanceOf(address(taxToken));
+        assertGe(
+            balanceAfterSecond, taxToken.SWAP_THRESHOLD(), "residual after second swap must still satisfy balance gate"
+        );
+
+        // Third sell IN THE SAME BLOCK — counter already at MAX, silent skip.
+        vm.recordLogs();
+        _swapSellV2(buyer, testToken, sellAmount, 0, true);
+        assertEq(_countCreatorTaxSwapbackEvents(), 0, "third same-block sell must NOT swap");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 2, "counter unchanged on silent no-op");
+
+        uint256 balanceAfterThird = IERC20(testToken).balanceOf(address(taxToken));
+        uint256 expectedTaxFromThirdSell = sellAmount * SELL_BPS / 10_000;
+        assertEq(
+            balanceAfterThird,
+            balanceAfterSecond + expectedTaxFromThirdSell,
+            "residual must accumulate when the per-block cap blocks the third swap"
+        );
     }
 
-    function test_swapbackCooldown_autoBoundary() public {
+    function test_swapbackCap_adjacentBlocks_counterResets() public {
         _setupGraduatedTokenWithBuyer();
 
-        deal(testToken, address(taxToken), 3 * taxToken.SWAP_THRESHOLD());
+        // Seed high enough that after two same-block swaps (each capped at `2 * SWAP_THRESHOLD`)
+        // the residual still satisfies the auto-trigger balance gate in block N+1.
+        deal(testToken, address(taxToken), 8 * taxToken.SWAP_THRESHOLD());
+
         uint256 sellAmount = 500_000e18;
 
-        // First sell triggers a swap and stamps `lastSwapbackTimestamp = T`.
+        // Burn the per-block budget in block N: two swaps fire, counter saturates at 2.
         vm.recordLogs();
         _swapSellV2(buyer, testToken, sellAmount, 0, true);
-        assertEq(_countCreatorTaxSwapbackEvents(), 1);
-        uint256 stampedAt = uint256(taxToken.lastSwapbackTimestamp());
+        _swapSellV2(buyer, testToken, sellAmount, 0, true);
+        assertEq(_countCreatorTaxSwapbackEvents(), 2, "both same-block sells swap");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 2, "counter saturated at MAX");
 
-        // At T + 11 (cooldown - 1) the auto-trigger is still gated → no swap.
-        vm.warp(stampedAt + taxToken.SWAPBACK_COOLDOWN() - 1);
-        vm.recordLogs();
-        _swapSellV2(buyer, testToken, sellAmount, 0, true);
-        assertEq(_countCreatorTaxSwapbackEvents(), 0, "auto-trigger must skip at cooldown - 1");
+        uint256 stampedBlock = uint256(taxToken.lastSwapbackBlock());
 
-        // At T + 12 (exactly cooldown) the auto-trigger is allowed (the check uses `>=`).
-        vm.warp(stampedAt + taxToken.SWAPBACK_COOLDOWN());
+        // Roll to block N+1 → counter resets, auto-trigger fires again.
+        vm.roll(stampedBlock + 1);
         vm.recordLogs();
         _swapSellV2(buyer, testToken, sellAmount, 0, true);
-        assertEq(_countCreatorTaxSwapbackEvents(), 1, "auto-trigger must fire at exactly cooldown");
+        assertEq(_countCreatorTaxSwapbackEvents(), 1, "first sell in next block swaps");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 1, "counter resets to 1 in new block");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), stampedBlock + 1, "block stamp advances");
     }
 
-    function test_swapbackCooldown_manualRevertsThenSucceeds() public {
+    function test_swapbackCap_manualSilentlyNoOpsAfterMax() public {
         _setupGraduatedTokenWithBuyer();
 
-        // Run an initial manual swap to set `lastSwapbackTimestamp`. Use admin (launchpad owner).
-        deal(testToken, address(taxToken), 1_500_000e18);
+        // Two manual swaps in block N both succeed; the third silently no-ops.
+        deal(testToken, address(taxToken), 4_500_000e18);
         vm.prank(admin);
         taxToken.swapBack(500_000e18, 1);
-        uint256 stampedAt = uint256(taxToken.lastSwapbackTimestamp());
-        assertEq(stampedAt, block.timestamp, "first manual swap stamps timestamp");
-
-        // Re-seed so the next call has tokens to sell. Within cooldown → revert.
-        deal(testToken, address(taxToken), 1_500_000e18);
-
         vm.prank(admin);
-        vm.expectRevert(LivoTaxableTokenUniV2.SwapbackCooldownNotMet.selector);
         taxToken.swapBack(500_000e18, 1);
+        uint256 stampedBlock = uint256(taxToken.lastSwapbackBlock());
+        assertEq(stampedBlock, block.number, "block stamped");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 2, "counter at MAX after two successes");
 
-        // Just before the boundary → still reverts.
-        vm.warp(stampedAt + taxToken.SWAPBACK_COOLDOWN() - 1);
+        // Third manual call in the SAME block silently no-ops:
+        //   - tx succeeds (no revert),
+        //   - no `CreatorTaxSwapback` event,
+        //   - balance unchanged,
+        //   - no ETH forwarded to fee handler,
+        //   - counter unchanged.
+        uint256 balanceBefore = IERC20(testToken).balanceOf(address(taxToken));
+        uint256 feeHandlerEthBeforeNoop = address(feeHandler).balance;
+
+        vm.recordLogs();
         vm.prank(admin);
-        vm.expectRevert(LivoTaxableTokenUniV2.SwapbackCooldownNotMet.selector);
         taxToken.swapBack(500_000e18, 1);
+        assertEq(_countCreatorTaxSwapbackEvents(), 0, "third same-block manual call must NOT swap");
+        assertEq(
+            IERC20(testToken).balanceOf(address(taxToken)), balanceBefore, "token balance unchanged on silent no-op"
+        );
+        assertEq(address(feeHandler).balance, feeHandlerEthBeforeNoop, "no ETH forwarded on silent no-op");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), stampedBlock, "block stamp unchanged on silent no-op");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 2, "counter unchanged on silent no-op");
 
-        // At the boundary → succeeds.
-        vm.warp(stampedAt + taxToken.SWAPBACK_COOLDOWN());
+        // Roll to the next block → counter resets, swap succeeds again.
+        vm.roll(stampedBlock + 1);
         uint256 feeHandlerEthBefore = address(feeHandler).balance;
         vm.prank(admin);
         taxToken.swapBack(500_000e18, 1);
-        assertGt(address(feeHandler).balance, feeHandlerEthBefore, "second manual swap must forward ETH");
-        assertEq(uint256(taxToken.lastSwapbackTimestamp()), block.timestamp, "timestamp updated on second swap");
+        assertGt(address(feeHandler).balance, feeHandlerEthBefore, "manual swap forwards ETH in next block");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), stampedBlock + 1, "block stamp updated");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 1, "counter resets to 1 in new block");
     }
 
-    function test_swapbackCooldown_lastSwapbackTimestampTracking() public {
-        // Pre-graduation, no swap has ever happened.
-        assertEq(uint256(taxToken.lastSwapbackTimestamp()), 0, "zero before any swap");
+    function test_swapbackCap_counterTracking() public {
+        // Pre-graduation: both counters are zero.
+        assertEq(uint256(taxToken.lastSwapbackBlock()), 0, "lastSwapbackBlock zero before any swap");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 0, "swapbacksThisBlock zero before any swap");
 
         _setupGraduatedTokenWithBuyer();
-        assertEq(uint256(taxToken.lastSwapbackTimestamp()), 0, "still zero before any swap, even after graduation");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), 0, "still zero before any swap, even after graduation");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 0, "counter still zero after graduation");
 
-        // Trigger the first swap via the manual path.
+        // First manual swap stamps both.
         deal(testToken, address(taxToken), 1_500_000e18);
         vm.prank(admin);
         taxToken.swapBack(500_000e18, 1);
 
-        assertEq(uint256(taxToken.lastSwapbackTimestamp()), block.timestamp, "stamped to current block on success");
+        assertEq(uint256(taxToken.lastSwapbackBlock()), block.number, "lastSwapbackBlock stamped on first swap");
+        assertEq(uint256(taxToken.swapbacksThisBlock()), 1, "counter == 1 after first swap");
     }
 
     /// @dev Counts `CreatorTaxSwapback` event emissions in the most recent `vm.recordLogs()` window.
