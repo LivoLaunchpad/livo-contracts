@@ -66,7 +66,7 @@ For both unified factories, the common Livo event order is:
 5. Initial fee config is registered through the token into `LivoMasterFeeHandler`:
    - Zero or more **`LivoMasterFeeHandler.DirectReceiverRegistered`** (`token, receiver`) — one per initial direct receiver.
    - **`LivoMasterFeeHandler.SharesUpdated`** (`token, recipients, sharesBps`).
-6. V4 only: **`LivoFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — emitted by `LivoFactoryUniV4Unified` for every created token. `V2` callers pass `lpFeeBps = 0`, which the umbrella treats as a skip sentinel, so V2 deploys do not emit this event.
+6. V4 only: **`LivoFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — emitted by `LivoFactoryUniV4Unified` for every created token, unconditionally (presence of the event is itself the V4-origin signal). `LivoFactoryUniV2Unified` never emits it. With `msg.value > 0`, this fires *after* the deployer-buy events listed in 1.2 — i.e., it is always the last factory event in the deploy tx.
 
 Notes:
 
