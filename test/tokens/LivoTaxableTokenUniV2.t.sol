@@ -503,6 +503,55 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         taxToken.rescueTokens(address(0));
     }
 
+    // ─────────────────────────── setTaxBps ───────────────────────────────────────
+
+    function test_setTaxBps_revertsForNonOwners() public {
+        vm.prank(alice);
+        vm.expectRevert(LivoTaxableToken.NotTokenOwner.selector);
+        taxToken.setTaxBps(0, 0);
+
+        // Storage untouched.
+        assertEq(taxToken.buyTaxBps(), BUY_BPS);
+        assertEq(taxToken.sellTaxBps(), SELL_BPS);
+    }
+
+    function test_setTaxBps_callableByLaunchpadOwner_lowersBoth() public {
+        // Factory-deployed token is ownerless; launchpad.owner() is the only reachable caller.
+        assertEq(taxToken.owner(), address(0));
+        assertEq(launchpad.owner(), admin);
+
+        uint16 newBuy = BUY_BPS - 50;
+        uint16 newSell = SELL_BPS - 100;
+
+        vm.expectEmit(true, true, true, true, address(taxToken));
+        emit LivoTaxableToken.TaxBpsUpdated(newBuy, newSell);
+
+        vm.prank(admin);
+        taxToken.setTaxBps(newBuy, newSell);
+
+        assertEq(taxToken.buyTaxBps(), newBuy);
+        assertEq(taxToken.sellTaxBps(), newSell);
+    }
+
+    function test_setTaxBps_revertsIfBuyIncreases() public {
+        vm.prank(admin);
+        vm.expectRevert(LivoTaxableToken.TaxBpsCanOnlyDecrease.selector);
+        taxToken.setTaxBps(BUY_BPS + 1, SELL_BPS);
+
+        // Storage untouched.
+        assertEq(taxToken.buyTaxBps(), BUY_BPS);
+        assertEq(taxToken.sellTaxBps(), SELL_BPS);
+    }
+
+    function test_setTaxBps_allowsEqualValues() public {
+        // Keep buy unchanged, lower sell by 1 bps. Equal-on-one-side is a valid call.
+        vm.prank(admin);
+        taxToken.setTaxBps(BUY_BPS, SELL_BPS - 1);
+
+        assertEq(taxToken.buyTaxBps(), BUY_BPS);
+        assertEq(taxToken.sellTaxBps(), SELL_BPS - 1);
+    }
+
     // ─────────────────────────── Helpers ─────────────────────────────────────────
 
     /// @dev Graduate the test token and seed `buyer` with a large pre-graduation purchase so we
