@@ -53,6 +53,13 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
+    // V4-only event-emission rule: any event whose presence is meant to signal "this is a V4 token"
+    // (today: `LpFeeBpsSet`) MUST be emitted here in the V4 factory overloads, never inside the
+    // shared `_createToken` umbrella in `LivoFactoryAbstract`. The umbrella runs for V2 deploys
+    // too, so emitting V4-only events from there would leak them onto V2 tokens and break indexers
+    // that use the event as a V4 marker. When adding a new V4-only event, follow this same pattern
+    // (emit after `_createToken(...)` returns, in both overloads below).
+
     /// @notice Deploys a V4-family Livo token and registers it in the launchpad.
     ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
     ///         The per-token fee config is registered with the master fee handler at deploy time.
@@ -70,9 +77,11 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         // Routes through the shared `_createToken` umbrella so this overload and the struct-based
         // overload below share the same internal flow. `lpFeeBps = 100` matches the value hardcoded
         // in `LivoSwapHook` today; the struct overload reads it from `UniV4Configs` instead.
+        // See the "V4-only event-emission rule" comment above for why the emit lives here.
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
-        token = _createToken(tokenSetup, tokenOwner, supplyShares, taxCfg, antiSniperCfg, 100);
+        token = _createToken(tokenSetup, tokenOwner, supplyShares, taxCfg, antiSniperCfg);
+        emit LpFeeBpsSet(token, 100);
     }
 
     /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
@@ -87,9 +96,8 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         _validateUniv4Configs(univ4Configs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        token = _createToken(
-            tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs, univ4Configs.lpFeeBps
-        );
+        token = _createToken(tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs);
+        emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////

@@ -260,8 +260,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address tokenOwner,
         SupplyShare[] calldata buyOnDeployShares,
         TaxConfigInit calldata taxConfigs,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        uint16 lpFeeBps
+        AntiSniperConfigs calldata antiSniperConfigs
     ) internal returns (address token) {
         _validateInputs(tokenSetup.name, tokenSetup.symbol, tokenSetup.feeShares, buyOnDeployShares);
         _validateAntiSniperConfig(antiSniperConfigs);
@@ -273,10 +272,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
 
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
         _finalizeCreation(token, tokenSetup.feeShares, buyOnDeployShares);
-
-        // V2 callers pass `0` to skip the emit (no LP-fee concept on V2); V4 callers pass the
-        // per-token LP fee. Conditional avoids paying log gas on V2 deploys.
-        if (lpFeeBps > 0) emit LpFeeBpsSet(token, lpFeeBps);
     }
 
     /// @dev Shared name/symbol validation. Single source of truth — called once from `_validateInputs`
