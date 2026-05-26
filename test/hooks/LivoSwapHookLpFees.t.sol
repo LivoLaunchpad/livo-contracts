@@ -8,6 +8,12 @@ import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
 /// @notice Test-only router stub that reverts on every call. Used with `vm.etch` to exercise the
 ///         hook's `try/catch` fallback to `ILivoToken.accrueFees`.
@@ -439,6 +445,87 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     }
 
     // ───────────────────────── accurate amounts ─────────────────────────────
+
+    // ─── exact-output buy parity with exact-input ──────────────────────
+
+    /// @dev Routes an exact-output buy through the Universal Router. Mirrors the helper in
+    ///      `Finding02_V4ExactOutputDOS` so the asymmetry tests can run without that PoC file.
+    function _swapExactOutputBuyV4(
+        address caller,
+        address token,
+        uint128 amountOut,
+        uint128 amountInMax,
+        bool expectSuccess
+    ) internal {
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(token),
+            fee: lpFee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(taxHook))
+        });
+
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactOutputSingleParams({
+                poolKey: key, zeroForOne: true, amountOut: amountOut, amountInMaximum: amountInMax, hookData: bytes("")
+            })
+        );
+        params[1] = abi.encode(key.currency0, amountInMax);
+        params[2] = abi.encode(key.currency1, amountOut);
+
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_OUT_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
+        bytes memory commands = abi.encodePacked(uint8(0x10));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(actions, params);
+
+        vm.prank(caller);
+        if (!expectSuccess) vm.expectRevert();
+        IUniversalRouter(universalRouter).execute{value: amountInMax}(commands, inputs, block.timestamp);
+    }
+
+    /// @notice On an exact-output buy with only the LP fee active, the hook must charge
+    ///         `feeBps%` of the swapper's TOTAL ETH out (pool input + fee), matching the
+    ///         exact-input convention. The `LivoSwapBuy.ethIn` field carries that total.
+    function test_exactOutputBuy_chargesCanonicalRate_lpFeeOnly() public createDefaultTaxToken {
+        _graduateToken();
+        // Skip past the tax window so only the 1% LP fee applies.
+        vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
+
+        deal(buyer, 10 ether);
+        uint128 wantTokens = uint128(1e18);
+        uint128 ethCap = uint128(1 ether);
+
+        vm.recordLogs();
+        _swapExactOutputBuyV4(buyer, testToken, wantTokens, ethCap, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        (uint256 ethIn, uint256 tokensOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        assertEq(tokensOut, wantTokens, "exact-output must deliver requested tokens");
+        uint256 expectedFee = (ethIn * LP_FEE_BPS) / 10_000;
+        assertApproxEqAbs(ethFees, expectedFee, 1, "fee must be feeBps% of swapper's total ETH out");
+    }
+
+    /// @notice Same canonical relation with LP fee + buy tax stacked during the active tax window.
+    function test_exactOutputBuy_chargesCanonicalRate_lpFeePlusBuyTax() public {
+        uint16 buyTax = 300; // 3%
+        testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        deal(buyer, 10 ether);
+        uint128 wantTokens = uint128(1e18);
+        uint128 ethCap = uint128(1 ether);
+
+        vm.recordLogs();
+        _swapExactOutputBuyV4(buyer, testToken, wantTokens, ethCap, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        (uint256 ethIn, uint256 tokensOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        assertEq(tokensOut, wantTokens, "exact-output must deliver requested tokens");
+        uint256 expectedFee = (ethIn * (LP_FEE_BPS + buyTax)) / 10_000;
+        assertApproxEqAbs(ethFees, expectedFee, 2, "fee must be (LP+buyTax)% of swapper's total ETH out");
+    }
 
     /// @notice Accurate fee amounts: buy 1 ETH (small enough that the post-swap marketcap stays
     ///         below tier 1 = 30 ETH), verify tier-0 split on the 0.01 ETH LP fee.

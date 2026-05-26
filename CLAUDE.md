@@ -6,3 +6,6 @@ Any time a change is made to the contracts in `src/` that affects events, we sho
 - event name/signature changes
 - event order changes
 - new events added or events removed (new functions added / removed) 
+
+## build
+avoid --viaIr when possible. If stack-too-deep is hit, consult the developer on what's the best strategy

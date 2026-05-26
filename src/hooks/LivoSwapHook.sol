@@ -191,14 +191,17 @@ contract LivoSwapHook is BaseHook {
                 return (IHooks.afterSwap.selector, 0);
             }
 
-            // BUY exact-output: charge LP fee (+ active buy tax) on the actual ETH the pool
-            // consumed. `delta.amount0()` is negative for buys (ETH paid by swapper).
-            // Extracted into a helper to keep this frame under the stack limit.
+            // BUY exact-output: pool consumed `ethInPool` against `tokensOut`. The hook fee is
+            // settled separately via the afterSwap return delta, so the swapper's total ETH out
+            // is `ethInPool + totalFee`. `delta.amount0()` is negative for buys (ETH paid into
+            // the pool). Extracted into a helper to keep this frame under the stack limit.
             // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 ethInExactOut = uint256(uint128(-delta.amount0()));
-            uint256 buyTotalFee = _chargeExactOutputBuyFee(key, tokenAddress, ethInExactOut, tokensOut);
+            uint256 ethInPool = uint256(uint128(-delta.amount0()));
+            uint256 buyTotalFee = _chargeExactOutputBuyFee(key, tokenAddress, ethInPool, tokensOut);
 
-            emit LivoSwapBuy(tokenAddress, tx.origin, ethInExactOut, tokensOut, buyTotalFee);
+            // Emit the swapper's total ETH outflow (pool input + hook fee) so the event matches
+            // exact-input's `ethIn` semantics (= total ETH paid by the swapper).
+            emit LivoSwapBuy(tokenAddress, tx.origin, ethInPool + buyTotalFee, tokensOut, buyTotalFee);
             // forge-lint: disable-next-line(unsafe-typecast)
             return (IHooks.afterSwap.selector, int128(uint128(buyTotalFee)));
         }
@@ -226,24 +229,57 @@ contract LivoSwapHook is BaseHook {
         return (IHooks.afterSwap.selector, int128(uint128(sellTotalFee)));
     }
 
-    /// @dev Charges the LP fee (+ active buy tax) on the ETH actually consumed by an exact-output
-    ///      buy and forwards the accrual. Extracted from `_afterSwap` to keep that frame within
+    /// @dev Charges the LP fee (+ active buy tax) on an exact-output buy with the same effective
+    ///      rate as the exact-input path. Extracted from `_afterSwap` to keep that frame within
     ///      the EVM stack limit.
-    function _chargeExactOutputBuyFee(PoolKey calldata key, address tokenAddress, uint256 ethIn, uint256 tokensOut)
+    ///
+    /// Parity with exact-input: the fee is `X%` of the swapper's TOTAL ETH out, not `X%` of the
+    /// pool-consumed ETH. Given pool-consumed `ethInPool` and combined rate `totalBps`, the
+    /// equivalent exact-input gross is `grossEth = ethInPool * 10000 / (10000 - totalBps)`. Fees
+    /// are then computed on `grossEth` so the swapper pays `grossEth ≈ ethInPool + totalFee`.
+    /// Without this gross-up, exact-output undercharges versus exact-input by ~feeBps² order.
+    function _chargeExactOutputBuyFee(PoolKey calldata key, address tokenAddress, uint256 ethInPool, uint256 tokensOut)
         internal
         returns (uint256 totalFee)
     {
         ILivoToken.TaxConfig memory cfg = ILivoToken(tokenAddress).getTaxConfig();
-        (uint256 lpFee, uint256 taxAmount) = _computeFees(ethIn, cfg, true);
+        uint256 grossEth = _grossUpExactOutputBuy(ethInPool, cfg);
+        (uint256 lpFee, uint256 taxAmount) = _computeFees(grossEth, cfg, true);
         totalFee = lpFee + taxAmount;
 
         if (totalFee > 0) {
             poolManager.take(key.currency0, address(this), totalFee);
         }
 
-        // `ethNet` is the ETH that actually crossed into the pool against `tokensOut`.
-        uint256 ethNet = ethIn - totalFee;
-        _accrue(tokenAddress, lpFee, taxAmount, ethNet, tokensOut);
+        // Pool consumed `ethInPool` against `tokensOut`; the hook fee was settled separately via
+        // the afterSwap return delta and never crossed the pool. This mirrors exact-input's
+        // "pool-consumed amount" semantics passed to `_accrue`.
+        _accrue(tokenAddress, lpFee, taxAmount, ethInPool, tokensOut);
+    }
+
+    /// @dev Grosses up the pool-consumed ETH on an exact-output buy into the equivalent
+    ///      exact-input gross input. With effective LP-fee bps and active buy-tax bps summed
+    ///      into `totalBps`, returns `ethInPool * 10000 / (10000 - totalBps)`.
+    /// @dev Division is safe: `MAX_LP_FEE_BPS` (100) + `MAX_TAX_BPS` (400 in the V4 factory)
+    ///      = 500, well below `BASIS_POINTS` (10000), so the denominator never reaches zero.
+    function _grossUpExactOutputBuy(uint256 ethInPool, ILivoToken.TaxConfig memory cfg)
+        internal
+        view
+        returns (uint256)
+    {
+        uint16 lpFeeBps = cfg.lpFeeBps;
+        if (lpFeeBps > MAX_LP_FEE_BPS) {
+            lpFeeBps = MAX_LP_FEE_BPS;
+        }
+        uint256 totalBps = uint256(lpFeeBps);
+        if (
+            cfg.graduationTimestamp != 0
+                && block.timestamp <= uint256(cfg.graduationTimestamp) + uint256(cfg.taxDurationSeconds)
+        ) {
+            totalBps += uint256(cfg.buyTaxBps);
+        }
+        if (totalBps == 0) return ethInPool;
+        return (ethInPool * BASIS_POINTS) / (BASIS_POINTS - totalBps);
     }
 
     /// @notice Computes the LP fee + tax amounts on a given gross ETH amount.
