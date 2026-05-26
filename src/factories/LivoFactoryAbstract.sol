@@ -120,7 +120,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
     ///      direct receivers at 1 here as a user-surface constraint
-    function _validateFeeShares(FeeShare[] calldata feeReceivers) internal pure {
+    function _validateFeeShares(FeeShare[] memory feeReceivers) internal pure {
         uint256 len = feeReceivers.length;
         require(len > 0, InvalidFeeReceiver());
 
@@ -211,9 +211,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      and supply share arrays. Single source of truth so both factories' `createToken`
     ///      have all input validation co-located at the top.
     function _validateInputs(
-        string calldata name,
-        string calldata symbol,
-        FeeShare[] calldata feeReceivers,
+        string memory name,
+        string memory symbol,
+        FeeShare[] memory feeReceivers,
         SupplyShare[] calldata supplyShares
     ) internal {
         _validateNameSymbol(name, symbol);
@@ -235,16 +235,53 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev Shared postamble: asks the token to self-register its fee config with the master
     ///      handler, then performs the deployer buy (if any). Event order: `SharesUpdated` fires
     ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
-    function _finalizeCreation(address token, FeeShare[] calldata feeReceivers, SupplyShare[] calldata supplyShares)
+    function _finalizeCreation(address token, FeeShare[] memory feeReceivers, SupplyShare[] calldata supplyShares)
         internal
     {
         ILivoToken(token).registerFees(feeReceivers);
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
+    /// @dev Single shared `createToken` body called by both `createToken` overloads on each unified
+    ///      factory (legacy positional + new struct-based). Centralises validation → dispatch →
+    ///      launch → finalize so both signatures emit the exact same events in the same order.
+    ///      Takes structs (not flat args) so future fields can be added to `TokenSetup`/configs
+    ///      without growing this function's stack frame. Callers derive `tokenOwner` per their
+    ///      venue policy (V2: always `address(0)`; V4: `msg.sender` unless renounced).
+    /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
+    ///      calldata args — can build a `TokenSetup` in memory and call this same umbrella. The
+    ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
+    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/
+    ///      `_initializeTaxToken`/`_initializeNonTaxToken`/`_finalizeCreation` to accept `memory`
+    ///      for those fields too. Once the legacy overload is removed, switch `tokenSetup` (and
+    ///      the cascaded fields) back to `calldata` to skip the one-time copy (~100–250 gas/deploy).
+    function _createToken(
+        TokenSetup memory tokenSetup,
+        address tokenOwner,
+        SupplyShare[] calldata buyOnDeployShares,
+        TaxConfigInit calldata taxConfigs,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        uint16 lpFeeBps
+    ) internal returns (address token) {
+        _validateInputs(tokenSetup.name, tokenSetup.symbol, tokenSetup.feeShares, buyOnDeployShares);
+        _validateAntiSniperConfig(antiSniperConfigs);
+        _validateTaxConfig(taxConfigs);
+
+        token = _dispatchAndInitialize(
+            tokenSetup.name, tokenSetup.symbol, tokenSetup.salt, tokenOwner, taxConfigs, antiSniperConfigs
+        );
+
+        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+        _finalizeCreation(token, tokenSetup.feeShares, buyOnDeployShares);
+
+        // V2 callers pass `0` to skip the emit (no LP-fee concept on V2); V4 callers pass the
+        // per-token LP fee. Conditional avoids paying log gas on V2 deploys.
+        if (lpFeeBps > 0) emit LpFeeBpsSet(token, lpFeeBps);
+    }
+
     /// @dev Shared name/symbol validation. Single source of truth — called once from `_validateInputs`
     ///      for both V2 and V4 factories.
-    function _validateNameSymbol(string calldata name, string calldata symbol) internal pure {
+    function _validateNameSymbol(string memory name, string memory symbol) internal pure {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
     }
@@ -256,8 +293,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      entity from that event; events emitted inside `initialize()` depend on it.
     function _cloneAndCreateToken(
         address impl,
-        string calldata name,
-        string calldata symbol,
+        string memory name,
+        string memory symbol,
         bytes32 salt,
         address tokenOwner
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
@@ -327,8 +364,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      factory) are responsible for invoking `LAUNCHPAD.launchToken` and `_finalizeCreation`
     ///      (which registers the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(
-        string calldata name,
-        string calldata symbol,
+        string memory name,
+        string memory symbol,
         bytes32 salt,
         address tokenOwner,
         TaxConfigInit calldata taxCfg,
@@ -348,8 +385,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      `ILivoTaxableToken[SniperProtected]` interfaces.
     function _initializeTaxToken(
         address impl,
-        string calldata name,
-        string calldata symbol,
+        string memory name,
+        string memory symbol,
         bytes32 salt,
         address tokenOwner,
         TaxConfigInit calldata taxCfg,
@@ -370,8 +407,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      venues share the same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
     function _initializeNonTaxToken(
         address impl,
-        string calldata name,
-        string calldata symbol,
+        string memory name,
+        string memory symbol,
         bytes32 salt,
         address tokenOwner,
         AntiSniperConfigs calldata antiSniperCfg

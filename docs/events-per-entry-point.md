@@ -45,6 +45,12 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
+Each unified factory exposes two `createToken` overloads with different selectors:
+- **Legacy positional**: `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4.
+- **Struct-based**: `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs)` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep.
+
+Both overloads share the same internal flow and emit the events listed below in the same order.
+
 ### 1.1 Common sequence
 
 For both unified factories, the common Livo event order is:
@@ -60,6 +66,7 @@ For both unified factories, the common Livo event order is:
 5. Initial fee config is registered through the token into `LivoMasterFeeHandler`:
    - Zero or more **`LivoMasterFeeHandler.DirectReceiverRegistered`** (`token, receiver`) — one per initial direct receiver.
    - **`LivoMasterFeeHandler.SharesUpdated`** (`token, recipients, sharesBps`).
+6. V4 only: **`LivoFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — emitted by `LivoFactoryUniV4Unified` for every created token. `V2` callers pass `lpFeeBps = 0`, which the umbrella treats as a skip sentinel, so V2 deploys do not emit this event.
 
 Notes:
 

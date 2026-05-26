@@ -58,17 +58,24 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        // V2-family tokens are always deployed ownerless.
-        address tokenOwner = address(0);
+        // V2-family tokens are always deployed ownerless. Routes through the shared `_createToken`
+        // umbrella so this overload and the struct-based overload below share the same internal flow.
+        // `lpFeeBps = 0`: V2 has no LP-fee concept, so the umbrella skips the `LpFeeBpsSet` emit.
+        TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
+        token = _createToken(tokenSetup, address(0), supplyShares, taxCfg, antiSniperCfg, 0);
+    }
 
-        _validateInputs(name, symbol, feeReceivers, supplyShares);
-        _validateAntiSniperConfig(antiSniperCfg);
-        _validateTaxConfig(taxCfg);
-
-        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
-
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
-        _finalizeCreation(token, feeReceivers, supplyShares);
+    /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
+    ///         keep the ABI extensible without hitting stack-too-deep when new features add inputs.
+    ///         Inputs and behaviour are identical to the positional form.
+    function createToken(
+        TokenSetup calldata tokenSetup,
+        TaxConfigInit calldata taxConfigs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs
+    ) external payable returns (address token) {
+        // V2-family tokens are always deployed ownerless; `lpFeeBps = 0` skips the `LpFeeBpsSet` emit.
+        token = _createToken(tokenSetup, address(0), buyOnDeployShares, taxConfigs, antiSniperConfigs, 0);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.

@@ -12,6 +12,18 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         Replaces `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV4SniperProtected`,
 ///         and `LivoFactoryTaxTokenSniperProtected`.
 contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
+    /// @notice V4-specific config bundle for the struct-based `createToken` overload.
+    /// @dev `lpFeeBps` is reserved for future use — today the LP fee is a constant in
+    ///      `LivoSwapHook` (100 bps). The field is accepted for ABI forward-compatibility but is
+    ///      not wired through; `_validateUniv4Configs` enforces `lpFeeBps == 100` so misuse is loud
+    ///      until the field is honoured by the hook.
+    struct UniV4Configs {
+        bool renounceOwnership;
+        uint16 lpFeeBps;
+    }
+
+    error InvalidLpFeeBps();
+
     constructor(
         address launchpad,
         address tokenImplBase,
@@ -55,15 +67,38 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        _validateInputs(name, symbol, feeReceivers, supplyShares);
-        _validateAntiSniperConfig(antiSniperCfg);
-        _validateTaxConfig(taxCfg);
-
+        // Routes through the shared `_createToken` umbrella so this overload and the struct-based
+        // overload below share the same internal flow. `lpFeeBps = 100` matches the value hardcoded
+        // in `LivoSwapHook` today; the struct overload reads it from `UniV4Configs` instead.
+        TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
-        token = _dispatchAndInitialize(name, symbol, salt, tokenOwner, taxCfg, antiSniperCfg);
+        token = _createToken(tokenSetup, tokenOwner, supplyShares, taxCfg, antiSniperCfg, 100);
+    }
 
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
-        _finalizeCreation(token, feeReceivers, supplyShares);
+    /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
+    ///         keep the ABI extensible without hitting stack-too-deep when new features add inputs.
+    ///         `univ4Configs.lpFeeBps` is reserved for future use (see `UniV4Configs`).
+    function createToken(
+        TokenSetup calldata tokenSetup,
+        TaxConfigInit calldata taxConfigs,
+        UniV4Configs calldata univ4Configs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs
+    ) external payable returns (address token) {
+        _validateUniv4Configs(univ4Configs);
+        address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
+        token = _createToken(
+            tokenSetup, tokenOwner, buyOnDeployShares, taxConfigs, antiSniperConfigs, univ4Configs.lpFeeBps
+        );
+    }
+
+    ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
+
+    /// @dev V4-specific config validation. Today only pins `lpFeeBps == 100` because the LP fee is
+    ///      still hardcoded in `LivoSwapHook`; reject anything else so misconfiguration is loud
+    ///      instead of silently ignored. Add further V4-only invariants here as the struct grows.
+    function _validateUniv4Configs(UniV4Configs calldata configs) internal pure {
+        require(configs.lpFeeBps == 100, InvalidLpFeeBps());
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
