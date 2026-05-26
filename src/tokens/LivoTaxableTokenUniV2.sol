@@ -200,10 +200,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     function _swapBack(uint256 tokenAmount, uint256 amountOutMinWei) internal {
         if (tokenAmount == 0) return;
 
+        // Cache the counter so the post-router writes to `swapbacksThisBlock` and
+        // `lastSwapbackBlock` (same packed slot) coalesce into a single SSTORE, and the
+        // new-block reset doesn't pay for its own pre-router write.
+        uint8 count = swapbacksThisBlock;
         if (block.number > uint256(lastSwapbackBlock)) {
-            swapbacksThisBlock = 0;
+            count = 0;
         }
-        if (swapbacksThisBlock >= MAX_SWAPBACKS_PER_BLOCK) return;
+        if (count >= MAX_SWAPBACKS_PER_BLOCK) return;
 
         _inSwap = true;
 
@@ -216,7 +220,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         );
 
         _inSwap = false;
-        swapbacksThisBlock++;
+        unchecked {
+            ++count;
+        }
+        swapbacksThisBlock = count;
         lastSwapbackBlock = uint48(block.number);
 
         uint256 ethBalance = address(this).balance;
