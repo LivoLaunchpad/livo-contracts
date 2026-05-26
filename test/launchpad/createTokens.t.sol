@@ -181,7 +181,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_cantCreateTokenWithTooLongSymbol() public {
-        string memory longSymbol = "TESTTESTTESTTESTTESTTESTTESTESESD";
+        string memory longSymbol =
+            "TESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTX";
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken(
