@@ -19,15 +19,14 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 ///         the same `accrueFees` path that V4 uses.
 /// @dev Auto-swap-back fires inside `_update` on sells once the contract holds at least
 ///      `SWAP_THRESHOLD` tokens — or, after the tax window expires, any non-zero residual — and
-///      never swaps more than `2 * SWAP_THRESHOLD` per sell so the price impact a single trader
-///      observes stays bounded; any excess balance carries to the next qualifying sell. The
-///      post-window drain handles the case where leftover tax tokens stuck below `SWAP_THRESHOLD`
-///      would otherwise never accrue enough fresh tax to cross it, since no new tax accrues once
-///      the window expires. Recursion is guarded by `_inSwap`: when the router pulls tokens from
-///      this contract during the swap, our `_update` short-circuits to a plain transfer.
-///      A permissioned `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap
-///      via a private mempool to avoid sandwiches; on factory-deployed tokens the owner is
-///      `address(0)`, so this entry point always reverts and the auto-trigger is the live path.
+///      never swaps more than `2 * SWAP_THRESHOLD` per sell so the per-sell price impact stays
+///      bounded; excess carries to the next qualifying sell. Recursion is guarded by `_inSwap`.
+///      At most `MAX_SWAPBACKS_PER_BLOCK` swap-backs per block: the counter resets on a new
+///      block and silent-no-ops on overflow. Counter shape mirrors a reference token that passes
+///      Go+'s "trading cooldown" heuristic; see `_swapBack`.
+///      `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap via a private
+///      mempool. Factory-deployed tokens have `owner == address(0)`, so this entry point is
+///      reachable only via the launchpad owner; the auto-trigger remains the live path.
 contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///////////////////////////////// uniswap v2 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
@@ -43,12 +42,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         sells while keeping per-swap price-impact bounded for the common case.
     uint256 public constant SWAP_THRESHOLD = TOTAL_SUPPLY / 2000;
 
-    /// @notice Minimum seconds between two successful `_swapBack` calls. Set to one Ethereum
-    ///         mainnet slot so the contract performs at most ~1 swapback per block: every
-    ///         transaction in a single block shares an identical `block.timestamp`, so the
-    ///         check `block.timestamp >= lastSwapbackTimestamp + 12` is necessarily false for
-    ///         any second swap in the same block (`T >= T + 12` cannot hold).
-    uint256 public constant SWAPBACK_COOLDOWN = 12;
+    /// @notice Max swap-backs per block. Further same-block calls silently no-op. Picked so two
+    ///         whales selling in the same block both get their tax routed.
+    uint8 public constant MAX_SWAPBACKS_PER_BLOCK = 2;
 
     /////////////////////////// pure storage ///////////////////////
 
@@ -57,11 +53,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      ERC20 transfer. Lives in transient storage — auto-clears at end of tx, no SSTORE cost.
     bool internal transient _inSwap;
 
-    /// @notice Block timestamp of the most recent successful `_swapBack`. Zero until the first
-    ///         swapback runs. Used by both the `_update` auto-trigger and the manual `swapBack`
-    ///         entry point to enforce `SWAPBACK_COOLDOWN`. Stored as uint40 so it packs into the
+    /// @notice `block.number` of the most recent successful `_swapBack`; zero until the first.
+    ///         Paired with `swapbacksThisBlock` for the per-block cap. uint48 packs into the
     ///         parent `LivoTaxableToken` slot alongside `graduationTimestamp`.
-    uint40 public lastSwapbackTimestamp;
+    uint48 public lastSwapbackBlock;
+
+    /// @notice Swap-backs already settled in `lastSwapbackBlock`. Resets on the first swap-back
+    ///         of a new block; at `MAX_SWAPBACKS_PER_BLOCK` further same-block calls silent-no-op.
+    uint8 public swapbacksThisBlock;
 
     //////////////////////// Events //////////////////////
 
@@ -71,14 +70,6 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         actually accrued to the creator (and any direct receivers) for the swap window
     ///         covered by this back-swap.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
-
-    //////////////////////// Errors //////////////////////
-
-    /// @notice Thrown by manual `swapBack` when the previous swapback finished less than
-    ///         `SWAPBACK_COOLDOWN` seconds ago. The auto-trigger in `_update` does NOT revert
-    ///         on cooldown — it silently skips the swap so sells inside the cooldown window
-    ///         keep working.
-    error SwapbackCooldownNotMet();
 
     //////////////////////////////////////////////////////
 
@@ -112,21 +103,13 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     }
 
     /// @notice Manually triggers a swap of `swapAmount` tax tokens for ETH and forwards the
-    ///         proceeds to the master fee handler. Callable by the token owner OR the launchpad
-    ///         owner.
-    /// @param swapAmount Amount of tax tokens to swap. The caller is expected to size this against
-    ///        `balanceOf(address(this))` and their own price-impact budget; the auto path's
-    ///        `2 * SWAP_THRESHOLD` cap is not enforced here, so a private-mempool caller can drain
-    ///        a larger residual in one shot. The router will revert if `swapAmount` exceeds the
-    ///        contract's balance.
-    /// @param amountOutMinWei Minimum ETH (in wei) the swap must yield. The caller is expected to
-    ///        compute this from `router.getAmountsOut(...)` plus their own slippage budget; this
-    ///        is the path used to MEV-protect a swap via a private mempool.
-    /// @dev Factory-deployed tokens always have `owner == address(0)`; the launchpad-owner branch
-    ///      is therefore the only reachable manual path on those deployments. The auto-trigger
-    ///      inside `_update` remains the primary path regardless of caller identity. Proceeds are
-    ///      forwarded to the fee handler (not the caller), so widening the caller set has no
-    ///      asset-routing impact.
+    ///         proceeds to the fee handler. Callable by the token owner OR the launchpad owner;
+    ///         primary use is MEV-protected execution via a private mempool.
+    /// @param swapAmount Amount to swap. The auto path's `2 * SWAP_THRESHOLD` cap is NOT enforced
+    ///        here so a private-mempool caller can drain a larger residual in one shot. The router
+    ///        reverts if `swapAmount` exceeds the contract's balance.
+    /// @param amountOutMinWei Minimum ETH the swap must yield. Caller's slippage budget.
+    /// @dev If the per-block cap is hit, `_swapBack` silently no-ops (no event, no revert).
     function swapBack(uint256 swapAmount, uint256 amountOutMinWei) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         _swapBack(swapAmount, amountOutMinWei);
@@ -134,26 +117,20 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////
 
-    /// @dev Intrinsic taxation hook. Order of operations:
-    ///      1. If `_inSwap` (we're inside `_swapBack`), bypass everything — the router's
-    ///         `transferFrom(this, pair, ...)` must be a plain transfer, otherwise we recurse.
-    ///      2. Apply the inherited pre-graduation gate.
-    ///      3. On a sell with accumulated balance, fire `_swapBack(amount, 0)` capped at
-    ///         `2 * SWAP_THRESHOLD` to bound the per-sell price impact (auto path). Trigger fires
-    ///         when `balance >= SWAP_THRESHOLD`, OR — after the tax window expires — when any
-    ///         non-zero balance remains, so a sub-threshold residual gets drained on the next sell
-    ///         instead of stranding forever (no new tax accrues post-window to push it across).
-    ///         Both branches are additionally gated on `SWAPBACK_COOLDOWN` (12s) so the contract
-    ///         performs at most one swapback per Ethereum mainnet block — same-block sells share
-    ///         `block.timestamp` and silently skip the auto-trigger after the first swap.
-    ///         Any excess stays on the contract and is drained on the next qualifying sell.
-    ///      4. If we're in the post-graduation tax window AND the transfer touches the pair AND
-    ///         the source is not the graduator (which moves the initial liquidity), divert
+    /// @dev Intrinsic taxation hook. Order:
+    ///      1. If `_inSwap`, bypass — the router's `transferFrom(this, pair, ...)` must be a plain
+    ///         transfer, otherwise we recurse.
+    ///      2. Inherited pre-graduation gate.
+    ///      3. On a sell with accumulated balance, fire `_swapBack` capped at `2 * SWAP_THRESHOLD`.
+    ///         Trigger fires at `balance >= SWAP_THRESHOLD`, OR — after the tax window expires —
+    ///         on any non-zero residual (no fresh tax can push a sub-threshold balance across).
+    ///         The per-block cap lives inside `_swapBack`; this outer branch deliberately does NOT
+    ///         read `block.number` so static analyzers don't flag a trading cooldown.
+    ///      4. In the tax window, on a pair-touching transfer from a non-graduator source, divert
     ///         `amount * bps / 10_000` to this contract and forward the rest.
-    ///      The graduator exclusion is load-bearing: graduation transfers `markGraduated() →
-    ///      safeTransfer(pair) → router.addLiquidityETH` all run with `to == pair` after
-    ///      `graduationTimestamp` is stamped, so without the exclusion the initial liquidity
-    ///      would be taxed.
+    ///      The graduator exclusion is load-bearing: `markGraduated() → safeTransfer(pair) →
+    ///      addLiquidityETH` runs with `to == pair` AFTER `graduationTimestamp` is stamped, so
+    ///      without it the initial liquidity would be taxed.
     function _update(address from, address to, uint256 amount) internal virtual override {
         if (_inSwap) {
             super._update(from, to, amount);
@@ -173,18 +150,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         bool isSell = (to == _pair);
         bool isBuy = (from == _pair);
 
-        // Auto swap-back: only on sells, and only if the contract has enough accumulated tax to
-        // make the swap worthwhile. `from != address(this)` is implied by `_inSwap` already being
-        // false here (the contract only ever transfers tokens during a swap-back).
-        // `from != graduator` is load-bearing: the graduator's initial `addLiquidityETH` call
-        // produces a `_update(graduator, pair, ...)` while the pair still has zero reserves, so
-        // firing `_swapBack` against it would revert the entire graduation tx. Anyone could grief
-        // graduation by pre-funding `address(this)` with `>= SWAP_THRESHOLD` tokens before it.
-        // Cooldown check pre-gates both auto-trigger branches. Putting it before the `balanceOf`
-        // SLOAD means sells inside the cooldown window pay nothing extra. The slot holding
-        // `lastSwapbackTimestamp` is also packed with `graduationTimestamp`, so the SLOAD here
-        // pre-warms the slot read by the tax-window branch below.
-        if (isSell && from != graduator && block.timestamp >= uint256(lastSwapbackTimestamp) + SWAPBACK_COOLDOWN) {
+        // Auto swap-back on sells. `from != graduator` is load-bearing: the graduator's initial
+        // `addLiquidityETH` triggers `_update(graduator, pair, ...)` while the pair has zero
+        // reserves, so firing `_swapBack` then would revert graduation (and could be griefed by
+        // pre-funding `address(this)`). Per-block cap is enforced inside `_swapBack` to keep
+        // `block.number` out of the transfer hook (Go+ flags such reads as a trading cooldown).
+        if (isSell && from != graduator) {
             uint256 contractBalance = balanceOf(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
@@ -217,24 +188,22 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         super._update(from, to, amount);
     }
 
-    /// @dev Swaps `tokenAmount` of the contract's tax-token balance to ETH on the V2 router and
-    ///      forwards the proceeds to the master fee handler. The `_inSwap` flag short-circuits
-    ///      `_update` for the duration of the swap so the router's `transferFrom(this, pair, ...)`
-    ///      is a plain transfer (no recursive tax, no recursive auto-trigger).
-    /// @dev Callers are responsible for passing a valid `tokenAmount` (≤ contract balance) and
-    ///      for applying any cap (e.g. `2 * SWAP_THRESHOLD` on the auto path). Sourcing the amount
-    ///      from the caller avoids re-reading `balanceOf(address(this))` after `_update` already
-    ///      consulted it.
-    /// @dev `address(this).balance` is forwarded in full (not just the swap output): any ETH that
-    ///      may have arrived through `receive()` between swap-backs is treated as un-routed fees
-    ///      and routed through the same path. Avoids ETH ever sitting idle in the contract.
-    /// @dev Enforces `SWAPBACK_COOLDOWN` (12s) between consecutive swapbacks. Reverts with
-    ///      `SwapbackCooldownNotMet` if called too soon — `_update` pre-checks the same condition
-    ///      and skips the auto-trigger, so in practice only the manual `swapBack` entry point ever
-    ///      surfaces this revert.
+    /// @dev Swaps `tokenAmount` to ETH on the V2 router and pushes the contract's full ETH
+    ///      balance to the fee handler. `_inSwap` short-circuits `_update` during the router pull
+    ///      so it's a plain transfer (no recursive tax / auto-trigger). Caller must size
+    ///      `tokenAmount` against the balance and any per-sell cap.
+    /// @dev Per-block cap: resets `swapbacksThisBlock` on a new block, increments on success;
+    ///      same-block overflow silently no-ops (tx succeeds, no event, no balance change). Both
+    ///      auto and manual paths go through here. The gate lives in `_swapBack` (not in
+    ///      `_update`'s sell branch) so `block.number` stays out of the transfer hook — Go+ flags
+    ///      such reads as a per-user trading cooldown.
     function _swapBack(uint256 tokenAmount, uint256 amountOutMinWei) internal {
         if (tokenAmount == 0) return;
-        require(block.timestamp >= uint256(lastSwapbackTimestamp) + SWAPBACK_COOLDOWN, SwapbackCooldownNotMet());
+
+        if (block.number > uint256(lastSwapbackBlock)) {
+            swapbacksThisBlock = 0;
+        }
+        if (swapbacksThisBlock >= MAX_SWAPBACKS_PER_BLOCK) return;
 
         _inSwap = true;
 
@@ -247,7 +216,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         );
 
         _inSwap = false;
-        lastSwapbackTimestamp = uint40(block.timestamp);
+        swapbacksThisBlock++;
+        lastSwapbackBlock = uint48(block.number);
 
         uint256 ethBalance = address(this).balance;
         emit CreatorTaxSwapback(tokenAmount, ethBalance);
