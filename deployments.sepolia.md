@@ -10,8 +10,10 @@
 | ConstantProductBondingCurve                  | `0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5` |
 | LivoGraduatorUniswapV2                       | `0x973B8F3b1e52244E79ecb86591C8FdA6E2D0e691` |
 | LivoGraduatorUniswapV4                       | `0x85fE2051413a4b80b904f05841d1142FeF7f789c` |
+| LivoGraduatorUniswapV4 (0.5% hook)           | _(not deployed)_                             |
 | LivoMasterFeeHandler                         | `0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f` |
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
+| LivoSwapHook (0.5%)                          | `0xC04Bb5bA43795330e54efaC7244ce40318FD80cc` |
 | LivoQuoter                                   | `0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438` |
 | LivoToken (impl)                             | `0x9e11191aC22b1C25A64e8de86dd9Db098a343e01` |
 | LivoTaxableTokenUniV4 (impl)                 | `0xd9F88d337CF88126850d150651CFbCE5E5299f08` |
