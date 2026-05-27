@@ -62,7 +62,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // umbrella so this overload and the struct-based overload below share the same internal flow.
         // `LpFeeBpsSet` is emitted only by the V4 factory — V2 has no LP-fee concept.
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
-        token = _createToken(tokenSetup, address(0), supplyShares, taxCfg, antiSniperCfg);
+        token = _createToken(tokenSetup, address(0), address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg);
     }
 
     /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
@@ -75,7 +75,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperConfigs
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
-        token = _createToken(tokenSetup, address(0), buyOnDeployShares, taxConfigs, antiSniperConfigs);
+        token =
+            _createToken(tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.

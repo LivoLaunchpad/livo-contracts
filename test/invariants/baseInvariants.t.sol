@@ -116,6 +116,7 @@ contract LaunchpadInvariants is Test {
                 address(tokenImplementation),
                 address(bondingCurve),
                 address(graduatorV4),
+                address(graduatorV4),
                 address(feeHandler)
             )
         );

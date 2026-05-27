@@ -261,6 +261,7 @@ contract LaunchpadBaseTests is Test {
                 address(livoTaxTokenSniper),
                 address(bondingCurve),
                 address(graduatorV4),
+                address(graduatorV4),
                 address(feeHandler)
             )
         );
