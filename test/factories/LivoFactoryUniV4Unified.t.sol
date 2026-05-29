@@ -230,6 +230,65 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         );
     }
 
+    // ───────────── Aggregate fee cap: LP fee + tax never exceeds 5% ─────────────
+    //
+    // The fee a swapper pays is LP fee + tax. The positional overload always uses the 1% LP hook,
+    // so tax is capped at 4%. The struct overload exposes the 0.5% LP hook, where tax can go to 4.5%.
+
+    function test_createToken_positional_succeedsAtFourPercentTax() public {
+        // 1% LP + 4% tax (buy and sell) == 5% total, the boundary.
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+        vm.prank(creator);
+        factoryV4Unified.createToken(
+            "T", "T", salt, _fs(creator), _noSs(), false, _taxCfg(400, 400, uint32(14 days)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_positional_revertsWhenBuyTaxExceedsFourPercent() public {
+        // 1% LP + 4.01% buy tax == 5.01% total > 5%.
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV4Unified.createToken(
+            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(401, 0, uint32(14 days)), _emptyAntiSniperCfg()
+        );
+    }
+
+    function test_createToken_struct_halfPercentLp_succeedsAtFourPointFivePercentTax() public {
+        // 0.5% LP + 4.5% tax (buy and sell) == 5% total, the boundary.
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: salt, feeShares: _fs(creator)});
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
+
+        vm.prank(creator);
+        factoryV4Unified.createToken(setup, _taxCfg(450, 450, uint32(14 days)), cfg, _noSs(), _emptyAntiSniperCfg());
+    }
+
+    function test_createToken_struct_halfPercentLp_revertsAboveFourPointFivePercentTax() public {
+        // 0.5% LP + 4.51% sell tax == 5.01% total > 5%.
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: "0x12", feeShares: _fs(creator)});
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV4Unified.createToken(setup, _taxCfg(0, 451, uint32(14 days)), cfg, _noSs(), _emptyAntiSniperCfg());
+    }
+
+    function test_createToken_struct_onePercentLp_revertsAboveFourPercentTax() public {
+        // 1% LP + 4.01% buy tax == 5.01% total > 5%, even though 4.01% is below the absolute cap.
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: "0x12", feeShares: _fs(creator)});
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV4Unified.createToken(setup, _taxCfg(401, 0, uint32(14 days)), cfg, _noSs(), _emptyAntiSniperCfg());
+    }
+
     function test_createToken_revertsOnInvalidTaxDuration() public {
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);

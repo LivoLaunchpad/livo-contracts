@@ -53,10 +53,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @notice Token implementation cloned when both tax and anti-sniper are configured.
     address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
 
-    /// @notice Max configurable tax (buy or sell). Per-venue value supplied by the derived factory
-    ///         via `override`: V2 uses 5% (the swap-back path needs more headroom to amortise
-    ///         per-sell router gas); V4 uses 4%.
-    function MAX_TAX_BPS() public pure virtual returns (uint256);
+    /// @notice Cap on the aggregate fee a swapper pays (LP fee + tax), in basis points. Fixed at 5%.
+    ///         Enforced per call by `_validateTotalFee`. The tax headroom is venue-dependent because
+    ///         the LP fee varies: V2 has no LP fee, so tax can reach the full 5%; V4 charges 50 or
+    ///         100 bps in LP fees, leaving 450 or 400 bps for tax.
+    uint256 public constant MAX_TOTAL_FEE_BPS = 500;
 
     /// @notice Max percentage of total supply that can be purchased on token creation (applies to the
     ///         aggregate, not per recipient), in basis points. Fixed at 10%. To change this value,
@@ -316,20 +317,30 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         });
     }
 
-    /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps),
-    ///      caps `buyTaxBps`/`sellTaxBps` at `MAX_TAX_BPS`, and caps `taxDurationSeconds` at
-    ///      `MAX_TAX_DURATION_SECONDS` (120 years — an overflow-prevention bound driven by
-    ///      `uint32` packing on `TaxConfigInit.taxDurationSeconds`). No fee-receiver or
-    ///      ownership constraints are imposed at any duration.
+    /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps) and
+    ///      caps `taxDurationSeconds` at `MAX_TAX_DURATION_SECONDS` (120 years — an overflow-prevention
+    ///      bound driven by `uint32` packing on `TaxConfigInit.taxDurationSeconds`). The tax-bps
+    ///      ceiling is venue-dependent and enforced separately by `_validateTotalFee`. No fee-receiver
+    ///      or ownership constraints are imposed at any duration.
     function _validateTaxConfig(TaxConfigInit calldata t) internal pure {
         if (_isTaxConfigured(t)) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
-            uint256 maxTaxBps = MAX_TAX_BPS();
-            require(t.buyTaxBps <= maxTaxBps && t.sellTaxBps <= maxTaxBps, InvalidTaxBps());
             require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
         } else {
             require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
         }
+    }
+
+    /// @dev Caps the aggregate fee a swapper pays (LP fee + tax) at `MAX_TOTAL_FEE_BPS` (5%). Applied
+    ///      to buy and sell tax independently since a swap only ever pays one direction. `lpFeeBps`
+    ///      is the venue's LP fee — 0 for V2 (no LP fee, so tax can reach the full 5%), 50 or 100 for
+    ///      V4 (leaving 450/400 bps for tax). `taxCfg` bps are unbounded here, so the sum is widened
+    ///      to `uint256` to avoid a spurious overflow revert before this check fires.
+    function _validateTotalFee(uint256 lpFeeBps, TaxConfigInit calldata taxCfg) internal pure {
+        require(
+            lpFeeBps + taxCfg.buyTaxBps <= MAX_TOTAL_FEE_BPS && lpFeeBps + taxCfg.sellTaxBps <= MAX_TOTAL_FEE_BPS,
+            InvalidTaxBps()
+        );
     }
 
     function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {

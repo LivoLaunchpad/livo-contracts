@@ -54,11 +54,6 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         GRADUATOR_0P5 = graduator0p5;
     }
 
-    /// @inheritdoc LivoFactoryAbstract
-    function MAX_TAX_BPS() public pure override returns (uint256) {
-        return 400;
-    }
-
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
     // V4-only event-emission rule: any event whose presence is meant to signal "this is a V4 token"
@@ -85,6 +80,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         // Positional overload always uses the 100-bps graduator/hook pair — only the struct-based
         // overload below exposes the 50-bps variant. See the "V4-only event-emission rule" comment
         // above for why the emit lives here.
+        _validateTotalFee(100, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
         token = _createToken(tokenSetup, tokenOwner, address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg);
@@ -102,6 +98,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperConfigs
     ) external payable returns (address token) {
         _validateUniv4Configs(univ4Configs);
+        _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
         address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
         token = _createToken(tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs);
