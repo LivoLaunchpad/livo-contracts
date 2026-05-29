@@ -45,7 +45,7 @@ library DeploymentsSepolia {
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
     address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xdf507841a9Ba153e244767CcFE062Ba0DF7bCf40;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x3fA555A47f4Fb420D65063702a81cC43A20Df3ef;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x1285E96Fee2Fd4B1C4bee0b27ada91A5AC437bD7;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

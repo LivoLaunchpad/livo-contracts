@@ -10,7 +10,7 @@
 | ConstantProductBondingCurve                  | `0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23` |
 | LivoGraduatorUniswapV2                       | `0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC` |
 | LivoGraduatorUniswapV4                       | `0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944` |
-| LivoGraduatorUniswapV4 (0.5% hook)           | _(not deployed)_                             |
+| LivoGraduatorUniswapV4 (0.5% hook)           | `0xB2B7157e51d592356c5E7706F8371e2f0a425B7e` |
 | LivoMasterFeeHandler                         | `0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC` |
 | LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
 | LivoSwapHook (0.5%)                          | `0x068241d20c59980AbEAeDED990d2441F05f5C0Cc` |
@@ -24,7 +24,7 @@
 | LivoFactoryUniV2Unified (proxy)              | `0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9` |
 | LivoFactoryUniV2Unified (impl)               | `0xF470512f22bF50224e5Ea96673da1C1Fbb20018a` |
 | LivoFactoryUniV4Unified (proxy)              | `0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565` |
-| LivoFactoryUniV4Unified (impl)               | `0xBB0EBb375e9dc06DE3eC0d6410606Cb3DAc6737b` |
+| LivoFactoryUniV4Unified (impl)               | `0xc28b19Fa83d025c8C76E44D8010d8e2A100029BD` |
 
 ## Accounts
 
