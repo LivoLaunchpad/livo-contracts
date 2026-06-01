@@ -13,8 +13,8 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         covers the new tax variants (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2SniperProtected`).
 ///
 ///         Ownership rule: all V2-family tokens are deployed with `tokenOwner = address(0)`.
-///         Tax cap: 5% (vs V4's 4%) — the V2 swap-back path needs more headroom to amortise per-sell
-///         router gas, so a slightly higher cap keeps the tax slice meaningful.
+///         Tax cap: the full 5% aggregate fee cap (`MAX_TOTAL_FEE_BPS`) — V2 has no LP fee, so the
+///         tax can use all of it (vs V4, where the LP fee eats 50–100 bps of the budget).
 contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     constructor(
         address launchpad,
@@ -38,11 +38,6 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         )
     {}
 
-    /// @inheritdoc LivoFactoryAbstract
-    function MAX_TAX_BPS() public pure override returns (uint256) {
-        return 500;
-    }
-
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
     /// @notice Deploys a V2-family Livo token and registers it in the launchpad.
@@ -61,8 +56,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // V2-family tokens are always deployed ownerless. Routes through the shared `_createToken`
         // umbrella so this overload and the struct-based overload below share the same internal flow.
         // `LpFeeBpsSet` is emitted only by the V4 factory — V2 has no LP-fee concept.
+        _validateTotalFee(0, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
-        token = _createToken(tokenSetup, address(0), supplyShares, taxCfg, antiSniperCfg);
+        token = _createToken(tokenSetup, address(0), address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg);
     }
 
     /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
@@ -75,7 +71,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperConfigs
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
-        token = _createToken(tokenSetup, address(0), buyOnDeployShares, taxConfigs, antiSniperConfigs);
+        _validateTotalFee(0, taxConfigs);
+        token =
+            _createToken(tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
@@ -92,6 +90,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external view returns (address) {
         _validateAntiSniperConfig(antiSniperCfg);
         _validateTaxConfig(taxCfg);
+        _validateTotalFee(0, taxCfg);
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 }

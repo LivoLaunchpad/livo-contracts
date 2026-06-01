@@ -16,6 +16,8 @@ library DeploymentsSepolia {
     address internal constant BONDING_CURVE = 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5;
     address internal constant GRADUATOR_UNIV2 = 0x973B8F3b1e52244E79ecb86591C8FdA6E2D0e691;
     address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
+    /// @notice V4 graduator paired with the 50-bps `SWAP_HOOK_0P5` variant. Update after deploying.
+    address internal constant GRADUATOR_UNIV4_0P5 = 0x3d6398E54549c5a8b88071C180509B41043Df7Da;
     address internal constant MASTER_FEE_HANDLER = 0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f;
 
     address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
@@ -43,7 +45,7 @@ library DeploymentsSepolia {
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
     address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xdf507841a9Ba153e244767CcFE062Ba0DF7bCf40;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x3330a265A1bF168234cA144D36e0c70Dc239250c;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x1285E96Fee2Fd4B1C4bee0b27ada91A5AC437bD7;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

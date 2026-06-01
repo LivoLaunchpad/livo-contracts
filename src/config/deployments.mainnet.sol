@@ -15,6 +15,8 @@ library DeploymentsMainnet {
     address internal constant BONDING_CURVE = 0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23;
     address internal constant GRADUATOR_UNIV2 = 0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC;
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
+    /// @notice V4 graduator paired with the 50-bps `SWAP_HOOK_0P5` variant. Update after deploying.
+    address internal constant GRADUATOR_UNIV4_0P5 = 0xB2B7157e51d592356c5E7706F8371e2f0a425B7e;
     address internal constant MASTER_FEE_HANDLER = 0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC;
 
     address internal constant SWAP_HOOK = 0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc;
@@ -42,7 +44,7 @@ library DeploymentsMainnet {
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
     address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xF470512f22bF50224e5Ea96673da1C1Fbb20018a;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xBB0EBb375e9dc06DE3eC0d6410606Cb3DAc6737b;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xc28b19Fa83d025c8C76E44D8010d8e2A100029BD;
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

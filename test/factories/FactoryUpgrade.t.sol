@@ -25,6 +25,7 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
                 address(livoTaxTokenSniper),
                 address(bondingCurve),
                 newGraduator,
+                newGraduator,
                 address(feeHandler)
             )
         );
