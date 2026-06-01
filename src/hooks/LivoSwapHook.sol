@@ -21,41 +21,20 @@ import {ILivoLpFeeRouter} from "src/interfaces/ILivoLpFeeRouter.sol";
 /// @title LivoSwapHook
 /// @notice Uniswap V4 hook that collects LP fees and time-limited sell taxes on token swaps.
 /// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4.
-/// @dev The LP fee rate is read per-token from `ILivoToken.getTaxConfig().lpFeeBps`. Any non-zero
-///      value is capped at `MAX_LP_FEE_BPS` (100 bps) so a misconfigured token cannot overcharge.
-///      A zero `lpFeeBps` is taken literally — the hook charges no LP fee.
-/// @dev The collected LP fee is forwarded to `LivoLpFeeRouter`, which splits it between the
-///      protocol treasury and the creator (via the token's master-fee-handler) using a
-///      marketcap-tiered policy. The hook itself is unaware of the split — it only forwards.
+/// @dev Per-token LP fee rate comes from `ILivoToken.getTaxConfig().lpFeeBps` (clamped to
+///      `MAX_LP_FEE_BPS`). Collected LP fees are forwarded to `LivoLpFeeRouter`, which splits them
+///      between treasury and creator; the hook is unaware of the split and only forwards.
 contract LivoSwapHook is BaseHook {
-    error NoSwapsBeforeGraduation();
-
-    /// @notice Emitted when creator taxes are accrued from a taxed swap.
-    event CreatorTaxesAccrued(address indexed token, uint256 amount);
-    /// @notice Emitted when LP fees are forwarded out of the hook on a swap leg.
-    /// @dev The split between creator / treasury / (future) liquidity is reported by the router
-    ///      in `LivoLpFeeRouter.LpFeesRouted`. On the fallback path (router reverts) this event
-    ///      still fires but no `LpFeesRouted` is emitted — indexers can detect the fallback by
-    ///      the absence of the router event in the same tx. The hook event signature is
-    ///      different from the old hook's `LpFeesAccrued(token, creator, treasury)` on purpose:
-    ///      it lives at a fresh hook address, so legacy tokens (tied to the old hook) and new
-    ///      tokens (tied to this hook) never collide on the indexer.
-    event LpFeesForwarded(address indexed token, uint256 amount);
-    /// @notice Emitted on every buy for off-chain indexing.
-    event LivoSwapBuy(
-        address indexed token, address indexed txOrigin, uint256 ethIn, uint256 tokensOut, uint256 ethFees
-    );
-    /// @notice Emitted on every sell for off-chain indexing.
-    event LivoSwapSell(
-        address indexed token, address indexed txOrigin, uint256 tokensIn, uint256 ethOut, uint256 ethFees
-    );
+    /// @notice LP fee router that splits forwarded fees between treasury and creator.
+    /// @dev Resolved at swap time; upgrade the router via its own UUPS proxy without redeploying
+    ///      this hook.
+    ILivoLpFeeRouter public immutable FEE_ROUTER;
 
     /// @notice Basis points denominator (10000 = 100%).
     uint256 private constant BASIS_POINTS = 10000;
 
-    /// @notice Hard ceiling on the per-token LP fee. Any `getTaxConfig().lpFeeBps` above this is
-    ///         clamped down to this value — a misconfigured token can never overcharge users.
-    /// @dev A zero `lpFeeBps` is taken literally (no LP fee charged).
+    /// @notice Hard ceiling on the per-token LP fee so a misconfigured token can never overcharge
+    ///         users. `getTaxConfig().lpFeeBps` above this is clamped down; zero is taken literally.
     uint16 private constant MAX_LP_FEE_BPS = 100; // 1%
 
     /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized to cover the router's
@@ -76,14 +55,32 @@ contract LivoSwapHook is BaseHook {
     /// @notice Cached buy tax taken from the input on a buy, carried from beforeSwap to afterSwap.
     uint256 private transient _cachedBuyTax;
 
-    /// @notice LP fee router that splits forwarded fees between treasury and creator.
-    /// @dev Resolved at swap time; upgrade the router via its own UUPS proxy without redeploying
-    ///      this hook.
-    ILivoLpFeeRouter public immutable ROUTER;
+    /////////////////////////// EVENTS & ERRORS ///////////////////////////
+
+    error NoSwapsBeforeGraduation();
+
+    /// @notice Emitted when creator taxes are accrued from a taxed swap.
+    event CreatorTaxesAccrued(address indexed token, uint256 amount);
+    /// @notice Emitted when LP fees are forwarded out of the hook on a swap leg.
+    /// @dev The split is reported by the router in `LivoLpFeeRouter.LpFeesRouted`; on the fallback
+    ///      path (router reverts) that event is absent, which is how indexers detect the fallback.
+    ///      Signature differs from the old hook's `LpFeesAccrued` on purpose: this hook lives at a
+    ///      fresh address, so legacy and new tokens never collide on the indexer.
+    event LpFeesForwarded(address indexed token, uint256 amount);
+    /// @notice Emitted on every buy for off-chain indexing.
+    event LivoSwapBuy(
+        address indexed token, address indexed txOrigin, uint256 ethIn, uint256 tokensOut, uint256 ethFees
+    );
+    /// @notice Emitted on every sell for off-chain indexing.
+    event LivoSwapSell(
+        address indexed token, address indexed txOrigin, uint256 tokensIn, uint256 ethOut, uint256 ethFees
+    );
+
+    //////////////////////////////////////////////////////////////////////
 
     /// @notice Initializes the hook with the pool manager and LP fee router addresses.
     constructor(IPoolManager _poolManager, address _router) BaseHook(_poolManager) {
-        ROUTER = ILivoLpFeeRouter(_router);
+        FEE_ROUTER = ILivoLpFeeRouter(_router);
     }
 
     /// @notice Allows contract to receive ETH from `poolManager.take()`.
@@ -121,7 +118,6 @@ contract LivoSwapHook is BaseHook {
     {
         address tokenAddress = Currency.unwrap(key.currency1);
 
-        // Swaps not allowed before graduation.
         if (!ILivoToken(tokenAddress).graduated()) {
             revert NoSwapsBeforeGraduation();
         }
@@ -343,7 +339,7 @@ contract LivoSwapHook is BaseHook {
     ) internal {
         if (lpFee > 0) {
             emit LpFeesForwarded(tokenAddress, lpFee);
-            try ROUTER.depositLpFees{value: lpFee, gas: ROUTER_GAS_LIMIT}(
+            try FEE_ROUTER.depositLpFees{value: lpFee, gas: ROUTER_GAS_LIMIT}(
                 tokenAddress, ethSwapAmount, tokenSwapAmount
             ) {
             // happy path — router emitted its own `LpFeesRouted` with the breakdown.

@@ -398,7 +398,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _graduateToken();
 
         // Plant a contract that reverts on every call at the router's address.
-        address routerAddr = address(taxHook.ROUTER());
+        address routerAddr = address(taxHook.FEE_ROUTER());
         vm.etch(routerAddr, type(RevertingRouter).runtimeCode);
 
         uint256 creatorBefore = _pendingCreatorFees(testToken);
@@ -423,7 +423,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     function test_swapSucceeds_whenRouterBurnsAllForwardedGas() public createDefaultTaxToken {
         _graduateToken();
 
-        address routerAddr = address(taxHook.ROUTER());
+        address routerAddr = address(taxHook.FEE_ROUTER());
         vm.etch(routerAddr, type(GasBurningRouter).runtimeCode);
 
         uint256 creatorBefore = _pendingCreatorFees(testToken);
