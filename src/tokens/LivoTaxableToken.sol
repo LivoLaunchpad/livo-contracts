@@ -11,7 +11,7 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 /// @title LivoTaxableToken
 /// @notice Abstract base for Livo taxable tokens shared by the Uniswap V2 and V4 variants.
 ///         Owns the tax-config storage, the post-graduation timestamp, the standard `markGraduated`
-///         + `getTaxConfig` overrides, the dev-supplied init plumbing and the owner-only
+///         + `getCurrentFees` overrides, the dev-supplied init plumbing and the owner-only
 ///         `rescueTokens` path. Variant-specific behavior (intrinsic V2 taxation, V4 pool-manager
 ///         pair check) lives in the concrete subclasses.
 /// @dev Storage layout: this contract introduces 4 packed slots-fields (buyTaxBps, sellTaxBps,
@@ -31,8 +31,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     uint16 public sellTaxBps;
 
     /// @notice LP fee rate in basis points charged by LivoSwapHook on every swap.
-    ///         Set during initialization, cannot be changed. 0 means "use the hook's default"
-    ///         (100 bps = 1%); the hook caps any non-zero value at its hard ceiling.
+    ///         Set during initialization, cannot be changed. 0 means no LP fee (the hook takes the
+    ///         value literally). The hook reverts a swap whose combined LP fee + tax exceeds its
+    ///         overall cap (`MAX_OVERALL_FEE_BPS`).
     uint16 public lpFeeBps;
 
     /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
@@ -47,8 +48,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     /// @notice Emitted once during init with the dev-supplied tax config.
     /// @dev Signature preserved for indexer compatibility — `lpFeeBps` is stored on the token and
-    ///      can be read via `getTaxConfig()` / the public `lpFeeBps()` getter; it is intentionally
-    ///      not part of this event.
+    ///      can be read via the public `lpFeeBps()` getter; it is intentionally not part of this event.
     event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
 
     /// @notice Emitted whenever `setTaxBps` successfully updates the buy/sell tax rates. Only the
@@ -132,15 +132,21 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// VIEW FUNCTIONS //////////////////////
 
-    /// @notice Returns the tax configuration for this taxable token
-    function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        config = TaxConfig({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: sellTaxBps,
-            lpFeeBps: lpFeeBps,
-            taxDurationSeconds: taxDurationSeconds,
-            graduationTimestamp: graduationTimestamp
-        });
+    /// @notice Returns the fees `LivoSwapHook` charges on a swap right now (see `ILivoToken`).
+    /// @dev The LP fee is always effective; the buy/sell tax is returned only inside the tax window
+    ///      `[graduationTimestamp, graduationTimestamp + taxDurationSeconds]`, and zero otherwise.
+    ///      Keeping this window check here makes the hook agnostic to the tax schedule.
+    function getCurrentFees()
+        external
+        view
+        override(ILivoToken, LivoToken)
+        returns (uint16 currentBuyTaxBps, uint16 currentSellTaxBps, uint16 currentLpFeeBps)
+    {
+        currentLpFeeBps = lpFeeBps;
+        if (graduationTimestamp != 0 && block.timestamp <= uint256(graduationTimestamp) + uint256(taxDurationSeconds)) {
+            currentBuyTaxBps = buyTaxBps;
+            currentSellTaxBps = sellTaxBps;
+        }
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

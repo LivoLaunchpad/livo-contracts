@@ -12,8 +12,8 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 /// @title LivoTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
 /// @dev Extends `LivoTaxableToken` to add the V4 pool-manager pair check. All tax accounting
-///      lives outside the token itself, in `LivoSwapHook`; the token simply exposes the tax config
-///      via `getTaxConfig()`.
+///      lives outside the token itself, in `LivoSwapHook`; the token simply exposes its current
+///      fees via `getCurrentFees()`.
 contract LivoTaxableTokenUniV4 is LivoTaxableToken {
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS

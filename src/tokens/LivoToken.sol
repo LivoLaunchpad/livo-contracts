@@ -193,14 +193,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         return ILivoMasterFeeHandler(feeHandler).getRecipients(address(this));
     }
 
-    /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
+    /// @notice Default current-fees returning no fees. Overridden by taxable token implementations.
     /// @dev TODO: when `LivoSwapHook` is enabled for non-taxable variants, this override must
     ///      return a non-zero `lpFeeBps` (e.g. 100 = 1%) so the hook charges the protocol's
     ///      default LP fee on swaps. The hook intentionally treats `lpFeeBps == 0` as "no LP
     ///      fee" — adding the default here requires bumping a new `LivoToken` implementation +
     ///      redeploying token impls + repointing the factories. Tracked for the post-hook-
     ///      whitelist follow-up since the current PR's goal is the hook upgrade itself.
-    function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+    function getCurrentFees() external view virtual returns (uint16 buyTaxBps, uint16 sellTaxBps, uint16 lpFeeBps) {}
 
     /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
     function maxTokenPurchase(address) external view virtual returns (uint256) {

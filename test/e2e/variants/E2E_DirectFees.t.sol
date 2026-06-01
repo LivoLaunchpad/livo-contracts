@@ -36,7 +36,7 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(alice.balance - aliceBefore, CREATOR_GRADUATION_COMPENSATION, "graduation fee forwarded directly");
 
         // Post-graduation swap. Non-tax `LivoToken` clones currently return `lpFeeBps == 0`
-        // (see TODO in LivoToken.getTaxConfig), so the hook charges no LP fee and alice's
+        // (see TODO in LivoToken.getCurrentFees), so the hook charges no LP fee and alice's
         // balance does not move from the swap. Once that TODO is resolved this assertion will
         // flip back to `assertGt`.
         uint256 aliceAfterGrad = alice.balance;

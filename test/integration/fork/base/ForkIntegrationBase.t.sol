@@ -28,6 +28,12 @@ interface ISniperProtectionRead {
     function launchTimestamp() external view returns (uint40);
 }
 
+interface ITaxConfigRead {
+    function buyTaxBps() external view returns (uint16);
+    function sellTaxBps() external view returns (uint16);
+    function taxDurationSeconds() external view returns (uint40);
+}
+
 /// @notice Common setup and lifecycle helpers for chain-neutral Livo fork integration tests.
 abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     using ForkIntegrationCaseLib for *;
@@ -374,15 +380,16 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     }
 
     function _assertTaxConfig(ForkIntegrationCaseLib.IntegrationCase memory c, address token) internal view {
-        ILivoToken.TaxConfig memory tax = ILivoToken(token).getTaxConfig();
         if (_hasTax(c)) {
-            assertEq(tax.buyTaxBps, TAX_BUY_BPS, "buy tax mismatch");
-            assertEq(tax.sellTaxBps, TAX_SELL_BPS, "sell tax mismatch");
-            assertEq(tax.taxDurationSeconds, TAX_DURATION_SECONDS, "tax duration mismatch");
+            // Raw configured rates (window-independent), read via the concrete taxable getters.
+            assertEq(ITaxConfigRead(token).buyTaxBps(), TAX_BUY_BPS, "buy tax mismatch");
+            assertEq(ITaxConfigRead(token).sellTaxBps(), TAX_SELL_BPS, "sell tax mismatch");
+            assertEq(ITaxConfigRead(token).taxDurationSeconds(), TAX_DURATION_SECONDS, "tax duration mismatch");
         } else {
-            assertEq(tax.buyTaxBps, 0, "unexpected buy tax");
-            assertEq(tax.sellTaxBps, 0, "unexpected sell tax");
-            assertEq(tax.taxDurationSeconds, 0, "unexpected tax duration");
+            // Non-tax tokens have no tax getters; `getCurrentFees` is polymorphic and returns zero.
+            (uint16 buyTax, uint16 sellTax,) = ILivoToken(token).getCurrentFees();
+            assertEq(buyTax, 0, "unexpected buy tax");
+            assertEq(sellTax, 0, "unexpected sell tax");
         }
     }
 

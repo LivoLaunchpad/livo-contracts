@@ -25,18 +25,6 @@ interface ILivoToken is IERC20 {
         uint256 vaultAllocation;
     }
 
-    /// @notice Tax configuration for a token
-    /// @dev All five fields pack into a single storage slot (2+2+2+5+5 = 16 bytes ≤ 32).
-    struct TaxConfig {
-        uint16 buyTaxBps; // Buy tax in basis points (max 500 = 5%)
-        uint16 sellTaxBps; // Sell tax in basis points (max 500 = 5%)
-        uint16 lpFeeBps; // LP fee in basis points charged by LivoSwapHook on every swap.
-        // 0 means "use the hook's default" (currently 100 bps = 1%); the hook caps any non-zero
-        // value at its hard ceiling so a misconfigured token can never overcharge.
-        uint40 taxDurationSeconds; // Duration after graduation during which taxes apply
-        uint40 graduationTimestamp; // Timestamp when token graduated (0 if not graduated)
-    }
-
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
 
     function markGraduated() external;
@@ -59,9 +47,15 @@ interface ILivoToken is IERC20 {
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 
-    /// @notice Returns the tax configuration for this token
-    /// @return config The complete tax configuration
-    function getTaxConfig() external view returns (TaxConfig memory config);
+    /// @notice Returns the fees `LivoSwapHook` charges on a swap right now: the always-on LP fee
+    ///         plus the buy/sell tax, which is non-zero only inside the post-graduation tax window.
+    /// @dev Returns all-zero for non-taxable tokens; taxable variants override with live values.
+    ///      Replaces the former `getTaxConfig`: the hook needs only the currently-effective rates,
+    ///      not the raw stored config, so the tax-window logic lives in the token now.
+    /// @return buyTaxBps Currently-effective buy tax in basis points (0 outside the tax window).
+    /// @return sellTaxBps Currently-effective sell tax in basis points (0 outside the tax window).
+    /// @return lpFeeBps LP fee in basis points (always effective).
+    function getCurrentFees() external view returns (uint16 buyTaxBps, uint16 sellTaxBps, uint16 lpFeeBps);
 
     /// @notice Contract in charge of handling the graduation process
     /// @dev Must implement ILivoGraduator interface

@@ -571,16 +571,14 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _swapBuy(buyer, 1 ether, 0, false);
     }
 
-    /// @dev Forces `token.getTaxConfig()` to report an arbitrary lp-fee/buy-tax split inside an
-    ///      active tax window, bypassing the factory's `MAX_TOTAL_FEE_BPS` validation.
+    /// @dev Forces `token.getCurrentFees()` to report an arbitrary lp-fee/buy-tax split, bypassing
+    ///      the factory's `MAX_TOTAL_FEE_BPS` validation. Returns the windowed values directly, so
+    ///      no graduation/window state is needed.
     function _mockBuyFeeBps(address token, uint16 lpFeeBps, uint16 buyTaxBps) internal {
-        ILivoToken.TaxConfig memory cfg = ILivoToken.TaxConfig({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: 0,
-            lpFeeBps: lpFeeBps,
-            taxDurationSeconds: DEFAULT_TAX_DURATION,
-            graduationTimestamp: uint40(block.timestamp)
-        });
-        vm.mockCall(token, abi.encodeWithSelector(ILivoToken.getTaxConfig.selector), abi.encode(cfg));
+        vm.mockCall(
+            token,
+            abi.encodeWithSelector(ILivoToken.getCurrentFees.selector),
+            abi.encode(buyTaxBps, uint16(0), lpFeeBps)
+        );
     }
 }

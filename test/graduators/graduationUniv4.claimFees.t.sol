@@ -153,14 +153,14 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     /// @notice Per-suite LP fee rate (in BPS) charged by the hook on this suite's tokens.
     ///         Defaults to the production tax-variant default (100 bps = 1%); non-tax suites
-    ///         override to 0 since `LivoToken.getTaxConfig()` currently returns `lpFeeBps == 0`.
+    ///         override to 0 since `LivoToken.getCurrentFees()` currently returns `lpFeeBps == 0`.
     function _suiteLpFeeBps() internal pure virtual returns (uint256) {
         return LP_FEE_BPS_DEFAULT;
     }
 
     /// @notice Per-suite expected creator LP share at tier 0. Defaults to the tier-0 creator
     ///         share helper from `LaunchpadBaseTests`; non-tax suites override to return 0,
-    ///         since the production `LivoToken.getTaxConfig()` currently returns `lpFeeBps == 0`
+    ///         since the production `LivoToken.getCurrentFees()` currently returns `lpFeeBps == 0`
     ///         (a TODO tracks the future bump that gives non-tax tokens a non-zero default).
     function _suiteLpCreatorShare(uint256 ethAmount) internal pure virtual returns (uint256) {
         return _lpCreatorShareTier0(ethAmount);
@@ -1268,7 +1268,7 @@ contract BaseUniswapV4ClaimFees_NormalToken is BaseUniswapV4ClaimFeesBase {
         // Uses default implementation (livoToken) from base
     }
 
-    // Non-tax `LivoToken` clones currently return `lpFeeBps == 0` from `getTaxConfig()`, so the
+    // Non-tax `LivoToken` clones currently return `lpFeeBps == 0` from `getCurrentFees()`, so the
     // hook charges no LP fee on their swaps. Override the per-suite expected-share helpers to 0
     // so the shared assertion paths stay correct.
     function _suiteLpFeeBps() internal pure override returns (uint256) {
