@@ -18,8 +18,10 @@ interface ILivoLpFeeRouter {
     /// @dev MUST revert on any internal transfer failure so the calling hook can apply its own
     ///      try/catch fallback. The router must NOT silently drop funds.
     /// @param token           The Livo token whose LP fees are being routed.
-    /// @param ethSwapAmount   Net ETH that crossed the pool during the swap leg that produced
-    ///                        these fees (gross minus the hook-extracted LP fee + taxes).
+    /// @param ethSwapAmount   ETH the pool exchanged on the swap leg that produced these fees: the
+    ///                        input net of the pre-pool fee on a buy, the full ETH output on a sell.
+    ///                        Excludes any hook fee skimmed after the pool, so it reflects the pool's
+    ///                        execution price regardless of swap direction.
     /// @param tokenSwapAmount Token amount that crossed the pool during the same swap leg.
     function depositLpFees(address token, uint256 ethSwapAmount, uint256 tokenSwapAmount) external payable;
 }

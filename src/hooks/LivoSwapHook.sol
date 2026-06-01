@@ -221,9 +221,11 @@ contract LivoSwapHook is BaseHook {
             poolManager.take(key.currency0, address(this), sellTotalFee);
         }
 
-        // `ethNetSell` is the ETH that effectively left the pool against `tokensIn` (gross minus our fees).
-        uint256 ethNetSell = ethGross - sellTotalFee;
-        _accrue(tokenAddress, sellLpFee, sellTax, ethNetSell, tokensIn);
+        // `ethGross` is the ETH the pool actually paid out for `tokensIn`. The hook fee is skimmed
+        // from that output *after* the swap, so it never changed the pool's execution price: feed
+        // the full `ethGross` (the pool-side ETH the buy legs also forward) so the router reads the
+        // same avg price a buy at this pool state would, instead of an under-stated, net-of-fee one.
+        _accrue(tokenAddress, sellLpFee, sellTax, ethGross, tokensIn);
 
         emit LivoSwapSell(tokenAddress, tx.origin, tokensIn, ethGross, sellTotalFee);
 
@@ -329,9 +331,10 @@ contract LivoSwapHook is BaseHook {
     ///         simultaneous outage of the router AND the master fee handler is a protocol-wide
     ///         failure that warrants a clear, observable revert rather than silently stranding
     ///         ETH in this contract.
-    /// @param ethSwapAmount   Net ETH that crossed the pool during this swap leg (gross minus
-    ///                        fees). Together with `tokenSwapAmount` it lets the router derive
-    ///                        the swap's avg price without reading slot0.
+    /// @param ethSwapAmount   ETH the pool exchanged on this swap leg: the input net of the
+    ///                        pre-pool fee on a buy, the full ETH output on a sell (the hook fee is
+    ///                        skimmed after the pool and excluded). Together with `tokenSwapAmount`
+    ///                        it lets the router derive the swap's avg price without reading slot0.
     /// @param tokenSwapAmount Token amount that crossed the pool during this swap leg.
     function _accrue(
         address tokenAddress,

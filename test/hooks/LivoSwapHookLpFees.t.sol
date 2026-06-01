@@ -37,6 +37,16 @@ contract GasBurningRouter {
     }
 }
 
+/// @notice Test-only router stub that echoes the `(ethSwapAmount, tokenSwapAmount)` the hook
+///         forwards, so a test can assert the marketcap basis the hook feeds the router.
+contract RecordingRouter {
+    event Recorded(uint256 ethSwapAmount, uint256 tokenSwapAmount, uint256 value);
+
+    function depositLpFees(address, uint256 ethSwapAmount, uint256 tokenSwapAmount) external payable {
+        emit Recorded(ethSwapAmount, tokenSwapAmount, msg.value);
+    }
+}
+
 /// @notice Tests for hook-based LP fees (1% charged by LivoSwapHook).
 /// @dev    All these tests run with marketcap below tier 1 (30 ETH), so the active split is
 ///         tier 0: 40% treasury / 60% creator.
@@ -442,6 +452,42 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
             "creator should receive the entire LP fee via the accrueFees fallback after router OOG"
         );
         assertEq(treasury.balance, treasuryBefore, "treasury must not receive funds when router OOGs");
+    }
+
+    // ───────────────────────── marketcap basis ──────────────────────────────
+
+    bytes32 constant RECORDED_SIG = keccak256("Recorded(uint256,uint256,uint256)");
+
+    /// @notice Regression: on a sell the hook must forward the FULL gross ETH the pool paid out as
+    ///         the router's marketcap basis — not the swapper's net-of-fee proceeds. The hook fee is
+    ///         skimmed after the pool and never changes the pool's execution price, so a sell and a
+    ///         buy at the same pool state must report the same avg price (the buy legs already
+    ///         forward pool-side ETH). Feeding net-of-fee here under-stated sell marketcaps by the
+    ///         combined fee and could drop a sell into a lower router tier than an equivalent buy.
+    function test_sellForwardsGrossEthAsMarketcapBasis() public createDefaultTaxToken {
+        vm.deal(buyer, 2 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        // Spy router that echoes the (ethSwapAmount, tokenSwapAmount) the hook forwards.
+        address routerAddr = address(taxHook.FEE_ROUTER());
+        vm.etch(routerAddr, type(RecordingRouter).runtimeCode);
+
+        uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 2;
+
+        vm.recordLogs();
+        _swapSell(buyer, sellAmount, 0, true);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        (, uint256 ethOut, uint256 ethFees) =
+            abi.decode(_findLog(logs, LIVO_SWAP_SELL_SIG).data, (uint256, uint256, uint256));
+        (uint256 routedEth,,) = abi.decode(_findLog(logs, RECORDED_SIG).data, (uint256, uint256, uint256));
+
+        // Sell tax + LP fee are active here, so gross strictly exceeds net: the assertion below can
+        // only hold for the full gross, distinguishing the fix from the old net-of-fee behavior.
+        assertGt(ethFees, 0, "sell fee must be non-zero for this regression to be meaningful");
+        assertEq(routedEth, ethOut, "sell must forward gross pool ETH (LivoSwapSell.ethOut) as the marketcap basis");
     }
 
     // ───────────────────────── accurate amounts ─────────────────────────────
