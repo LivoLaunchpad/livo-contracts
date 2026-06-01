@@ -549,4 +549,38 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         assertEq(creatorLpFee, expectedCreator, "Creator should receive tier-0 creator share");
         assertEq(treasuryLpFee, expectedTreasury, "Treasury should receive tier-0 treasury share");
     }
+
+    // ───────────────────────── overall fee cap ──────────────────────────────
+
+    /// @notice The hook caps the COMBINED fee (LP fee + active tax) at `MAX_OVERALL_FEE_BPS` (25%):
+    ///         a config exactly at the cap swaps fine, one bps over reverts with `FeeTooHigh`. The
+    ///         two cases differ by a single bps, so the revert is attributable to the cap alone. The
+    ///         factory can't configure a token above the cap (`MAX_TOTAL_FEE_BPS` = 5%), so the
+    ///         over-cap config is injected with `vm.mockCall` to exercise the runtime backstop.
+    function test_swapReverts_whenCombinedFeeExceedsCap() public createDefaultTaxToken {
+        _graduateToken();
+
+        // Exactly at the 25% cap (lpFee 0 + buyTax 2500): allowed.
+        _mockBuyFeeBps(testToken, 0, 2500);
+        deal(buyer, 1 ether);
+        _swapBuy(buyer, 1 ether, 0, true);
+
+        // One bps over the cap (lpFee 1 + buyTax 2500 = 2501): reverts with FeeTooHigh.
+        _mockBuyFeeBps(testToken, 1, 2500);
+        deal(buyer, 1 ether);
+        _swapBuy(buyer, 1 ether, 0, false);
+    }
+
+    /// @dev Forces `token.getTaxConfig()` to report an arbitrary lp-fee/buy-tax split inside an
+    ///      active tax window, bypassing the factory's `MAX_TOTAL_FEE_BPS` validation.
+    function _mockBuyFeeBps(address token, uint16 lpFeeBps, uint16 buyTaxBps) internal {
+        ILivoToken.TaxConfig memory cfg = ILivoToken.TaxConfig({
+            buyTaxBps: buyTaxBps,
+            sellTaxBps: 0,
+            lpFeeBps: lpFeeBps,
+            taxDurationSeconds: DEFAULT_TAX_DURATION,
+            graduationTimestamp: uint40(block.timestamp)
+        });
+        vm.mockCall(token, abi.encodeWithSelector(ILivoToken.getTaxConfig.selector), abi.encode(cfg));
+    }
 }

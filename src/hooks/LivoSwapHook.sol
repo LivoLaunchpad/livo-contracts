@@ -21,9 +21,11 @@ import {ILivoLpFeeRouter} from "src/interfaces/ILivoLpFeeRouter.sol";
 /// @title LivoSwapHook
 /// @notice Uniswap V4 hook that collects LP fees and time-limited sell taxes on token swaps.
 /// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4.
-/// @dev Per-token LP fee rate comes from `ILivoToken.getTaxConfig().lpFeeBps` (clamped to
-///      `MAX_LP_FEE_BPS`). Collected LP fees are forwarded to `LivoLpFeeRouter`, which splits them
-///      between treasury and creator; the hook is unaware of the split and only forwards.
+/// @dev Per-token LP fee + tax rates come from `ILivoToken.getTaxConfig()`. The hook places no
+///      individual cap on either; instead it reverts a swap whose combined `lpFeeBps + taxBps`
+///      exceeds `MAX_OVERALL_FEE_BPS`, leaving each token free to split that budget as it likes.
+///      Collected LP fees are forwarded to `LivoLpFeeRouter`, which splits them between treasury
+///      and creator; the hook is unaware of the split and only forwards.
 contract LivoSwapHook is BaseHook {
     /// @notice LP fee router that splits forwarded fees between treasury and creator.
     /// @dev Resolved at swap time; upgrade the router via its own UUPS proxy without redeploying
@@ -33,9 +35,12 @@ contract LivoSwapHook is BaseHook {
     /// @notice Basis points denominator (10000 = 100%).
     uint256 private constant BASIS_POINTS = 10000;
 
-    /// @notice Hard ceiling on the per-token LP fee so a misconfigured token can never overcharge
-    ///         users. `getTaxConfig().lpFeeBps` above this is clamped down; zero is taken literally.
-    uint16 private constant MAX_LP_FEE_BPS = 100; // 1%
+    /// @notice Hard ceiling on the COMBINED fee (LP fee + active tax) charged on a single swap leg,
+    ///         so a misconfigured token can never overcharge users. The swap reverts if the token's
+    ///         `lpFeeBps + taxBps` exceeds this; the hook stays agnostic to how the token splits the
+    ///         budget between LP fee and taxes. Well above the factory's `MAX_TOTAL_FEE_BPS` (500),
+    ///         which is the real configuration bound — this is only a runtime backstop.
+    uint16 private constant MAX_OVERALL_FEE_BPS = 2500; // 25%
 
     /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized to cover the router's
     ///         worst-case path with margin, then capped so a misbehaving router cannot drain the
@@ -58,6 +63,9 @@ contract LivoSwapHook is BaseHook {
     /////////////////////////// EVENTS & ERRORS ///////////////////////////
 
     error NoSwapsBeforeGraduation();
+    /// @notice Thrown when a token's combined fee (`lpFeeBps + taxBps`) for this swap leg exceeds
+    ///         `MAX_OVERALL_FEE_BPS`.
+    error FeeTooHigh();
 
     /// @notice Emitted when creator taxes are accrued from a taxed swap.
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
@@ -253,52 +261,52 @@ contract LivoSwapHook is BaseHook {
         _accrue(tokenAddress, lpFee, taxAmount, ethInPool, tokensOut);
     }
 
+    /// @notice Resolves the effective LP-fee and tax bps for a swap leg and enforces the overall cap.
+    /// @dev    The tax is only active inside the post-graduation window; outside it `taxBps` is zero.
+    ///         No individual cap is placed on either component — a token is free to split the budget
+    ///         between LP fee and taxes — but the combined `lpFeeBps + taxBps` must stay within
+    ///         `MAX_OVERALL_FEE_BPS` or the swap reverts with `FeeTooHigh`.
+    function _resolveFeeBps(ILivoToken.TaxConfig memory cfg, bool isBuy)
+        internal
+        view
+        returns (uint256 lpFeeBps, uint256 taxBps)
+    {
+        lpFeeBps = uint256(cfg.lpFeeBps);
+        if (
+            cfg.graduationTimestamp != 0
+                && block.timestamp <= uint256(cfg.graduationTimestamp) + uint256(cfg.taxDurationSeconds)
+        ) {
+            taxBps = isBuy ? uint256(cfg.buyTaxBps) : uint256(cfg.sellTaxBps);
+        }
+        if (lpFeeBps + taxBps > MAX_OVERALL_FEE_BPS) revert FeeTooHigh();
+    }
+
     /// @dev Grosses up the pool-consumed ETH on an exact-output buy into the equivalent
     ///      exact-input gross input. With effective LP-fee bps and active buy-tax bps summed
     ///      into `totalBps`, returns `ethInPool * 10000 / (10000 - totalBps)`.
-    /// @dev Division is safe: `MAX_LP_FEE_BPS` (100) + `MAX_TAX_BPS` (400 in the V4 factory)
-    ///      = 500, well below `BASIS_POINTS` (10000), so the denominator never reaches zero.
+    /// @dev Division is safe: `_resolveFeeBps` caps `totalBps` at `MAX_OVERALL_FEE_BPS` (2500),
+    ///      well below `BASIS_POINTS` (10000), so the denominator never reaches zero.
     function _grossUpExactOutputBuy(uint256 ethInPool, ILivoToken.TaxConfig memory cfg)
         internal
         view
         returns (uint256)
     {
-        uint16 lpFeeBps = cfg.lpFeeBps;
-        if (lpFeeBps > MAX_LP_FEE_BPS) {
-            lpFeeBps = MAX_LP_FEE_BPS;
-        }
-        uint256 totalBps = uint256(lpFeeBps);
-        if (
-            cfg.graduationTimestamp != 0
-                && block.timestamp <= uint256(cfg.graduationTimestamp) + uint256(cfg.taxDurationSeconds)
-        ) {
-            totalBps += uint256(cfg.buyTaxBps);
-        }
+        (uint256 lpFeeBps, uint256 taxBps) = _resolveFeeBps(cfg, true);
+        uint256 totalBps = lpFeeBps + taxBps;
         if (totalBps == 0) return ethInPool;
         return (ethInPool * BASIS_POINTS) / (BASIS_POINTS - totalBps);
     }
 
     /// @notice Computes the LP fee + tax amounts on a given gross ETH amount.
-    /// @dev    Reads the LP fee rate from the token's tax config. A zero value is taken literally
-    ///         (no LP fee). A value above `MAX_LP_FEE_BPS` is clamped to that ceiling.
+    /// @dev    Rates come from `_resolveFeeBps`, which enforces the combined `MAX_OVERALL_FEE_BPS`
+    ///         cap. A zero `lpFeeBps` is taken literally (no LP fee).
     function _computeFees(uint256 grossEth, ILivoToken.TaxConfig memory cfg, bool isBuy)
         internal
         view
         returns (uint256 lpFee, uint256 taxAmount)
     {
-        uint16 lpFeeBps = cfg.lpFeeBps;
-        if (lpFeeBps > MAX_LP_FEE_BPS) {
-            lpFeeBps = MAX_LP_FEE_BPS;
-        }
+        (uint256 lpFeeBps, uint256 taxBps) = _resolveFeeBps(cfg, isBuy);
         lpFee = (grossEth * lpFeeBps) / BASIS_POINTS;
-
-        // Tax window check: only active between graduation and graduation+duration.
-        if (cfg.graduationTimestamp == 0) return (lpFee, 0);
-        if (block.timestamp > uint256(cfg.graduationTimestamp) + uint256(cfg.taxDurationSeconds)) {
-            return (lpFee, 0);
-        }
-        uint16 taxBps = isBuy ? cfg.buyTaxBps : cfg.sellTaxBps;
-        if (taxBps == 0) return (lpFee, 0);
         taxAmount = (grossEth * taxBps) / BASIS_POINTS;
     }
 
