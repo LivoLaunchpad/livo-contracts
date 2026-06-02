@@ -14,6 +14,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 
 /// @notice Test-only router stub that reverts on every call. Used with `vm.etch` to exercise the
 ///         hook's `try/catch` fallback to `ILivoToken.accrueFees`.
@@ -482,12 +483,17 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         (, uint256 ethOut, uint256 ethFees) =
             abi.decode(_findLog(logs, LIVO_SWAP_SELL_SIG).data, (uint256, uint256, uint256));
-        (uint256 routedEth,,) = abi.decode(_findLog(logs, RECORDED_SIG).data, (uint256, uint256, uint256));
+        (uint256 routedEth,, uint256 routedValue) =
+            abi.decode(_findLog(logs, RECORDED_SIG).data, (uint256, uint256, uint256));
 
         // Sell tax + LP fee are active here, so gross strictly exceeds net: the assertion below can
         // only hold for the full gross, distinguishing the fix from the old net-of-fee behavior.
         assertGt(ethFees, 0, "sell fee must be non-zero for this regression to be meaningful");
         assertEq(routedEth, ethOut, "sell must forward gross pool ETH (LivoSwapSell.ethOut) as the marketcap basis");
+        // The router receives exactly the LP fee as ETH; the sell tax bypasses it straight to accrueFees.
+        assertApproxEqAbs(
+            routedValue, (ethOut * LP_FEE_BPS) / 10_000, 2, "router must receive exactly the LP fee as msg.value"
+        );
     }
 
     // ───────────────────────── accurate amounts ─────────────────────────────
@@ -573,6 +579,42 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(ethFees, expectedFee, 2, "fee must be (LP+buyTax)% of swapper's total ETH out");
     }
 
+    /// @notice An exact-output buy must actually deliver the fee to its recipients, not merely emit a
+    ///         correct total: the treasury gets its tier-0 LP share and the creator gets its tier-0 LP
+    ///         share plus the full buy tax. Runs in the active tax window so both components are non-zero.
+    function test_exactOutputBuy_distributesLpFeeAndBuyTax() public {
+        uint16 buyTax = 300; // 3%
+        testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        uint256 creatorBefore = _pendingCreatorFees(testToken);
+        uint256 treasuryBefore = treasury.balance;
+
+        deal(buyer, 10 ether);
+        uint128 wantTokens = uint128(1e18);
+        uint128 ethCap = uint128(1 ether);
+
+        vm.recordLogs();
+        _swapExactOutputBuyV4(buyer, testToken, wantTokens, ethCap, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        // `ethIn` is the swapper's total ETH out (pool input + fee) = the grossed-up basis the hook
+        // charges the fee on, so the canonical split derives directly from it.
+        (uint256 ethIn,,) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        uint256 creatorFees = _pendingCreatorFees(testToken) - creatorBefore;
+        uint256 treasuryLpFee = treasury.balance - treasuryBefore;
+
+        uint256 totalLpFee = (ethIn * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
+        uint256 expectedBuyTax = (ethIn * buyTax) / 10_000;
+
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "treasury should get tier-0 LP fee share");
+        assertApproxEqAbs(
+            creatorFees, expectedCreatorLpFee + expectedBuyTax, 3, "creator should get tier-0 LP share + buy tax"
+        );
+    }
+
     /// @notice Accurate fee amounts: buy 1 ETH (small enough that the post-swap marketcap stays
     ///         below tier 1 = 30 ETH), verify tier-0 split on the 0.01 ETH LP fee.
     function test_accurateFeeAmounts() public createDefaultTaxToken {
@@ -625,6 +667,118 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
             token,
             abi.encodeWithSelector(ILivoToken.getCurrentFees.selector),
             abi.encode(buyTaxBps, uint16(0), lpFeeBps)
+        );
+    }
+
+    // ─────────────────────── exact-output sell parity ───────────────────────
+
+    /// @dev Routes an exact-output sell (token -> exact ETH out) through the Universal Router.
+    function _swapExactOutputSellV4(
+        address caller,
+        address token,
+        uint128 ethOut,
+        uint128 tokenInMax,
+        bool expectSuccess
+    ) internal {
+        vm.startPrank(caller);
+        IERC20(token).approve(address(permit2Address), type(uint256).max);
+        IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(token),
+            fee: lpFee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(taxHook))
+        });
+
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactOutputSingleParams({
+                poolKey: key, zeroForOne: false, amountOut: ethOut, amountInMaximum: tokenInMax, hookData: bytes("")
+            })
+        );
+        // Pay tokens (currency1, capped at tokenInMax), receive ETH (currency0, the exact request).
+        params[1] = abi.encode(key.currency1, tokenInMax);
+        params[2] = abi.encode(key.currency0, ethOut);
+
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_OUT_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
+        bytes memory commands = abi.encodePacked(uint8(0x10));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(actions, params);
+
+        if (!expectSuccess) vm.expectRevert();
+        IUniversalRouter(universalRouter).execute(commands, inputs, block.timestamp);
+        vm.stopPrank();
+    }
+
+    /// @notice An exact-output sell must deliver the swapper EXACTLY the ETH they requested; the fee
+    ///         is borne by selling extra tokens (the pool output is grossed up in `beforeSwap`).
+    ///         Regression for the pre-fix behavior where the fee was skimmed from the output and the
+    ///         swapper received `request - fee`. Runs in the active tax window so LP fee (1%) + sell
+    ///         tax (4%) both apply, making the gross-up non-trivial.
+    function test_exactOutputSell_deliversExactEthAndChargesFee() public createDefaultTaxToken {
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 3 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        uint256 treasuryBefore = treasury.balance;
+        uint256 creatorBefore = _pendingCreatorFees(testToken);
+        uint256 buyerEthBefore = buyer.balance;
+        uint256 buyerTokensBefore = IERC20(testToken).balanceOf(buyer);
+
+        uint128 wantEth = 0.1 ether;
+        _swapExactOutputSellV4(buyer, testToken, wantEth, uint128(buyerTokensBefore), true);
+
+        // CORE: the swapper receives EXACTLY the requested ETH, not `wantEth - fee`.
+        assertEq(buyer.balance - buyerEthBefore, wantEth, "exact-output sell must deliver the exact ETH requested");
+
+        // The fee is still charged — on the grossed-up output — and routed to treasury + creator.
+        uint256 treasuryLpFee = treasury.balance - treasuryBefore;
+        uint256 creatorFees = _pendingCreatorFees(testToken) - creatorBefore;
+        uint256 totalFee = treasuryLpFee + creatorFees;
+        assertGt(totalFee, 0, "fee must still be collected on an exact-output sell");
+
+        // Fee is charged on the gross pool output (= wantEth + totalFee) at the combined rate.
+        uint256 grossEth = uint256(wantEth) + totalFee;
+        uint256 expectedFee = (grossEth * (LP_FEE_BPS + DEFAULT_SELL_TAX_BPS)) / 10_000;
+        assertApproxEqAbs(totalFee, expectedFee, 3, "fee must be ~(LP+sellTax)% of the grossed-up output");
+
+        // The seller bears the fee by spending tokens.
+        assertLt(IERC20(testToken).balanceOf(buyer), buyerTokensBefore, "seller must spend tokens");
+    }
+
+    /// @notice An exact-output sell must split the fee correctly between recipients, not just charge the
+    ///         right total: the treasury gets its tier-0 LP share and the creator gets its tier-0 LP
+    ///         share plus the full sell tax. Runs in the active tax window so both components are non-zero.
+    function test_exactOutputSell_distributesLpFeeAndSellTax() public createDefaultTaxToken {
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 3 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        uint256 treasuryBefore = treasury.balance;
+        uint256 creatorBefore = _pendingCreatorFees(testToken);
+        uint256 buyerTokensBefore = IERC20(testToken).balanceOf(buyer);
+
+        uint128 wantEth = 0.1 ether;
+        _swapExactOutputSellV4(buyer, testToken, wantEth, uint128(buyerTokensBefore), true);
+
+        uint256 treasuryLpFee = treasury.balance - treasuryBefore;
+        uint256 creatorFees = _pendingCreatorFees(testToken) - creatorBefore;
+
+        // Fee is charged on the grossed-up pool output (= requested ETH + total fee withheld in beforeSwap).
+        uint256 grossEth = uint256(wantEth) + treasuryLpFee + creatorFees;
+        uint256 totalLpFee = (grossEth * LP_FEE_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
+        uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10_000;
+
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "treasury should get tier-0 LP fee share");
+        assertApproxEqAbs(
+            creatorFees, expectedCreatorLpFee + expectedSellTax, 3, "creator should get tier-0 LP share + sell tax"
         );
     }
 }
