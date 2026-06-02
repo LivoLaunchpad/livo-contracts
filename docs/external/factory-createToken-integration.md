@@ -78,7 +78,7 @@ struct AntiSniperConfigs {
     uint16    maxBuyPerTxBps;        // 10..300 (0.1%..3% of TOTAL_SUPPLY)
     uint16    maxWalletBps;          // 10..300, must be >= maxBuyPerTxBps
     uint40    protectionWindowSeconds; // 0 disables; otherwise 60..86400
-    address[] whitelist;             // up to 5 addresses that bypass the caps
+    address[] whitelist;             // up to 20 addresses that bypass the caps
 }
 ```
 
@@ -173,7 +173,7 @@ Once `protectionWindowSeconds > 0`, the **token's** initializer enforces the sub
 | `maxBuyPerTxBps > maxWalletBps` | `MaxBuyPerTxBpsExceedsMaxWalletBps` |
 | `protectionWindowSeconds < 60` | `ProtectionWindowTooShort` |
 | `protectionWindowSeconds > 86_400` | `ProtectionWindowTooLong` |
-| `whitelist.length > 5` | `WhitelistTooLong` |
+| `whitelist.length > 20` | `WhitelistTooLong` |
 
 ### Tax config (`taxCfg`)
 
