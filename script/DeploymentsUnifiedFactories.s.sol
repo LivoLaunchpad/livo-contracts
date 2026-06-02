@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
+import {CreatorVaultDeployHelper} from "src/config/CreatorVaultDeployHelper.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -144,7 +145,9 @@ contract DeploymentsUnifiedFactories is Script {
                 d.taxTokenV2SniperImpl,
                 d.bondingCurve,
                 d.graduatorV2,
-                d.masterFeeHandler
+                d.masterFeeHandler,
+                CreatorVaultDeployHelper.factoryFor(),
+                CreatorVaultDeployHelper.curvesFor()
             )
         );
         console.log("| LivoFactoryUniV2Unified (impl)        |", fresh.factoryV2Impl);
@@ -163,7 +166,9 @@ contract DeploymentsUnifiedFactories is Script {
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,
-                d.masterFeeHandler
+                d.masterFeeHandler,
+                CreatorVaultDeployHelper.factoryFor(),
+                CreatorVaultDeployHelper.curvesFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (impl)        |", fresh.factoryV4Impl);

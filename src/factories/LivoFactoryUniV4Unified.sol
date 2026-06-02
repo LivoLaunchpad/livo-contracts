@@ -38,7 +38,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         address bondingCurve,
         address graduator,
         address graduator0p5,
-        address masterFeeHandler
+        address masterFeeHandler,
+        address creatorVaultFactory,
+        address[6] memory vaultBondingCurves
     )
         LivoFactoryAbstract(
             launchpad,
@@ -48,7 +50,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
             tokenImplTaxAntiSniper,
             bondingCurve,
             graduator,
-            masterFeeHandler
+            masterFeeHandler,
+            creatorVaultFactory,
+            vaultBondingCurves
         )
     {
         GRADUATOR_0P5 = graduator0p5;
@@ -83,25 +87,30 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateTotalFee(100, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
-        token = _createToken(tokenSetup, tokenOwner, address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg);
+        token = _createToken(
+            tokenSetup, tokenOwner, address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0)
+        );
         emit LpFeeBpsSet(token, 100);
     }
 
-    /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
-    ///         keep the ABI extensible without hitting stack-too-deep when new features add inputs.
-    ///         `univ4Configs.lpFeeBps` selects which graduator/hook pair to use (100 or 50).
+    /// @notice Struct-based overload. Equivalent to the positional `createToken` above, plus the
+    ///         `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects which
+    ///         graduator/hook pair to use (100 or 50).
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,
         UniV4Configs calldata univ4Configs,
         SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults
     ) external payable returns (address token) {
         _validateUniv4Configs(univ4Configs);
         _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
         address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
-        token = _createToken(tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs);
+        token = _createToken(
+            tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
+        );
         emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
     }
 

@@ -20,6 +20,18 @@ interface ILivoFactory {
         uint256 shares;
     }
 
+    /// @notice A single creator-vault entry passed to the struct-based `createToken` overload.
+    ///         Locks `supplyBps` of the total supply (a multiple of 500 bps = 5%) into a vesting
+    ///         vault owned by `owner`. The cliff is a pure lock-up; linear vesting begins after it.
+    ///         Both clocks start at graduation (see `LivoCreatorVault`). The bonding curve is chosen
+    ///         from the SUM of `supplyBps` across all vaults (≤ 3000 bps = 30%).
+    struct CreatorVault {
+        address owner;
+        uint256 supplyBps;
+        uint256 cliffSeconds;
+        uint256 vestingSeconds;
+    }
+
     /// @notice Token-identity bundle for the struct-based `createToken` overload. Groups the inputs
     ///         that define the token itself (name, symbol, deterministic salt) and its fee receivers.
     ///         `feeShares` must be non-empty — every token has at least one receiver.
@@ -56,6 +68,14 @@ interface ILivoFactory {
     ///         indexers attach the value as a per-token attribute ahead of the field being honoured.
     event LpFeeBpsSet(address indexed token, uint16 lpFeeBps);
 
+    /// @notice Emitted once per token that locks supply in creator vaults, after the vaults are
+    ///         deployed and funded. `totalVaultAllocation` is the sum of `amounts`. Individual vault
+    ///         configs (owner, cliff, vesting) are in the `CreatorVaultDeployed` events emitted by
+    ///         the `LivoCreatorVaultFactory`.
+    event CreatorVaultsCreated(
+        address indexed token, uint256 totalVaultAllocation, address[] vaults, uint256[] amounts
+    );
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();
@@ -70,6 +90,10 @@ interface ILivoFactory {
     error InvalidTaxConfig();
     error InvalidTaxBps();
     error InvalidTaxDuration();
+    error TooManyCreatorVaults();
+    error InvalidCreatorVault();
+    error CreatorVaultAllocationTooHigh();
+    error CreatorVaultDistributionFailed();
 
     ////////////////// Views //////////////////////
 

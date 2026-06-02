@@ -17,6 +17,10 @@ import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenU
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
+import {ConstantProductBondingCurveImmutable} from "src/bondingCurves/ConstantProductBondingCurveImmutable.sol";
+import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
+import {LivoCreatorVault} from "src/tokens/LivoCreatorVault.sol";
+import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
@@ -41,6 +45,10 @@ contract LaunchpadBaseTests is Test {
     ILivoToken public implementation;
 
     ConstantProductBondingCurve public bondingCurve;
+
+    /// @notice Creator-vault infrastructure (deployed in `setUp`), shared with vault tests.
+    LivoCreatorVaultFactory public creatorVaultFactory;
+    address[6] public vaultCurves; // [5%, 10%, 15%, 20%, 25%, 30%]
 
     ILivoGraduator public graduator;
 
@@ -199,6 +207,22 @@ contract LaunchpadBaseTests is Test {
         });
     }
 
+    /// @dev Deploys the creator-vault implementation, the UUPS vault factory proxy, and the six
+    ///      allocation-specific bonding curves (stored in `vaultCurves`). Returns the vault factory.
+    function _deployCreatorVaultInfra() internal returns (LivoCreatorVaultFactory factory) {
+        address vaultImpl = address(new LivoCreatorVault());
+        address vaultFactoryImpl = address(new LivoCreatorVaultFactory(vaultImpl));
+        factory = LivoCreatorVaultFactory(
+            address(new ERC1967Proxy(vaultFactoryImpl, abi.encodeCall(LivoCreatorVaultFactory.initialize, ())))
+        );
+
+        uint256[6] memory bpsList = [uint256(500), 1000, 1500, 2000, 2500, 3000];
+        for (uint256 i = 0; i < 6; ++i) {
+            (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsForBps(bpsList[i]);
+            vaultCurves[i] = address(new ConstantProductBondingCurveImmutable(k, t0, e0));
+        }
+    }
+
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
@@ -236,6 +260,9 @@ contract LaunchpadBaseTests is Test {
         livoTaxTokenV2 = new LivoTaxableTokenUniV2();
         livoTaxTokenV2Sniper = new LivoTaxableTokenUniV2SniperProtected();
 
+        // Creator-vault infrastructure: vault factory (UUPS proxy) + the six allocation-specific curves.
+        creatorVaultFactory = _deployCreatorVaultInfra();
+
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 address(launchpad),
@@ -245,7 +272,9 @@ contract LaunchpadBaseTests is Test {
                 address(livoTaxTokenV2Sniper),
                 address(bondingCurve),
                 address(graduatorV2),
-                address(feeHandler)
+                address(feeHandler),
+                address(creatorVaultFactory),
+                vaultCurves
             )
         );
         factoryV2Unified = LivoFactoryUniV2Unified(
@@ -262,7 +291,9 @@ contract LaunchpadBaseTests is Test {
                 address(bondingCurve),
                 address(graduatorV4),
                 address(graduatorV4),
-                address(feeHandler)
+                address(feeHandler),
+                address(creatorVaultFactory),
+                vaultCurves
             )
         );
         factoryV4Unified = LivoFactoryUniV4Unified(

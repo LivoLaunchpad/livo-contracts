@@ -46,6 +46,33 @@ library DeploymentsMainnet {
     address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x69c61f4dE5523Fc41E2458221984479E1F59d4A4;
     address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x5a4491B4e762B39305698ae57F43b6d70b9E6377;
 
+    // --- Creator vaults ---
+    /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
+    address internal constant CREATOR_VAULT_IMPL = address(0);
+    /// @notice `LivoCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
+    address internal constant CREATOR_VAULT_FACTORY = address(0);
+    /// @notice `LivoCreatorVaultFactory` implementation behind the proxy. Update after deploying.
+    address internal constant CREATOR_VAULT_FACTORY_IMPL = address(0);
+
+    /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveImmutable`),
+    ///         one per locked allocation. Update after deploying with `DeployCreatorVaultSystem`.
+    address internal constant VAULT_CURVE_5 = address(0);
+    address internal constant VAULT_CURVE_10 = address(0);
+    address internal constant VAULT_CURVE_15 = address(0);
+    address internal constant VAULT_CURVE_20 = address(0);
+    address internal constant VAULT_CURVE_25 = address(0);
+    address internal constant VAULT_CURVE_30 = address(0);
+
+    /// @notice The six vault curves as the `address[6]` the unified-factory constructors expect.
+    function vaultBondingCurves() internal pure returns (address[6] memory c) {
+        c[0] = VAULT_CURVE_5;
+        c[1] = VAULT_CURVE_10;
+        c[2] = VAULT_CURVE_15;
+        c[3] = VAULT_CURVE_20;
+        c[4] = VAULT_CURVE_25;
+        c[5] = VAULT_CURVE_30;
+    }
+
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
     address internal constant LIVO_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;

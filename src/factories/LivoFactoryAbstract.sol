@@ -14,6 +14,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {ILivoCreatorVaultFactory} from "src/interfaces/ILivoCreatorVaultFactory.sol";
 import {ILivoTaxableToken, ILivoTaxableTokenSniperProtected, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -53,6 +54,19 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @notice Token implementation cloned when both tax and anti-sniper are configured.
     address public immutable TOKEN_IMPL_TAX_ANTISNIPER;
 
+    /// @notice Factory that deploys the per-token creator-vault clones.
+    ILivoCreatorVaultFactory public immutable CREATOR_VAULT_FACTORY;
+
+    /// @notice Bonding curves used when creator vaults lock 5%/10%/15%/20%/25%/30% of supply.
+    ///         Each keeps every graduation invariant identical to `BONDING_CURVE`; only the starting
+    ///         market cap is relaxed. Selected by the total locked allocation (see `_resolveBondingCurve`).
+    ILivoBondingCurve public immutable VAULT_CURVE_5;
+    ILivoBondingCurve public immutable VAULT_CURVE_10;
+    ILivoBondingCurve public immutable VAULT_CURVE_15;
+    ILivoBondingCurve public immutable VAULT_CURVE_20;
+    ILivoBondingCurve public immutable VAULT_CURVE_25;
+    ILivoBondingCurve public immutable VAULT_CURVE_30;
+
     /// @notice Cap on the aggregate fee a swapper pays (LP fee + tax), in basis points. Fixed at 5%.
     ///         Enforced per call by `_validateTotalFee`. The tax headroom is venue-dependent because
     ///         the LP fee varies: V2 has no LP fee, so tax can reach the full 5%; V4 charges 50 or
@@ -64,12 +78,28 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///         deploy a new implementation with a different constant and `upgradeTo` the proxy.
     uint256 public constant maxBuyOnDeployBps = 1_000; // 10%
 
+    /// @notice Total token supply minted per token. Mirrors `LivoToken.TOTAL_SUPPLY`; used to size
+    ///         creator-vault allocations from their bps.
+    uint256 internal constant TOTAL_SUPPLY = 1_000_000_000e18;
+
+    /// @notice Max number of creator vaults a single token can have.
+    uint256 public constant MAX_CREATOR_VAULTS = 5;
+
+    /// @notice Creator-vault allocation granularity (5% in bps). Each vault must lock a multiple.
+    uint256 public constant CREATOR_VAULT_BPS_STEP = 500;
+
+    /// @notice Max total supply lockable across all creator vaults (30% in bps).
+    uint256 public constant MAX_CREATOR_VAULT_TOTAL_BPS = 3_000;
+
     /// @notice Sets up the factory's immutables on the implementation. The implementation itself is
     ///         not meant to be used directly — `_disableInitializers()` locks its proxy storage so
     ///         only proxies pointing to this implementation can be initialized.
     /// @dev    Immutables are read from the implementation's bytecode through delegatecall, so they
     ///         work transparently behind the UUPS proxy. To change any of them, deploy a new impl
     ///         with different constructor args and call `upgradeTo` on the proxy.
+    /// @param creatorVaultFactory Factory that deploys creator-vault clones
+    /// @param vaultBondingCurves The six allocation-specific bonding curves, ordered
+    ///        [5%, 10%, 15%, 20%, 25%, 30%]
     constructor(
         address launchpad,
         address tokenImplBase,
@@ -78,7 +108,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address masterFeeHandler
+        address masterFeeHandler,
+        address creatorVaultFactory,
+        address[6] memory vaultBondingCurves
     ) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
@@ -88,6 +120,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
         TOKEN_IMPL_TAX = tokenImplTax;
         TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
+        CREATOR_VAULT_FACTORY = ILivoCreatorVaultFactory(creatorVaultFactory);
+        VAULT_CURVE_5 = ILivoBondingCurve(vaultBondingCurves[0]);
+        VAULT_CURVE_10 = ILivoBondingCurve(vaultBondingCurves[1]);
+        VAULT_CURVE_15 = ILivoBondingCurve(vaultBondingCurves[2]);
+        VAULT_CURVE_20 = ILivoBondingCurve(vaultBondingCurves[3]);
+        VAULT_CURVE_25 = ILivoBondingCurve(vaultBondingCurves[4]);
+        VAULT_CURVE_30 = ILivoBondingCurve(vaultBondingCurves[5]);
         _disableInitializers();
     }
 
@@ -267,18 +306,106 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address graduator,
         SupplyShare[] calldata buyOnDeployShares,
         TaxConfigInit calldata taxConfigs,
-        AntiSniperConfigs calldata antiSniperConfigs
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] memory creatorVaults
     ) internal returns (address token) {
         _validateInputs(tokenSetup.name, tokenSetup.symbol, tokenSetup.feeShares, buyOnDeployShares);
         _validateAntiSniperConfig(antiSniperConfigs);
         _validateTaxConfig(taxConfigs);
 
+        // Creator vaults: validate and pick the allocation-specific bonding curve. `vaultAllocation`
+        // is minted to this factory by the token initializer; everything else (`TOTAL_SUPPLY -
+        // vaultAllocation`) is minted to the launchpad and sold on the resolved curve.
+        (uint256 totalVaultBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
+        ILivoBondingCurve bondingCurve = _resolveBondingCurve(totalVaultBps);
+
         token = _dispatchAndInitialize(
-            tokenSetup.name, tokenSetup.symbol, tokenSetup.salt, tokenOwner, graduator, taxConfigs, antiSniperConfigs
+            tokenSetup.name,
+            tokenSetup.symbol,
+            tokenSetup.salt,
+            tokenOwner,
+            graduator,
+            vaultAllocation,
+            taxConfigs,
+            antiSniperConfigs
         );
 
-        LAUNCHPAD.launchToken(token, BONDING_CURVE);
+        LAUNCHPAD.launchToken(token, bondingCurve);
+
+        // Deploy + fund the vaults BEFORE the deployer buy so the factory ends the tx holding no
+        // tokens. The factory→vault transfers are exempt from sniper caps (`from == tokenFactory`).
+        if (vaultAllocation > 0) _deployAndFundVaults(token, creatorVaults, vaultAllocation);
+
         _finalizeCreation(token, tokenSetup.feeShares, buyOnDeployShares);
+    }
+
+    /// @dev Validates the creator-vault array and returns the aggregate allocation.
+    ///      Rules: at most `MAX_CREATOR_VAULTS` vaults; each `owner != 0`; each `supplyBps` a
+    ///      non-zero multiple of `CREATOR_VAULT_BPS_STEP` (5%); the SUM `<= MAX_CREATOR_VAULT_TOTAL_BPS`
+    ///      (30%). An empty array means no vaults (returns 0, 0). Cliff/vesting durations are
+    ///      unconstrained here — any value is harmless and only affects the vault's own owner.
+    function _validateCreatorVaults(CreatorVault[] memory creatorVaults)
+        internal
+        pure
+        returns (uint256 totalBps, uint256 vaultAllocation)
+    {
+        uint256 len = creatorVaults.length;
+        if (len == 0) return (0, 0);
+
+        require(len <= MAX_CREATOR_VAULTS, TooManyCreatorVaults());
+
+        for (uint256 i = 0; i < len;) {
+            CreatorVault memory v = creatorVaults[i];
+            require(v.owner != address(0), InvalidCreatorVault());
+            require(v.supplyBps != 0 && v.supplyBps % CREATOR_VAULT_BPS_STEP == 0, InvalidCreatorVault());
+            totalBps += v.supplyBps;
+            unchecked {
+                ++i;
+            }
+        }
+
+        require(totalBps <= MAX_CREATOR_VAULT_TOTAL_BPS, CreatorVaultAllocationTooHigh());
+        vaultAllocation = TOTAL_SUPPLY * totalBps / BASIS_POINTS;
+    }
+
+    /// @dev Maps a total locked allocation (in bps) to the matching bonding curve. `totalBps == 0`
+    ///      uses the base curve; otherwise it is guaranteed by `_validateCreatorVaults` to be a
+    ///      multiple of 500 in [500, 3000].
+    function _resolveBondingCurve(uint256 totalBps) internal view returns (ILivoBondingCurve) {
+        if (totalBps == 0) return BONDING_CURVE;
+        if (totalBps == 500) return VAULT_CURVE_5;
+        if (totalBps == 1000) return VAULT_CURVE_10;
+        if (totalBps == 1500) return VAULT_CURVE_15;
+        if (totalBps == 2000) return VAULT_CURVE_20;
+        if (totalBps == 2500) return VAULT_CURVE_25;
+        return VAULT_CURVE_30; // totalBps == 3000
+    }
+
+    /// @dev Deploys one `LivoCreatorVault` per entry via the vault factory and funds each with its
+    ///      token allocation from the supply minted to this factory during token init. Asserts the
+    ///      factory ends with zero token balance, i.e. the per-vault amounts summed to exactly
+    ///      `vaultAllocation` (they do by construction; the check guards against future drift).
+    function _deployAndFundVaults(address token, CreatorVault[] memory creatorVaults, uint256 vaultAllocation)
+        internal
+    {
+        uint256 len = creatorVaults.length;
+        address[] memory vaults = new address[](len);
+        uint256[] memory amounts = new uint256[](len);
+
+        for (uint256 i = 0; i < len;) {
+            CreatorVault memory v = creatorVaults[i];
+            uint256 amount = TOTAL_SUPPLY * v.supplyBps / BASIS_POINTS;
+            address vault = CREATOR_VAULT_FACTORY.createVault(token, v.owner, amount, v.cliffSeconds, v.vestingSeconds);
+            IERC20(token).safeTransfer(vault, amount);
+            vaults[i] = vault;
+            amounts[i] = amount;
+            unchecked {
+                ++i;
+            }
+        }
+
+        require(IERC20(token).balanceOf(address(this)) == 0, CreatorVaultDistributionFailed());
+        emit CreatorVaultsCreated(token, vaultAllocation, vaults, amounts);
     }
 
     /// @dev Shared name/symbol validation. Single source of truth — called once from `_validateInputs`
@@ -299,7 +426,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string memory symbol,
         bytes32 salt,
         address tokenOwner,
-        address graduator
+        address graduator,
+        uint256 vaultAllocation
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -313,7 +441,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             tokenOwner: tokenOwner,
             graduator: graduator,
             launchpad: address(LAUNCHPAD),
-            feeHandler: address(MASTER_FEE_HANDLER)
+            feeHandler: address(MASTER_FEE_HANDLER),
+            vaultAllocation: vaultAllocation
         });
     }
 
@@ -380,14 +509,18 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
+        uint256 vaultAllocation,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            token = _initializeTaxToken(impl, name, symbol, salt, tokenOwner, graduator, taxCfg, antiSniperCfg);
+            token = _initializeTaxToken(
+                impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, taxCfg, antiSniperCfg
+            );
         } else {
-            token = _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, graduator, antiSniperCfg);
+            token =
+                _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, antiSniperCfg);
         }
     }
 
@@ -402,11 +535,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
+        uint256 vaultAllocation,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
 
         if (_isAntiSniperConfigured(antiSniperCfg)) {
             ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
@@ -425,10 +559,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
+        uint256 vaultAllocation,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
 
         if (_isAntiSniperConfigured(antiSniperCfg)) {
             LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);

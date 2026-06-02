@@ -26,7 +26,9 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
                 address(bondingCurve),
                 newGraduator,
                 newGraduator,
-                address(feeHandler)
+                address(feeHandler),
+                address(creatorVaultFactory),
+                vaultCurves
             )
         );
     }
