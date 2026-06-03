@@ -6,7 +6,7 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
-import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
+import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 
 /// @dev Minimal token exposing a toggleable `graduated()` flag, mirroring `ILivoToken.graduated()`.
 contract MockGraduatableToken is ERC20 {
@@ -60,6 +60,12 @@ contract LivoCreatorVaultUnitTest is Test {
         LivoCreatorVault vault = LivoCreatorVault(Clones.clone(address(impl)));
         vm.expectRevert(LivoCreatorVault.InvalidOwner.selector);
         vault.initialize(address(token), address(0), ALLOC, CLIFF, VESTING);
+    }
+
+    function test_initialize_rejectsZeroAmount() public {
+        LivoCreatorVault vault = LivoCreatorVault(Clones.clone(address(impl)));
+        vm.expectRevert(LivoCreatorVault.InvalidAmount.selector);
+        vault.initialize(address(token), owner, 0, CLIFF, VESTING);
     }
 
     function test_initialize_anchorsClockAtCreation() public {

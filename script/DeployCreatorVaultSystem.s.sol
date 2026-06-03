@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
-import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
+import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 

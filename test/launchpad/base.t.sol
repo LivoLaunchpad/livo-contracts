@@ -20,7 +20,7 @@ import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBond
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
-import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
+import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";

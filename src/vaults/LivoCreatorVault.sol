@@ -60,6 +60,7 @@ contract LivoCreatorVault is Initializable {
 
     error InvalidOwner();
     error InvalidToken();
+    error InvalidAmount();
     error NotOwner();
     error NotGraduated();
     error NothingToClaim();
@@ -78,6 +79,9 @@ contract LivoCreatorVault is Initializable {
     {
         require(token_ != address(0), InvalidToken());
         require(owner_ != address(0), InvalidOwner());
+        // A 0-allocation vault is meaningless; reject it here too (the token factory already
+        // rejects 0-bps vaults, but `LivoCreatorVaultFactory.createVault` is permissionless).
+        require(amount > 0, InvalidAmount());
         token = token_;
         owner = owner_;
         totalAllocation = amount;

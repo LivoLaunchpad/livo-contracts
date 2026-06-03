@@ -149,6 +149,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     /////////////////////////// validation reverts ///////////////////////////
 
     function test_revert_tooManyVaults() public {
+        // cap is 5; the count check fires before the total-allocation check
         ILivoFactory.CreatorVault[] memory vaults = new ILivoFactory.CreatorVault[](6);
         for (uint256 i; i < 6; ++i) {
             vaults[i] = _vault(vaultOwner, 500, 0, 1 days);
@@ -362,5 +363,38 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         (, uint256 ethFee, uint256 tokensDirect) = launchpad.quoteBuyTokensWithExactEth(token, ethValue);
         assertEq(q.tokensToReceive, tokensDirect, "quoter matches launchpad on the vault curve");
         assertEq(q.ethFee, ethFee, "fee matches");
+    }
+
+    /// @dev The vault-aware `quoteBuyOnDeploy(tokenAmount, creatorVaults)` must price the same curve
+    ///      `createToken` registers, so a deployer who funds with the quote receives ~`tokenAmount`.
+    ///      The base single-arg form under-quotes for vault tokens.
+    function test_quoteBuyOnDeploy_vaultAware_isAccurate() public {
+        ILivoFactory.CreatorVault[] memory vaults = _one(_vault(vaultOwner, 3000, 0, 1 days));
+        uint256 tokenAmount = 50_000_000e18; // 5% of supply, under the 10% buy-on-deploy cap
+
+        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, vaults);
+        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount);
+        // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
+        assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
+
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "VQ",
+            symbol: "VQ",
+            salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+            feeShares: _fs(creator)
+        });
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+
+        vm.deal(creator, ethVaultAware);
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken{value: ethVaultAware}(
+            setup, _emptyTaxCfg(), cfg, _ss(creator), _emptyAntiSniperCfg(), vaults
+        );
+
+        // deployer (sole supply-share recipient) receives ~tokenAmount, never less than quoted
+        uint256 received = ILivoToken(token).balanceOf(creator);
+        assertGe(received, tokenAmount, "deployer gets at least the quoted amount");
+        assertApproxEqRel(received, tokenAmount, 0.00000001e18, "deployer gets ~the quoted token amount (<=1e-6%)");
     }
 }
