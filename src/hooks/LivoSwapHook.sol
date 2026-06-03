@@ -27,8 +27,9 @@ import {ILivoLpFeeRouter} from "src/interfaces/ILivoLpFeeRouter.sol";
 ///      on either component individually; instead it reverts a swap whose combined
 ///      `lpFeeBps + taxBps` for the leg exceeds `MAX_OVERALL_FEE_BPS`, leaving each token free to
 ///      split that budget as it likes. Collected LP fees are forwarded to `LivoLpFeeRouter` (which
-///      splits them between treasury and creator); taxes go straight to the creator via
-///      `ILivoToken.accrueFees`. The hook is unaware of the LP split and only forwards.
+///      splits them between the treasury and the token's fee receivers); taxes are forwarded to the
+///      token's master fee handler via `ILivoToken.accrueFees()`, which distributes them to the
+///      token's configured fee receivers. The hook is unaware of either split and only forwards.
 ///
 /// @dev Fees are always charged on the ETH side (currency0); which callback withholds them depends
 ///      on whether the ETH amount is already known in `beforeSwap`:
@@ -45,6 +46,12 @@ contract LivoSwapHook is BaseHook {
     ///      this hook.
     ILivoLpFeeRouter public immutable FEE_ROUTER;
 
+    /// @notice Protocol treasury. Receives the LP fee on the router-failure fallback path so the
+    ///         fee stays under protocol control.
+    /// @dev Passed in directly at construction (not read from the router), so the hook's fallback
+    ///      never depends on the router being live or correctly configured at deploy time.
+    address public immutable TREASURY;
+
     /// @notice Basis points denominator (10000 = 100%).
     uint256 private constant BASIS_POINTS = 10000;
 
@@ -54,10 +61,14 @@ contract LivoSwapHook is BaseHook {
     ///         budget between LP fee and taxes.
     uint16 private constant MAX_OVERALL_FEE_BPS = 2500; // 25%
 
-    /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized to cover the router's
-    ///         worst-case path with margin, then capped so a misbehaving router cannot drain the
-    ///         remaining gas and starve the fallback path.
-    uint256 private constant ROUTER_GAS_LIMIT = 300_000;
+    /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized with generous headroom
+    ///         over the router's worst-case path: the marketcap split, the treasury transfer, the
+    ///         creator forward through `LivoMasterFeeHandler` (up to `MAX_DIRECT_RECEIVERS` *
+    ///         `DIRECT_FORWARD_GAS` ≈ 400k of direct-receiver forwards), and a future
+    ///         liquidity-reinvestment leg (`modifyLiquidity`). Still capped so a misbehaving router
+    ///         cannot drain the remaining gas and starve the fallback path — which is now a single
+    ///         cheap `.call` to the treasury.
+    uint256 private constant ROUTER_GAS_LIMIT = 1_000_000;
 
     /// @notice LP fee withheld on the ETH leg in `beforeSwap`, carried to `afterSwap`.
     /// @dev Set by the two legs that withhold in `beforeSwap` (exact-input buy, exact-output sell)
@@ -73,12 +84,19 @@ contract LivoSwapHook is BaseHook {
     /// @notice Thrown when a token's combined fee (`lpFeeBps + taxBps`) for this swap leg exceeds
     ///         `MAX_OVERALL_FEE_BPS`.
     error FeeTooHigh();
+    /// @notice Thrown when the pool's `currency0` is not native ETH (`address(0)`). The hook charges
+    ///         all fees on `currency0` assuming it is ETH; a non-ETH pool would misroute fees.
+    error UnexpectedPoolCurrency();
+    /// @notice Thrown when the router-failure fallback cannot push the LP fee to the treasury.
+    error TreasuryTransferFailed();
 
-    /// @notice Emitted when creator taxes are accrued from a taxed swap.
+    /// @notice Emitted when swap taxes are forwarded to the token's master fee handler, which
+    ///         distributes them to the token's configured fee receivers.
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
     /// @notice Emitted when LP fees are forwarded out of the hook on a swap leg.
     /// @dev The split is reported by the router in `LivoLpFeeRouter.LpFeesRouted`; on the fallback
-    ///      path (router reverts) that event is absent, which is how indexers detect the fallback.
+    ///      path (router reverts) that event is absent and the full amount goes to the treasury,
+    ///      which is how indexers detect the fallback.
     event LpFeesForwarded(address indexed token, uint256 amount);
     /// @notice Emitted on every buy for off-chain indexing.
     event LivoSwapBuy(
@@ -91,9 +109,12 @@ contract LivoSwapHook is BaseHook {
 
     //////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the hook with the pool manager and LP fee router addresses.
-    constructor(IPoolManager _poolManager, address _router) BaseHook(_poolManager) {
+    /// @notice Initializes the hook with the pool manager, LP fee router, and treasury addresses.
+    /// @dev `_treasury` is the protocol address that receives the LP fee on the router-failure
+    ///      fallback path.
+    constructor(IPoolManager _poolManager, address _router, address _treasury) BaseHook(_poolManager) {
         FEE_ROUTER = ILivoLpFeeRouter(_router);
+        TREASURY = _treasury;
     }
 
     /// @notice Allows contract to receive ETH from `poolManager.take()`.
@@ -133,6 +154,11 @@ contract LivoSwapHook is BaseHook {
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         address token = Currency.unwrap(key.currency1);
+        // The hook charges all fees on `currency0` assuming it is native ETH. Every Livo pool pairs
+        // the token against ETH (`address(0)`), which always sorts as `currency0`. Enforce it here so
+        // the hook can never be attached to a non-ETH pool and misroute fees. Cheap calldata compare,
+        // kept before the external `graduated()` call.
+        if (Currency.unwrap(key.currency0) != address(0)) revert UnexpectedPoolCurrency();
         if (!ILivoToken(token).graduated()) revert NoSwapsBeforeGraduation();
 
         uint256 lpFee;
@@ -335,11 +361,12 @@ contract LivoSwapHook is BaseHook {
 
     ///////////////////////////////// FEE ROUTING /////////////////////////////
 
-    /// @notice Forwards the LP fee through the router and the tax slice straight to the creator.
+    /// @notice Forwards the LP fee through the router and the tax slice to the token's master fee
+    ///         handler (which distributes it to the token's configured fee receivers).
     /// @dev The router call is the only place this contract trusts external code. It is hardened
     ///      against every failure mode `LivoLpFeeRouter.depositLpFees` can return:
     ///      - **Revert with data** (custom error, `require`, `revert(string)`): caught; the LP fee
-    ///        falls through to `ILivoToken.accrueFees`.
+    ///        falls through to the treasury.
     ///      - **Out-of-gas inside the router**: forwarded gas is capped at `ROUTER_GAS_LIMIT`, so
     ///        the post-catch frame keeps `gasleft() - ROUTER_GAS_LIMIT` for the fallback. Defends
     ///        against gas griefing by a hostile upgrade.
@@ -348,9 +375,12 @@ contract LivoSwapHook is BaseHook {
     ///        caught. *Router upgrades MUST keep shipping without a payable fallback* — adding one
     ///        would silently strand the LP fee on the proxy.
     ///
-    ///      If `accrueFees` itself also reverts the whole swap fails — by design: a simultaneous
-    ///      outage of the router AND the master fee handler is a protocol-wide failure that warrants
-    ///      a clear revert rather than silently stranding ETH in this contract.
+    ///      The fallback pushes the LP fee to the treasury (set at construction, independent of the
+    ///      router), keeping it under protocol control and out of this contract instead of handing the whole
+    ///      amount to the token's fee receivers. The treasury is the protocol's own address, so the
+    ///      push is safe. If that transfer also fails the whole swap reverts — by design: a router
+    ///      outage AND a treasury that rejects ETH is a protocol-wide failure that warrants a clear
+    ///      revert rather than silently stranding ETH in this contract.
     /// @param ethSwapAmount   ETH the pool exchanged on this leg: the input net of the pre-pool fee
     ///                        on a buy, the full ETH output on a sell (the hook fee is skimmed after
     ///                        the pool and excluded). With `tokenSwapAmount` it lets the router
@@ -358,15 +388,18 @@ contract LivoSwapHook is BaseHook {
     /// @param tokenSwapAmount Token amount that crossed the pool during this leg.
     function _route(address token, uint256 lpFee, uint256 tax, uint256 ethSwapAmount, uint256 tokenSwapAmount) private {
         if (lpFee > 0) {
-            // fees forwarded to the fee router who splits between creator / treasury or other options like liquidity additions
+            // LP fees forwarded to the router, which splits them between the treasury and the token's
+            // fee receivers (and, in future, liquidity additions).
             emit LpFeesForwarded(token, lpFee);
             try FEE_ROUTER.depositLpFees{value: lpFee, gas: ROUTER_GAS_LIMIT}(token, ethSwapAmount, tokenSwapAmount) {
             // happy path — router emitted its own `LpFeesRouted` with the breakdown.
             }
             catch {
-                // Fallback: send through `accrueFees` so the LP fee still reaches the configured fee
-                // receivers. The creator effectively receives the entire LP fee in this case.
-                ILivoToken(token).accrueFees{value: lpFee}();
+                // Fallback: the router is unavailable, so send the LP fee to the treasury instead of
+                // handing the whole amount to the token's fee receivers. Keeps the fee under protocol
+                // control. The treasury is a protocol-owned address, so the push is safe.
+                (bool ok,) = TREASURY.call{value: lpFee}("");
+                require(ok, TreasuryTransferFailed());
             }
         }
         if (tax > 0) {

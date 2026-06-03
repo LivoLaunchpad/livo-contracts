@@ -80,7 +80,9 @@ contract LaunchpadInvariants is Test {
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
+            "LivoSwapHook.sol:LivoSwapHook",
+            abi.encode(poolManagerAddress, address(launchpad), treasury),
+            TEST_HOOK_ADDRESS
         );
         feeHandler = new LivoMasterFeeHandler();
 

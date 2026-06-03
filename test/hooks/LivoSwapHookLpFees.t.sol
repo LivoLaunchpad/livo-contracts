@@ -403,8 +403,8 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
     // ───────────────────────── router-failure defenses ────────────────────────
 
-    /// @notice If the router reverts, the swap still succeeds and the full LP fee falls back to
-    ///         the creator via `ILivoToken.accrueFees`. Treasury gets nothing in this path.
+    /// @notice If the router reverts, the swap still succeeds and the full LP fee falls back to the
+    ///         treasury. The creator receives nothing on this path — the default token has no buy tax.
     function test_swapSucceeds_whenRouterReverts() public createDefaultTaxToken {
         _graduateToken();
 
@@ -421,16 +421,20 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         uint256 expectedLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
         assertEq(
-            _pendingCreatorFees(testToken) - creatorBefore,
+            treasury.balance - treasuryBefore,
             expectedLpFee,
-            "creator should receive the entire LP fee via the accrueFees fallback"
+            "treasury should receive the entire LP fee via the fallback"
         );
-        assertEq(treasury.balance, treasuryBefore, "treasury must not receive funds on the fallback path");
+        assertEq(
+            _pendingCreatorFees(testToken),
+            creatorBefore,
+            "creator must not receive funds on the treasury fallback path"
+        );
     }
 
     /// @notice If the router consumes its entire gas budget (e.g. an infinite loop in a hostile
     ///         upgrade), the swap still succeeds. The `ROUTER_GAS_LIMIT` cap reserves enough
-    ///         gas in the catch frame to run the `accrueFees` fallback.
+    ///         gas in the catch frame to run the treasury fallback.
     function test_swapSucceeds_whenRouterBurnsAllForwardedGas() public createDefaultTaxToken {
         _graduateToken();
 
@@ -442,17 +446,17 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         uint256 buyAmount = 1 ether;
         deal(buyer, buyAmount);
-        // Give the swap a generous gas headroom; the router will OOG inside the 300k cap and the
-        // catch frame should still have plenty to finish the swap.
+        // Give the swap a generous gas headroom; the router will OOG inside the `ROUTER_GAS_LIMIT`
+        // cap and the catch frame should still have plenty to finish the swap.
         _swapBuy(buyer, buyAmount, 0, true);
 
         uint256 expectedLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
         assertEq(
-            _pendingCreatorFees(testToken) - creatorBefore,
+            treasury.balance - treasuryBefore,
             expectedLpFee,
-            "creator should receive the entire LP fee via the accrueFees fallback after router OOG"
+            "treasury should receive the entire LP fee via the fallback after router OOG"
         );
-        assertEq(treasury.balance, treasuryBefore, "treasury must not receive funds when router OOGs");
+        assertEq(_pendingCreatorFees(testToken), creatorBefore, "creator must not receive funds when the router OOGs");
     }
 
     // ───────────────────────── marketcap basis ──────────────────────────────

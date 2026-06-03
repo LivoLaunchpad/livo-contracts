@@ -327,7 +327,9 @@ contract LaunchpadBaseTests is Test {
         );
 
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(lpFeeRouter)), TEST_HOOK_ADDRESS
+            "LivoSwapHook.sol:LivoSwapHook",
+            abi.encode(poolManagerAddress, address(lpFeeRouter), treasury),
+            TEST_HOOK_ADDRESS
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
