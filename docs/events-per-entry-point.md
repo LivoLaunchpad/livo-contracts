@@ -46,11 +46,12 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
-Each unified factory exposes two `createToken` overloads with different selectors:
-- **Legacy positional**: `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4.
-- **Struct-based**: `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep. The trailing `CreatorVault[]` (empty in the legacy overload) locks supply in vesting vaults.
+Each unified factory exposes three `createToken` overloads with different selectors:
+- **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults.
+- **Struct-based without vaults** (deprecated): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs)` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep. Never creates creator vaults.
+- **Struct-based with vaults** (current): the above plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults.
 
-Both overloads share the same internal flow and emit the events listed below in the same order.
+All overloads share the same internal flow and emit the events listed below in the same order; only the struct-based-with-vaults overload can emit the creator-vault events in §1 step 4b.
 
 ### 1.1 Common sequence
 
