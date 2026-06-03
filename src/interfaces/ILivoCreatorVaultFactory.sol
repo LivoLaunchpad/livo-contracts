@@ -20,7 +20,7 @@ interface ILivoCreatorVaultFactory {
     /// @param token The token whose graduation gates the vault and whose units it vests
     /// @param owner The beneficiary allowed to claim vested tokens
     /// @param amount The total token allocation that will be locked in the vault
-    /// @param cliffSeconds Cliff duration after vesting activation, before anything is claimable
+    /// @param cliffSeconds Cliff duration after token creation, before anything vests
     /// @param vestingSeconds Linear vesting duration after the cliff
     /// @return vault The freshly-deployed vault clone address
     function createVault(address token, address owner, uint256 amount, uint256 cliffSeconds, uint256 vestingSeconds)

@@ -25,6 +25,15 @@
 | LivoFactoryUniV2Unified (impl)               | `0x11dD23Bd02eFAEC83CD4AdB2B23616A79196c107` |
 | LivoFactoryUniV4Unified (proxy)              | `0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b` |
 | LivoFactoryUniV4Unified (impl)               | `0xBae6fA24aF026D1309632A76308894c62B6E029E` |
+| LivoCreatorVaultFactory (proxy)              | _(not deployed)_                             |
+| LivoCreatorVaultFactory (impl)               | _(not deployed)_                             |
+| LivoCreatorVault (impl)                      | _(not deployed)_                             |
+| Creator-vault curve 5%                       | _(not deployed)_                             |
+| Creator-vault curve 10%                      | _(not deployed)_                             |
+| Creator-vault curve 15%                      | _(not deployed)_                             |
+| Creator-vault curve 20%                      | _(not deployed)_                             |
+| Creator-vault curve 25%                      | _(not deployed)_                             |
+| Creator-vault curve 30%                      | _(not deployed)_                             |
 
 ## Accounts
 

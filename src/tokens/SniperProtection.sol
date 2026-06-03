@@ -36,6 +36,9 @@ abstract contract SniperProtection {
     uint256 public constant MAX_WHITELISTED = 20;
 
     /// @dev Mirrors `LivoToken.TOTAL_SUPPLY`; renamed to avoid a multiple-inheritance collision.
+    /// @dev Caps are intentionally measured against the fixed total supply, NOT a token's
+    ///      circulating float. Creator-vault tokens lock part of the supply, so a given bps is a
+    ///      slightly larger share of their (smaller) tradable float — by design, not a bug.
     uint256 internal constant _ANTI_SNIPER_TOTAL_SUPPLY = 1_000_000_000e18;
 
     /// @notice Max tokens per tx during the protection window, in bps of TOTAL_SUPPLY.

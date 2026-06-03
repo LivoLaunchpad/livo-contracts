@@ -23,8 +23,9 @@ interface ILivoFactory {
     /// @notice A single creator-vault entry passed to the struct-based `createToken` overload.
     ///         Locks `supplyBps` of the total supply (a multiple of 500 bps = 5%) into a vesting
     ///         vault owned by `owner`. The cliff is a pure lock-up; linear vesting begins after it.
-    ///         Both clocks start at graduation (see `LivoCreatorVault`). The bonding curve is chosen
-    ///         from the SUM of `supplyBps` across all vaults (≤ 3000 bps = 30%).
+    ///         Both clocks start at token creation (see `LivoCreatorVault`); claims are additionally
+    ///         gated until the token graduates. The bonding curve is chosen from the SUM of
+    ///         `supplyBps` across all vaults (≤ 3000 bps = 30%).
     struct CreatorVault {
         address owner;
         uint256 supplyBps;
