@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
-import {ConstantProductBondingCurveImmutable} from "src/bondingCurves/ConstantProductBondingCurveImmutable.sol";
+import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {CreatorVaultCurveConstants as C} from "src/config/CreatorVaultCurveConstants.sol";
 
@@ -24,9 +24,9 @@ contract CreatorVaultCurvesTest is Test {
 
     uint256[6] BPS = [uint256(500), 1000, 1500, 2000, 2500, 3000];
 
-    function _deploy(uint256 bps) internal returns (ConstantProductBondingCurveImmutable) {
+    function _deploy(uint256 bps) internal returns (ConstantProductBondingCurveConfigurable) {
         (uint256 k, uint256 t0, uint256 e0) = C.paramsForBps(bps);
-        return new ConstantProductBondingCurveImmutable(k, t0, e0);
+        return new ConstantProductBondingCurveConfigurable(k, t0, e0);
     }
 
     function _uniswapPrice(uint256 tokenReserves, uint256 ethReserves) internal pure returns (uint256) {
@@ -45,14 +45,14 @@ contract CreatorVaultCurvesTest is Test {
         for (uint256 i; i < 6; ++i) {
             uint256 bps = BPS[i];
             uint256 s = TOTAL_SUPPLY * (10_000 - bps) / 10_000;
-            ConstantProductBondingCurveImmutable curve = _deploy(bps);
+            ConstantProductBondingCurveConfigurable curve = _deploy(bps);
             assertEq(curve.getTokenReserves(0), s, "t(0) must equal supply in curve (1B - vault)");
         }
     }
 
     function test_eachCurve_tokensIntoLiquidity_identical() public {
         for (uint256 i; i < 6; ++i) {
-            ConstantProductBondingCurveImmutable curve = _deploy(BPS[i]);
+            ConstantProductBondingCurveConfigurable curve = _deploy(BPS[i]);
             assertEq(
                 curve.getTokenReserves(GRADUATION_THRESHOLD),
                 T_GRAD,
@@ -63,7 +63,7 @@ contract CreatorVaultCurvesTest is Test {
 
     function test_eachCurve_graduationThresholdAndExcess_identical() public {
         for (uint256 i; i < 6; ++i) {
-            ConstantProductBondingCurveImmutable curve = _deploy(BPS[i]);
+            ConstantProductBondingCurveConfigurable curve = _deploy(BPS[i]);
             assertEq(curve.ethGraduationThreshold(), GRADUATION_THRESHOLD, "grad threshold identical");
             assertEq(curve.maxExcessOverThreshold(), GRADUATION_MAX_EXCESS, "max excess identical");
             assertEq(curve.maxEthReserves(), GRADUATION_THRESHOLD + GRADUATION_MAX_EXCESS, "max reserves identical");
@@ -79,7 +79,7 @@ contract CreatorVaultCurvesTest is Test {
         uint256 uniswapPrice = _uniswapPrice(T_GRAD, ethForUniswap);
 
         for (uint256 i; i < 6; ++i) {
-            ConstantProductBondingCurveImmutable curve = _deploy(BPS[i]);
+            ConstantProductBondingCurveConfigurable curve = _deploy(BPS[i]);
             uint256 buyValue = 0.000001e18;
             (uint256 tokensReceived,) = curve.buyTokensWithExactEth(GRADUATION_THRESHOLD, buyValue);
             uint256 curvePrice = (1e18 * buyValue) / tokensReceived;
@@ -100,7 +100,7 @@ contract CreatorVaultCurvesTest is Test {
     function test_startingMarketcap_risesWithAllocation_belowGraduation() public {
         uint256 prevMcap;
         for (uint256 i; i < 6; ++i) {
-            ConstantProductBondingCurveImmutable curve = _deploy(BPS[i]);
+            ConstantProductBondingCurveConfigurable curve = _deploy(BPS[i]);
             // marginal start price via a tiny buy
             (uint256 tokensReceived,) = curve.buyTokensWithExactEth(0, 0.00000000001e18);
             uint256 startPrice = (1e18 * 0.00000000001e18) / tokensReceived;
@@ -115,7 +115,7 @@ contract CreatorVaultCurvesTest is Test {
 
     function test_fuzz_eachCurve_buyDoesNotRevertInRange(uint256 idx, uint256 ethReserves, uint256 ethAmount) public {
         idx = bound(idx, 0, 5);
-        ConstantProductBondingCurveImmutable curve = _deploy(BPS[idx]);
+        ConstantProductBondingCurveConfigurable curve = _deploy(BPS[idx]);
         uint256 maxEth = curve.maxEthReserves();
         ethReserves = bound(ethReserves, 0, maxEth);
         uint256 limit = maxEth - ethReserves;
@@ -127,7 +127,7 @@ contract CreatorVaultCurvesTest is Test {
 
     function test_fuzz_eachCurve_buyThenSell_roundTrips(uint256 idx, uint256 ethReserves, uint256 ethAmount) public {
         idx = bound(idx, 0, 5);
-        ConstantProductBondingCurveImmutable curve = _deploy(BPS[idx]);
+        ConstantProductBondingCurveConfigurable curve = _deploy(BPS[idx]);
         uint256 maxEth = curve.maxEthReserves();
         ethReserves = bound(ethReserves, 0, maxEth);
         uint256 maxAmount = maxEth - ethReserves;
@@ -142,7 +142,7 @@ contract CreatorVaultCurvesTest is Test {
     }
 
     function test_constructor_rejectsZeroE0() public {
-        vm.expectRevert(ConstantProductBondingCurveImmutable.InvalidCurveConstants.selector);
-        new ConstantProductBondingCurveImmutable(C.K_5, C.T0_5, 0);
+        vm.expectRevert(ConstantProductBondingCurveConfigurable.InvalidCurveConstants.selector);
+        new ConstantProductBondingCurveConfigurable(C.K_5, C.T0_5, 0);
     }
 }

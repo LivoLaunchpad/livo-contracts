@@ -55,7 +55,7 @@ library DeploymentsSepolia {
     /// @notice `LivoCreatorVaultFactory` implementation behind the proxy. Update after deploying.
     address internal constant CREATOR_VAULT_FACTORY_IMPL = address(0);
 
-    /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveImmutable`),
+    /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveConfigurable`),
     ///         one per locked allocation. Update after deploying with `DeployCreatorVaultSystem`.
     address internal constant VAULT_CURVE_5 = address(0);
     address internal constant VAULT_CURVE_10 = address(0);

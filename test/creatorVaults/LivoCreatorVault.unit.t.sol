@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoCreatorVault} from "src/tokens/LivoCreatorVault.sol";
+import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
 
 /// @dev Minimal token exposing a toggleable `graduated()` flag, mirroring `ILivoToken.graduated()`.
@@ -22,6 +22,7 @@ contract MockGraduatableToken is ERC20 {
 }
 
 /// @notice Fork-free unit tests for `LivoCreatorVault` math/guards and `LivoCreatorVaultFactory`.
+///         The vesting clock starts at vault creation (init); claims are gated on `token.graduated()`.
 contract LivoCreatorVaultUnitTest is Test {
     MockGraduatableToken token;
     LivoCreatorVault impl;
@@ -32,6 +33,8 @@ contract LivoCreatorVaultUnitTest is Test {
     uint256 constant VESTING = 100 days;
 
     function setUp() public {
+        // start at a non-zero timestamp so cliff math is meaningful
+        vm.warp(1_000_000);
         token = new MockGraduatableToken();
         impl = new LivoCreatorVault();
     }
@@ -59,46 +62,39 @@ contract LivoCreatorVaultUnitTest is Test {
         vault.initialize(address(token), address(0), ALLOC, CLIFF, VESTING);
     }
 
-    function test_views_returnZeroBeforeActivation() public {
+    function test_initialize_anchorsClockAtCreation() public {
         LivoCreatorVault vault = _newVault(CLIFF, VESTING);
-        assertEq(vault.vestingStart(), 0);
-        assertEq(vault.claimable(), 0);
-        assertEq(vault.vestedAmount(), 0);
+        assertEq(vault.startTimestamp(), block.timestamp, "vesting clock starts at creation");
     }
 
-    function test_activate_revertsBeforeGraduation() public {
+    function test_claimable_zeroBeforeGraduation_evenAfterCliff() public {
         LivoCreatorVault vault = _newVault(CLIFF, VESTING);
-        vm.expectRevert(LivoCreatorVault.NotGraduated.selector);
-        vault.activate();
+        // jump past the whole schedule, but the token never graduated
+        vm.warp(block.timestamp + CLIFF + VESTING + 1);
+        assertEq(vault.vestedAmount(), ALLOC, "schedule fully vested by time");
+        assertEq(vault.claimable(), 0, "nothing claimable while not graduated");
     }
 
-    function test_activate_isOneShot() public {
-        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
-        token.setGraduated(true);
-        vault.activate();
-        vm.expectRevert(LivoCreatorVault.AlreadyActivated.selector);
-        vault.activate();
-    }
-
-    function test_activate_isPermissionless() public {
-        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
-        token.setGraduated(true);
-        vm.prank(makeAddr("anyone"));
-        vault.activate();
-        assertEq(vault.vestingStart(), block.timestamp);
-    }
-
-    function test_claim_revertsBeforeActivation() public {
-        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+    function test_claim_revertsBeforeGraduation() public {
+        LivoCreatorVault vault = _newVault(0, VESTING);
+        vm.warp(block.timestamp + VESTING / 2);
         vm.prank(owner);
-        vm.expectRevert(LivoCreatorVault.NotActivated.selector);
+        vm.expectRevert(LivoCreatorVault.NotGraduated.selector);
+        vault.claim();
+    }
+
+    function test_claim_revertsForNonOwner() public {
+        LivoCreatorVault vault = _newVault(0, VESTING);
+        token.setGraduated(true);
+        vm.warp(block.timestamp + VESTING / 2);
+        vm.prank(makeAddr("intruder"));
+        vm.expectRevert(LivoCreatorVault.NotOwner.selector);
         vault.claim();
     }
 
     function test_cliffThenLinear_precise() public {
         LivoCreatorVault vault = _newVault(CLIFF, VESTING);
         token.setGraduated(true);
-        vault.activate();
         uint256 start = block.timestamp;
 
         // exactly at cliff end: 0 vested (linear starts here)
@@ -121,7 +117,6 @@ contract LivoCreatorVaultUnitTest is Test {
     function test_claim_incremental_sumsToAllocation() public {
         LivoCreatorVault vault = _newVault(0, VESTING); // no cliff
         token.setGraduated(true);
-        vault.activate();
         uint256 start = block.timestamp;
 
         vm.warp(start + VESTING / 2);
@@ -143,11 +138,10 @@ contract LivoCreatorVaultUnitTest is Test {
         assertEq(token.balanceOf(address(vault)), 0);
     }
 
-    function test_claim_nothingToClaim_reverts() public {
+    function test_claim_nothingToClaim_duringCliff_reverts() public {
         LivoCreatorVault vault = _newVault(CLIFF, VESTING);
         token.setGraduated(true);
-        vault.activate();
-        // during cliff
+        // graduated but still inside the cliff
         vm.prank(owner);
         vm.expectRevert(LivoCreatorVault.NothingToClaim.selector);
         vault.claim();
@@ -166,6 +160,7 @@ contract LivoCreatorVaultUnitTest is Test {
         assertEq(v.totalAllocation(), ALLOC);
         assertEq(v.cliffSeconds(), CLIFF);
         assertEq(v.vestingSeconds(), VESTING);
+        assertEq(v.startTimestamp(), block.timestamp);
         assertEq(factory.VAULT_IMPLEMENTATION(), address(impl));
     }
 
@@ -173,8 +168,6 @@ contract LivoCreatorVaultUnitTest is Test {
         cliff = bound(cliff, 0, 3650 days);
         vesting = bound(vesting, 0, 3650 days);
         LivoCreatorVault vault = _newVault(cliff, vesting);
-        token.setGraduated(true);
-        vault.activate();
         uint256 start = block.timestamp;
         t = bound(t, 0, 10_000 days);
         vm.warp(start + t);

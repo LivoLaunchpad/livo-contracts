@@ -4,16 +4,16 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {ConstantProductBondingCurveImmutable} from "src/bondingCurves/ConstantProductBondingCurveImmutable.sol";
+import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
-import {LivoCreatorVault} from "src/tokens/LivoCreatorVault.sol";
+import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
-///         1. The six `ConstantProductBondingCurveImmutable` curves (5%..30% locked allocation),
+///         1. The six `ConstantProductBondingCurveConfigurable` curves (5%..30% locked allocation),
 ///            each preserving every graduation invariant of the base curve.
 ///         2. The `LivoCreatorVault` implementation.
 ///         3. The `LivoCreatorVaultFactory` implementation + its `ERC1967Proxy`.
@@ -47,7 +47,7 @@ contract DeployCreatorVaultSystem is Script {
         address[6] memory curves;
         for (uint256 i = 0; i < 6; ++i) {
             (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsForBps(bpsList[i]);
-            curves[i] = address(new ConstantProductBondingCurveImmutable(k, t0, e0));
+            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0));
             console.log("| VAULT_CURVE bps", bpsList[i], curves[i]);
         }
 

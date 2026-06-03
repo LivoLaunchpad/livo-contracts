@@ -6,7 +6,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {CreatorVaultDeployHelper} from "src/config/CreatorVaultDeployHelper.sol";
+import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
@@ -139,8 +139,8 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
-                CreatorVaultDeployHelper.factoryFor(),
-                CreatorVaultDeployHelper.curvesFor()
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
             )
         );
         console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);

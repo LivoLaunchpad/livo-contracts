@@ -7,7 +7,7 @@ import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contrac
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {ILivoCreatorVaultFactory} from "src/interfaces/ILivoCreatorVaultFactory.sol";
-import {LivoCreatorVault} from "src/tokens/LivoCreatorVault.sol";
+import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 
 /// @title LivoCreatorVaultFactory
 /// @notice UUPS-upgradeable factory that deploys minimal-proxy `LivoCreatorVault` clones. The vault

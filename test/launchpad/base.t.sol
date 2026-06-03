@@ -17,9 +17,9 @@ import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenU
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
-import {ConstantProductBondingCurveImmutable} from "src/bondingCurves/ConstantProductBondingCurveImmutable.sol";
+import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
-import {LivoCreatorVault} from "src/tokens/LivoCreatorVault.sol";
+import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/factories/LivoCreatorVaultFactory.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -219,7 +219,7 @@ contract LaunchpadBaseTests is Test {
         uint256[6] memory bpsList = [uint256(500), 1000, 1500, 2000, 2500, 3000];
         for (uint256 i = 0; i < 6; ++i) {
             (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsForBps(bpsList[i]);
-            vaultCurves[i] = address(new ConstantProductBondingCurveImmutable(k, t0, e0));
+            vaultCurves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0));
         }
     }
 

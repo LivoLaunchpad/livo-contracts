@@ -14,6 +14,9 @@ pragma solidity 0.8.28;
 ///         Only the starting market cap is relaxed (it rises as more supply is locked).
 ///         Consumed by the deploy script and the invariant tests.
 library CreatorVaultCurveConstants {
+    /// @notice Thrown by `paramsForBps` when `totalBps` is not one of the six supported allocations.
+    error InvalidVaultBps(uint256 totalBps);
+
     /// @notice Allocation step (5% in bps) and bounds for creator vaults.
     uint256 internal constant VAULT_BPS_STEP = 500; // 5%
     uint256 internal constant MAX_VAULT_TOTAL_BPS = 3000; // 30%
@@ -61,6 +64,6 @@ library CreatorVaultCurveConstants {
         if (totalBps == 2000) return (K_20, T0_20, E0_20);
         if (totalBps == 2500) return (K_25, T0_25, E0_25);
         if (totalBps == 3000) return (K_30, T0_30, E0_30);
-        revert("CreatorVaultCurveConstants: invalid bps");
+        revert InvalidVaultBps(totalBps);
     }
 }

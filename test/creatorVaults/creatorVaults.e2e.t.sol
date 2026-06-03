@@ -6,8 +6,10 @@ import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {LivoCreatorVault} from "src/tokens/LivoCreatorVault.sol";
+import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {LivoQuoter} from "src/LivoQuoter.sol";
+import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
 
 /// @notice End-to-end tests for the creator-vault feature: createToken-with-vaults across the
 ///         V2/V4 + tax/sniper variants, the supply split, allocation-specific curve selection,
@@ -272,25 +274,24 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     /////////////////////////// vesting lifecycle ///////////////////////////
+    // The vesting clock starts at token creation (vault init); claims are gated on graduation.
 
-    function test_vault_activateBeforeGraduation_reverts() public {
-        (, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 1 days, 30 days)));
-        vm.expectRevert(LivoCreatorVault.NotGraduated.selector);
-        LivoCreatorVault(vault).activate();
-    }
-
-    function test_vault_claimBeforeActivate_reverts() public {
-        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 1 days, 30 days)));
-        _graduateAndCapture(token);
+    function test_vault_claimBeforeGraduation_reverts() public {
+        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
+        // schedule has progressed, but the token has not graduated yet
+        vm.warp(block.timestamp + 15 days);
+        assertEq(LivoCreatorVault(vault).claimable(), 0, "nothing claimable before graduation");
         vm.prank(vaultOwner);
-        vm.expectRevert(LivoCreatorVault.NotActivated.selector);
+        vm.expectRevert(LivoCreatorVault.NotGraduated.selector);
         LivoCreatorVault(vault).claim();
+        // graduating then unlocks the already-vested portion
+        _graduateAndCapture(token);
+        assertGt(LivoCreatorVault(vault).claimable(), 0, "claimable after graduation");
     }
 
     function test_vault_claimByNonOwner_reverts() public {
         (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
         _graduateAndCapture(token);
-        LivoCreatorVault(vault).activate();
         vm.warp(block.timestamp + 15 days);
         vm.prank(makeAddr("intruder"));
         vm.expectRevert(LivoCreatorVault.NotOwner.selector);
@@ -304,8 +305,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, cliff, vesting)));
 
         _graduateAndCapture(token);
-        LivoCreatorVault(vault).activate();
-        uint256 start = block.timestamp;
+        uint256 start = LivoCreatorVault(vault).startTimestamp(); // creation time
 
         // during the cliff: nothing claimable
         vm.warp(start + cliff - 1);
@@ -331,15 +331,36 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(LivoCreatorVault(vault).claimable(), 0, "nothing left to claim");
     }
 
-    function test_vault_zeroCliffZeroVesting_fullUnlockAtActivation() public {
+    function test_vault_zeroCliffZeroVesting_fullUnlockAtGraduation() public {
         uint256 alloc = TOKEN_TOTAL_SUPPLY * 500 / 10_000; // 5%
         (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 500, 0, 0)));
+        // zero cliff + zero vesting => schedule says fully vested immediately, but claim is gated
+        assertEq(LivoCreatorVault(vault).vestedAmount(), alloc, "schedule fully vested");
+        assertEq(LivoCreatorVault(vault).claimable(), 0, "but nothing claimable before graduation");
         _graduateAndCapture(token);
-        LivoCreatorVault(vault).activate();
-        // zero cliff + zero vesting => fully vested immediately
-        assertEq(LivoCreatorVault(vault).claimable(), alloc, "fully claimable at activation");
+        assertEq(LivoCreatorVault(vault).claimable(), alloc, "fully claimable at graduation");
         vm.prank(vaultOwner);
         LivoCreatorVault(vault).claim();
         assertEq(ILivoToken(token).balanceOf(vaultOwner), alloc, "owner got everything");
+    }
+
+    /////////////////////////// quoter regression ///////////////////////////
+
+    /// @dev `LivoQuoter` composes the launchpad's quote views, which read the token's REGISTERED
+    ///      bonding curve. So a vault token must quote against its allocation-specific curve with no
+    ///      quoter changes. This locks that in.
+    function test_quoter_usesRegisteredVaultCurve() public {
+        LivoQuoter quoter = new LivoQuoter(address(launchpad));
+        address token = _createV4(_one(_vault(vaultOwner, 3000, 0, 1 days)));
+
+        uint256 ethValue = 0.1 ether;
+        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, ethValue);
+        assertEq(uint256(q.reason), uint256(LimitReason.NONE), "quote should be valid");
+        assertGt(q.tokensToReceive, 0, "non-zero tokens");
+
+        // matches the launchpad's direct quote (both read the registered vault curve)
+        (, uint256 ethFee, uint256 tokensDirect) = launchpad.quoteBuyTokensWithExactEth(token, ethValue);
+        assertEq(q.tokensToReceive, tokensDirect, "quoter matches launchpad on the vault curve");
+        assertEq(q.ethFee, ethFee, "fee matches");
     }
 }

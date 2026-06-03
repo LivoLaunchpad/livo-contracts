@@ -147,6 +147,15 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @param tokenAmount Amount of tokens to receive
     /// @return totalEthNeeded The msg.value to pass to createToken
     /// @dev this doesn't take into account the maxBuyOnDeployBps limit, so it is the responsibility of the caller to ensure the quoted amount doesn't exceed that limit
+    /// @dev This always prices against the base `BONDING_CURVE`. Creator-vault tokens are sold on a
+    ///      steeper-starting curve (the starting price rises with the locked allocation), so for a
+    ///      vault token this view UNDER-estimates the ETH required for `tokenAmount` — i.e. the same
+    ///      ETH buys fewer tokens than quoted here. This is a non-binding frontend estimate only and
+    ///      is NOT exploitable: the actual deployer buy goes through the launchpad on the token's
+    ///      REGISTERED (allocation-specific) curve, and the `maxBuyOnDeployBps` cap is enforced on
+    ///      the real `tokensBought`, not on this quote. A caller who under-funds simply receives
+    ///      fewer tokens than the estimate suggested. Frontends quoting vault tokens should price
+    ///      against the registered curve instead.
     function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
         (uint256 ethForReserves,) = BONDING_CURVE.buyExactTokens(0, tokenAmount);
 

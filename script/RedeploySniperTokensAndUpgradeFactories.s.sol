@@ -7,7 +7,7 @@ import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol"
 import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {CreatorVaultDeployHelper} from "src/config/CreatorVaultDeployHelper.sol";
+import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
@@ -187,8 +187,8 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
-                CreatorVaultDeployHelper.factoryFor(),
-                CreatorVaultDeployHelper.curvesFor()
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
             )
         );
         console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
@@ -204,8 +204,8 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
                 d.graduatorV4,
                 d.graduatorV4_0p5,
                 d.masterFeeHandler,
-                CreatorVaultDeployHelper.factoryFor(),
-                CreatorVaultDeployHelper.curvesFor()
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);

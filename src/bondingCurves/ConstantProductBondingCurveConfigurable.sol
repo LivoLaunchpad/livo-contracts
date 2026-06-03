@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
 
-/// @title ConstantProductBondingCurveImmutable
+/// @title ConstantProductBondingCurveConfigurable
 /// @notice Identical math to `ConstantProductBondingCurve`, but with the shape constants
 ///         `K`, `T0`, `E0` supplied at deploy time as immutables instead of being hardcoded.
 ///         Used to deploy the per-allocation creator-vault curves (one instance per locked
@@ -20,7 +20,7 @@ import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
 /// @dev    The graduation threshold / max-excess remain `constant` and IDENTICAL to the base curve,
 ///         because the launchpad enforces the same graduation window for every token regardless of
 ///         which curve it uses. Only `K`, `T0`, `E0` change between instances.
-contract ConstantProductBondingCurveImmutable is ILivoBondingCurve {
+contract ConstantProductBondingCurveConfigurable is ILivoBondingCurve {
     // the bonding curve follows the constant product formula:
     // K = (t + T0) * (e + E0)
     // `t` is the reserves of the token in the bonding curve (not sold yet)
