@@ -372,7 +372,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         ILivoFactory.CreatorVault[] memory vaults = _one(_vault(vaultOwner, 3000, 0, 1 days));
         uint256 tokenAmount = 50_000_000e18; // 5% of supply, under the 10% buy-on-deploy cap
 
-        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, vaults);
+        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000);
         uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount);
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");

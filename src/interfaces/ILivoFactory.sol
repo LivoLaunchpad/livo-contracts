@@ -99,10 +99,8 @@ interface ILivoFactory {
 
     function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded);
 
-    /// @notice Vault-aware deployer-buy quote: prices against the curve the given `creatorVaults`
-    ///         select, so vault tokens are not under-quoted. Pass the same array you'll deploy with.
-    function quoteBuyOnDeploy(uint256 tokenAmount, CreatorVault[] calldata creatorVaults)
-        external
-        view
-        returns (uint256 totalEthNeeded);
+    /// @notice Vault-aware deployer-buy quote: prices against the curve `totalVaultBps` of locked
+    ///         supply selects, so vault tokens are not under-quoted. Pass the SUM of `supplyBps`
+    ///         across the vaults you'll deploy with (0 for none).
+    function quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalVaultBps) external view returns (uint256 totalEthNeeded);
 }

@@ -773,31 +773,9 @@
         "internalType": "uint256"
       },
       {
-        "name": "creatorVaults",
-        "type": "tuple[]",
-        "internalType": "struct ILivoFactory.CreatorVault[]",
-        "components": [
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "supplyBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "cliffSeconds",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "vestingSeconds",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "name": "totalVaultBps",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [
