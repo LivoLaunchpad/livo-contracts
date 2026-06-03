@@ -49,20 +49,20 @@ library DeploymentsSepolia {
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
-    address internal constant CREATOR_VAULT_IMPL = address(0);
+    address internal constant CREATOR_VAULT_IMPL = 0xe5aF8d840963060302cf5021630d6dBF41a9e07b;
     /// @notice `LivoCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
-    address internal constant CREATOR_VAULT_FACTORY = address(0);
+    address internal constant CREATOR_VAULT_FACTORY = 0x804ad45394FCF755350d924f712EC463E5E3147D;
     /// @notice `LivoCreatorVaultFactory` implementation behind the proxy. Update after deploying.
-    address internal constant CREATOR_VAULT_FACTORY_IMPL = address(0);
+    address internal constant CREATOR_VAULT_FACTORY_IMPL = 0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47;
 
     /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveConfigurable`),
     ///         one per locked allocation. Update after deploying with `DeployCreatorVaultSystem`.
-    address internal constant VAULT_CURVE_5 = address(0);
-    address internal constant VAULT_CURVE_10 = address(0);
-    address internal constant VAULT_CURVE_15 = address(0);
-    address internal constant VAULT_CURVE_20 = address(0);
-    address internal constant VAULT_CURVE_25 = address(0);
-    address internal constant VAULT_CURVE_30 = address(0);
+    address internal constant VAULT_CURVE_5 = 0xDAB2D2a31E5d659f99E3AC786884793223bafBB4;
+    address internal constant VAULT_CURVE_10 = 0xAB6161195d96A824c9cef14B1cd43455ec3cE9DA;
+    address internal constant VAULT_CURVE_15 = 0x5aB30fB5453845B10239A569Cdb8199B3214339e;
+    address internal constant VAULT_CURVE_20 = 0x35DC2fbD3ad6917C51658d1891859A6e9DaAc16e;
+    address internal constant VAULT_CURVE_25 = 0x321A86a8b27Ff81dcdb3C5d51FF0a2936f5c2c68;
+    address internal constant VAULT_CURVE_30 = 0x590e303AaaAdE7634Ec4d9d16bD135b4790FA42b;
 
     /// @notice The six vault curves as the `address[6]` the unified-factory constructors expect.
     function vaultBondingCurves() internal pure returns (address[6] memory c) {

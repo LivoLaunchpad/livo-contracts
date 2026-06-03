@@ -25,15 +25,15 @@
 | LivoFactoryUniV2Unified (impl)               | `0x11dD23Bd02eFAEC83CD4AdB2B23616A79196c107` |
 | LivoFactoryUniV4Unified (proxy)              | `0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b` |
 | LivoFactoryUniV4Unified (impl)               | `0xBae6fA24aF026D1309632A76308894c62B6E029E` |
-| LivoCreatorVaultFactory (proxy)              | _(not deployed)_                             |
-| LivoCreatorVaultFactory (impl)               | _(not deployed)_                             |
-| LivoCreatorVault (impl)                      | _(not deployed)_                             |
-| Creator-vault curve 5%                       | _(not deployed)_                             |
-| Creator-vault curve 10%                      | _(not deployed)_                             |
-| Creator-vault curve 15%                      | _(not deployed)_                             |
-| Creator-vault curve 20%                      | _(not deployed)_                             |
-| Creator-vault curve 25%                      | _(not deployed)_                             |
-| Creator-vault curve 30%                      | _(not deployed)_                             |
+| LivoCreatorVaultFactory (proxy)              | `0x804ad45394FCF755350d924f712EC463E5E3147D` |
+| LivoCreatorVaultFactory (impl)               | `0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47` |
+| LivoCreatorVault (impl)                      | `0xe5aF8d840963060302cf5021630d6dBF41a9e07b` |
+| Creator-vault curve 5%                       | `0xDAB2D2a31E5d659f99E3AC786884793223bafBB4` |
+| Creator-vault curve 10%                      | `0xAB6161195d96A824c9cef14B1cd43455ec3cE9DA` |
+| Creator-vault curve 15%                      | `0x5aB30fB5453845B10239A569Cdb8199B3214339e` |
+| Creator-vault curve 20%                      | `0x35DC2fbD3ad6917C51658d1891859A6e9DaAc16e` |
+| Creator-vault curve 25%                      | `0x321A86a8b27Ff81dcdb3C5d51FF0a2936f5c2c68` |
+| Creator-vault curve 30%                      | `0x590e303AaaAdE7634Ec4d9d16bD135b4790FA42b` |
 
 ## Accounts
 
