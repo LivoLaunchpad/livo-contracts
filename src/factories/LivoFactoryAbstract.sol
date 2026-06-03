@@ -151,35 +151,36 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      under it.
     /// @dev IMPORTANT: this single-arg form prices ONLY the base curve. For a creator-vault token,
     ///      which is sold on a steeper-starting (allocation-specific) curve, use the two-arg overload
-    ///      that takes `totalVaultBps` — otherwise the quote under-estimates the ETH and the deployer
+    ///      that takes `totalLockedInVaultsBps` — otherwise the quote under-estimates the ETH and the deployer
     ///      would receive fewer tokens than expected for the msg.value sent.
     function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
         return _quoteBuyOnDeploy(tokenAmount, BONDING_CURVE);
     }
 
     /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer
-    ///         buy, priced against the curve that `totalVaultBps` of locked supply selects in
+    ///         buy, priced against the curve that `totalLockedInVaultsBps` of locked supply selects in
     ///         `createToken`. Pass the SUM of `supplyBps` across the vaults you will deploy with (0
     ///         for a non-vault token); the quote then matches the curve the launchpad actually uses,
     ///         so the deployer is not mis-quoted. Only the aggregate matters — the curve is keyed off
     ///         it, not the individual vault owners/vesting — so those need not be finalized to quote.
     /// @param tokenAmount Amount of tokens to receive
-    /// @param totalVaultBps Sum of `supplyBps` across the creator vaults; must be 0 or a multiple of
-    ///        `CREATOR_VAULT_BPS_STEP` (500) up to `MAX_CREATOR_VAULT_TOTAL_BPS` (3000) — the same
-    ///        aggregate `_validateCreatorVaults` enforces for the array passed to `createToken`.
+    /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults; must be 0 or a
+    ///        multiple of `CREATOR_VAULT_BPS_STEP` (500) up to `MAX_CREATOR_VAULT_TOTAL_BPS` (3000) —
+    ///        the same aggregate `_validateCreatorVaults` enforces for the array passed to `createToken`.
     /// @return totalEthNeeded The msg.value to pass to createToken
-    /// @dev Doesn't account for the `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount`
-    ///      under it. Reverts (`InvalidCreatorVault`) on a `totalVaultBps` no vault array could sum to.
-    function quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalVaultBps)
+    /// @dev Doesn't account for the `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount` under
+    ///      it. Reverts (`InvalidCreatorVault`) on a `totalLockedInVaultsBps` no vault array could sum to.
+    function quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalLockedInVaultsBps)
         external
         view
         returns (uint256 totalEthNeeded)
     {
         require(
-            totalVaultBps <= MAX_CREATOR_VAULT_TOTAL_BPS && totalVaultBps % CREATOR_VAULT_BPS_STEP == 0,
+            totalLockedInVaultsBps <= MAX_CREATOR_VAULT_TOTAL_BPS
+                && totalLockedInVaultsBps % CREATOR_VAULT_BPS_STEP == 0,
             InvalidCreatorVault()
         );
-        return _quoteBuyOnDeploy(tokenAmount, _resolveBondingCurve(totalVaultBps));
+        return _quoteBuyOnDeploy(tokenAmount, _resolveBondingCurve(totalLockedInVaultsBps));
     }
 
     /// @dev Shared body: ETH (incl. inverse buy fee) to buy `tokenAmount` from a fresh curve.
@@ -356,8 +357,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         // Creator vaults: validate and pick the allocation-specific bonding curve. `vaultAllocation`
         // is minted to this factory by the token initializer; everything else (`TOTAL_SUPPLY -
         // vaultAllocation`) is minted to the launchpad and sold on the resolved curve.
-        (uint256 totalVaultBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
-        ILivoBondingCurve bondingCurve = _resolveBondingCurve(totalVaultBps);
+        (uint256 totalLockedInVaultsBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
+        ILivoBondingCurve bondingCurve = _resolveBondingCurve(totalLockedInVaultsBps);
 
         token = _dispatchAndInitialize(
             tokenSetup.name,
