@@ -377,6 +377,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         // tokens. The factory→vault transfers are exempt from sniper caps (`from == tokenFactory`).
         if (vaultAllocation > 0) _deployAndFundVaults(token, creatorVaults, vaultAllocation);
 
+        // buy-on-deploy executes after the vaults are deployed and funded
         _finalizeCreation(token, tokenSetup.feeShares, buyOnDeployShares);
     }
 
@@ -391,6 +392,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         returns (uint256 totalBps, uint256 vaultAllocation)
     {
         uint256 len = creatorVaults.length;
+        // exit with no-op
         if (len == 0) return (0, 0);
 
         require(len <= MAX_CREATOR_VAULTS, TooManyCreatorVaults());
