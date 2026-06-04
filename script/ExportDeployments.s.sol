@@ -62,6 +62,15 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED_IMPL));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (impl)", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED_IMPL));
+        s = string.concat(s, _row("LivoCreatorVaultFactory (proxy)", DeploymentsMainnet.CREATOR_VAULT_FACTORY));
+        s = string.concat(s, _row("LivoCreatorVaultFactory (impl)", DeploymentsMainnet.CREATOR_VAULT_FACTORY_IMPL));
+        s = string.concat(s, _row("LivoCreatorVault (impl)", DeploymentsMainnet.CREATOR_VAULT_IMPL));
+        s = string.concat(s, _row("Creator-vault curve 5%", DeploymentsMainnet.VAULT_CURVE_5));
+        s = string.concat(s, _row("Creator-vault curve 10%", DeploymentsMainnet.VAULT_CURVE_10));
+        s = string.concat(s, _row("Creator-vault curve 15%", DeploymentsMainnet.VAULT_CURVE_15));
+        s = string.concat(s, _row("Creator-vault curve 20%", DeploymentsMainnet.VAULT_CURVE_20));
+        s = string.concat(s, _row("Creator-vault curve 25%", DeploymentsMainnet.VAULT_CURVE_25));
+        s = string.concat(s, _row("Creator-vault curve 30%", DeploymentsMainnet.VAULT_CURVE_30));
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("Livo Deployer", DeploymentsMainnet.LIVO_DEV));
@@ -111,6 +120,15 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED_IMPL));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (impl)", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED_IMPL));
+        s = string.concat(s, _row("LivoCreatorVaultFactory (proxy)", DeploymentsSepolia.CREATOR_VAULT_FACTORY));
+        s = string.concat(s, _row("LivoCreatorVaultFactory (impl)", DeploymentsSepolia.CREATOR_VAULT_FACTORY_IMPL));
+        s = string.concat(s, _row("LivoCreatorVault (impl)", DeploymentsSepolia.CREATOR_VAULT_IMPL));
+        s = string.concat(s, _row("Creator-vault curve 5%", DeploymentsSepolia.VAULT_CURVE_5));
+        s = string.concat(s, _row("Creator-vault curve 10%", DeploymentsSepolia.VAULT_CURVE_10));
+        s = string.concat(s, _row("Creator-vault curve 15%", DeploymentsSepolia.VAULT_CURVE_15));
+        s = string.concat(s, _row("Creator-vault curve 20%", DeploymentsSepolia.VAULT_CURVE_20));
+        s = string.concat(s, _row("Creator-vault curve 25%", DeploymentsSepolia.VAULT_CURVE_25));
+        s = string.concat(s, _row("Creator-vault curve 30%", DeploymentsSepolia.VAULT_CURVE_30));
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("Livo Dev", DeploymentsSepolia.LIVO_DEV));

@@ -116,7 +116,17 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         // and the check's window-active early-return covers the mint.
         launchpad = LivoLaunchpad(params.launchpad);
 
-        _mint(params.launchpad, TOTAL_SUPPLY);
+        // Creator-vault tokens lock `vaultAllocation` of the supply: only `TOTAL_SUPPLY - vaultAllocation`
+        // is sold on the (allocation-specific) bonding curve via the launchpad; the rest is minted to
+        // the factory (`msg.sender`), which distributes it into the vesting vaults in this same tx.
+        // `vaultAllocation == 0` (the common case) reproduces the original single mint exactly.
+        // The factory→vault transfers later in the tx are exempt from sniper caps via the
+        // `from == tokenFactory` branch in `_checkSniperProtection`.
+        uint256 vaultAllocation = params.vaultAllocation;
+        _mint(params.launchpad, TOTAL_SUPPLY - vaultAllocation);
+        if (vaultAllocation > 0) {
+            _mint(msg.sender, vaultAllocation);
+        }
     }
 
     //////////////////////// restricted access functions ////////////////////////

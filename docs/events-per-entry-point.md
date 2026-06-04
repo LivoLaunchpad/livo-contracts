@@ -46,11 +46,12 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
-Each unified factory exposes two `createToken` overloads with different selectors:
-- **Legacy positional**: `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4.
-- **Struct-based**: `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs)` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep.
+Each unified factory exposes three `createToken` overloads with different selectors:
+- **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults.
+- **Struct-based without vaults** (deprecated): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs)` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep. Never creates creator vaults.
+- **Struct-based with vaults** (current): the above plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults.
 
-Both overloads share the same internal flow and emit the events listed below in the same order.
+All overloads share the same internal flow and emit the events listed below in the same order; only the struct-based-with-vaults overload can emit the creator-vault events in §1 step 4b.
 
 ### 1.1 Common sequence
 
@@ -63,7 +64,8 @@ For both unified factories, the common Livo event order is:
 3. Optional implementation-specific initializer events:
    - Tax token: **`LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds`).
    - Sniper-protected token: **`SniperProtectionInitialized`** (`maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist`).
-4. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold, maxExcessOverThreshold`).
+4. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold, maxExcessOverThreshold`). For a creator-vault token the registered bonding curve is the allocation-specific one, but the graduation threshold/excess are identical to the base curve.
+4b. Creator vaults only (non-empty `CreatorVault[]`): the factory deploys and funds the vaults. Per vault, in order: **`LivoCreatorVaultFactory.CreatorVaultDeployed`** (`vault, token, owner, amount, cliffSeconds, vestingSeconds`) followed by an ERC20 `Transfer` (factory → vault). After all vaults: **`LivoFactory.CreatorVaultsCreated`** (`token, totalVaultAllocation, vaults, amounts`).
 5. Initial fee config is registered through the token into `LivoMasterFeeHandler`:
    - Zero or more **`LivoMasterFeeHandler.DirectReceiverRegistered`** (`token, receiver`) — one per initial direct receiver.
    - **`LivoMasterFeeHandler.SharesUpdated`** (`token, recipients, sharesBps`).
@@ -73,7 +75,7 @@ Notes:
 
 - Single-recipient and multi-recipient fee configs use the same master-handler registration path.
 - There is no `FeeSplitterCreated` event and no splitter initialization event in the active source path.
-- ERC20 mint and OpenZeppelin `Initialized` events also appear during token clone initialization.
+- ERC20 mint and OpenZeppelin `Initialized` events also appear during token clone initialization. For creator-vault tokens the initial mint is split: `TOTAL_SUPPLY - vaultAllocation` is minted to the launchpad and `vaultAllocation` is minted to the factory (which then funds the vaults in step 4b). For non-vault tokens the full supply is minted to the launchpad, unchanged.
 
 ### 1.2 With deployer buy (`msg.value > 0`)
 

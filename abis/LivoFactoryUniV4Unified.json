@@ -38,9 +38,24 @@
         "internalType": "address"
       },
       {
+        "name": "graduator0p5",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "masterFeeHandler",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "creatorVaultFactory",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "vaultBondingCurves",
+        "type": "address[6]",
+        "internalType": "address[6]"
       }
     ],
     "stateMutability": "nonpayable"
@@ -60,6 +75,32 @@
   },
   {
     "type": "function",
+    "name": "CREATOR_VAULT_BPS_STEP",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "CREATOR_VAULT_FACTORY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoCreatorVaultFactory"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "GRADUATOR",
     "inputs": [],
     "outputs": [
@@ -67,6 +108,19 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoGraduator"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "GRADUATOR_0P5",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -99,7 +153,7 @@
   },
   {
     "type": "function",
-    "name": "MAX_TAX_BPS",
+    "name": "MAX_CREATOR_VAULTS",
     "inputs": [],
     "outputs": [
       {
@@ -108,11 +162,37 @@
         "internalType": "uint256"
       }
     ],
-    "stateMutability": "pure"
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_CREATOR_VAULT_TOTAL_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
     "name": "MAX_TAX_DURATION_SECONDS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TOTAL_FEE_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -184,6 +264,84 @@
         "name": "",
         "type": "string",
         "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VAULT_CURVE_10",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VAULT_CURVE_15",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VAULT_CURVE_20",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VAULT_CURVE_25",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VAULT_CURVE_30",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VAULT_CURVE_5",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
       }
     ],
     "stateMutability": "view"
@@ -316,6 +474,174 @@
             "name": "whitelist",
             "type": "address[]",
             "internalType": "address[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "createToken",
+    "inputs": [
+      {
+        "name": "tokenSetup",
+        "type": "tuple",
+        "internalType": "struct ILivoFactory.TokenSetup",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "feeShares",
+            "type": "tuple[]",
+            "internalType": "struct ILivoFactory.FeeShare[]",
+            "components": [
+              {
+                "name": "account",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "shares",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "directFeesEnabled",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "taxConfigs",
+        "type": "tuple",
+        "internalType": "struct TaxConfigInit",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "univ4Configs",
+        "type": "tuple",
+        "internalType": "struct LivoFactoryUniV4Unified.UniV4Configs",
+        "components": [
+          {
+            "name": "renounceOwnership",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "lpFeeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      },
+      {
+        "name": "buyOnDeployShares",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.SupplyShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "antiSniperConfigs",
+        "type": "tuple",
+        "internalType": "struct AntiSniperConfigs",
+        "components": [
+          {
+            "name": "maxBuyPerTxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "maxWalletBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "protectionWindowSeconds",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "whitelist",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
+      },
+      {
+        "name": "creatorVaults",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.CreatorVault[]",
+        "components": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "supplyBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "cliffSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vestingSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       }
@@ -620,6 +946,30 @@
   },
   {
     "type": "function",
+    "name": "quoteBuyOnDeploy",
+    "inputs": [
+      {
+        "name": "tokenAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalLockedInVaultsBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "totalEthNeeded",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
     "outputs": [],
@@ -686,6 +1036,37 @@
       },
       {
         "name": "recipients",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
+      },
+      {
+        "name": "amounts",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CreatorVaultsCreated",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "totalVaultAllocation",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "vaults",
         "type": "address[]",
         "indexed": false,
         "internalType": "address[]"
@@ -825,6 +1206,16 @@
   },
   {
     "type": "error",
+    "name": "CreatorVaultAllocationTooHigh",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CreatorVaultDistributionFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ERC1967InvalidImplementation",
     "inputs": [
       {
@@ -873,6 +1264,11 @@
   {
     "type": "error",
     "name": "InvalidBuyOnDeploy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidCreatorVault",
     "inputs": []
   },
   {
@@ -972,6 +1368,11 @@
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "TooManyCreatorVaults",
+    "inputs": []
   },
   {
     "type": "error",

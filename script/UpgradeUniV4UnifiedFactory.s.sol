@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -140,7 +141,9 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,
-                d.masterFeeHandler
+                d.masterFeeHandler,
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (new impl)    |", factoryV4Impl);

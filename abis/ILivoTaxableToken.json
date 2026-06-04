@@ -223,6 +223,11 @@
             "name": "feeHandler",
             "type": "address",
             "internalType": "address"
+          },
+          {
+            "name": "vaultAllocation",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       },

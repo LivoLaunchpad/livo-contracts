@@ -12,6 +12,9 @@ interface ILivoToken is IERC20 {
     event OwnershipTransferred(address newOwner);
 
     /// @notice Shared initialization parameters for Livo token clones
+    /// @dev `vaultAllocation` is the amount of supply that is minted to the factory (`msg.sender` of
+    ///      `initialize`) instead of the launchpad, so the factory can lock it in creator vaults.
+    ///      Zero for normal tokens (full supply minted to the launchpad, identical to before).
     struct InitializeParams {
         string name;
         string symbol;
@@ -19,6 +22,7 @@ interface ILivoToken is IERC20 {
         address graduator;
         address launchpad;
         address feeHandler;
+        uint256 vaultAllocation;
     }
 
     /// @notice Tax configuration for a token

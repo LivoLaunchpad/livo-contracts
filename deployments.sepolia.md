@@ -15,16 +15,25 @@
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
 | LivoSwapHook (0.5%)                          | `0xC04Bb5bA43795330e54efaC7244ce40318FD80cc` |
 | LivoQuoter                                   | `0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438` |
-| LivoToken (impl)                             | `0x9e11191aC22b1C25A64e8de86dd9Db098a343e01` |
-| LivoTaxableTokenUniV4 (impl)                 | `0xd9F88d337CF88126850d150651CFbCE5E5299f08` |
-| LivoTokenSniperProtected (impl)              | `0x4Cf6178e0953b7B9E986265A8e1848551E4a7D5F` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xE1B8aA73d0E964B9f7Fe49A7396795D5aa288ba0` |
-| LivoTaxableTokenUniV2 (impl)                 | `0x462a3091a108D088DFdD029ba1BDFf593A55806E` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xFE05dA9BBd5e798B18c3a1D1ae824a4a46cC1674` |
+| LivoToken (impl)                             | `0x51711129C86b5f1D374B48F14f033cb38f6946F6` |
+| LivoTaxableTokenUniV4 (impl)                 | `0xaA783a3dd27F87d506103593BE28125dE0D68c49` |
+| LivoTokenSniperProtected (impl)              | `0xe4f969e30a729024A94a6D22D8DEbDB6Af27CF31` |
+| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xe81e3a3aFD0348565ea33bdE7cb88d2E93265B6A` |
+| LivoTaxableTokenUniV2 (impl)                 | `0xAB24feF14E89558D3531E05E3096D1add6A77a1C` |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xeaC942C6078B77904498F59f2f6605f9964ECe8C` |
 | LivoFactoryUniV2Unified (proxy)              | `0x87Dd69F8d294fA9cd704fccd38d36d6197F80868` |
-| LivoFactoryUniV2Unified (impl)               | `0x11dD23Bd02eFAEC83CD4AdB2B23616A79196c107` |
+| LivoFactoryUniV2Unified (impl)               | `0x9405f56c966BE3d40Dd77d1384d356330370b6Cb` |
 | LivoFactoryUniV4Unified (proxy)              | `0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b` |
-| LivoFactoryUniV4Unified (impl)               | `0xBae6fA24aF026D1309632A76308894c62B6E029E` |
+| LivoFactoryUniV4Unified (impl)               | `0xa76d696532Cb6Eaba7f2b05FEc0011C2eC1CE66b` |
+| LivoCreatorVaultFactory (proxy)              | `0x804ad45394FCF755350d924f712EC463E5E3147D` |
+| LivoCreatorVaultFactory (impl)               | `0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47` |
+| LivoCreatorVault (impl)                      | `0xe5aF8d840963060302cf5021630d6dBF41a9e07b` |
+| Creator-vault curve 5%                       | `0xDAB2D2a31E5d659f99E3AC786884793223bafBB4` |
+| Creator-vault curve 10%                      | `0xAB6161195d96A824c9cef14B1cd43455ec3cE9DA` |
+| Creator-vault curve 15%                      | `0x5aB30fB5453845B10239A569Cdb8199B3214339e` |
+| Creator-vault curve 20%                      | `0x35DC2fbD3ad6917C51658d1891859A6e9DaAc16e` |
+| Creator-vault curve 25%                      | `0x321A86a8b27Ff81dcdb3C5d51FF0a2936f5c2c68` |
+| Creator-vault curve 30%                      | `0x590e303AaaAdE7634Ec4d9d16bD135b4790FA42b` |
 
 ## Accounts
 

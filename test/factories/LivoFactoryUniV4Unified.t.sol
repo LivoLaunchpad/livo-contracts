@@ -262,7 +262,14 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
 
         vm.prank(creator);
-        factoryV4Unified.createToken(setup, _taxCfg(450, 450, uint32(14 days)), cfg, _noSs(), _emptyAntiSniperCfg());
+        factoryV4Unified.createToken(
+            setup,
+            _taxCfg(450, 450, uint32(14 days)),
+            cfg,
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0)
+        );
     }
 
     function test_createToken_struct_halfPercentLp_revertsAboveFourPointFivePercentTax() public {
@@ -274,7 +281,14 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
-        factoryV4Unified.createToken(setup, _taxCfg(0, 451, uint32(14 days)), cfg, _noSs(), _emptyAntiSniperCfg());
+        factoryV4Unified.createToken(
+            setup,
+            _taxCfg(0, 451, uint32(14 days)),
+            cfg,
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0)
+        );
     }
 
     function test_createToken_struct_onePercentLp_revertsAboveFourPercentTax() public {
@@ -286,7 +300,14 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
-        factoryV4Unified.createToken(setup, _taxCfg(401, 0, uint32(14 days)), cfg, _noSs(), _emptyAntiSniperCfg());
+        factoryV4Unified.createToken(
+            setup,
+            _taxCfg(401, 0, uint32(14 days)),
+            cfg,
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0)
+        );
     }
 
     function test_createToken_revertsOnInvalidTaxDuration() public {

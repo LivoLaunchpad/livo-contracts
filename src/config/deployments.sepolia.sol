@@ -25,16 +25,16 @@ library DeploymentsSepolia {
     address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x9e11191aC22b1C25A64e8de86dd9Db098a343e01;
-    address internal constant TAXABLE_TOKEN_IMPL = 0xd9F88d337CF88126850d150651CFbCE5E5299f08;
+    address internal constant TOKEN_IMPL = 0x51711129C86b5f1D374B48F14f033cb38f6946F6;
+    address internal constant TAXABLE_TOKEN_IMPL = 0xaA783a3dd27F87d506103593BE28125dE0D68c49;
 
     /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0x4Cf6178e0953b7B9E986265A8e1848551E4a7D5F;
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xE1B8aA73d0E964B9f7Fe49A7396795D5aa288ba0;
+    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xe4f969e30a729024A94a6D22D8DEbDB6Af27CF31;
+    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xe81e3a3aFD0348565ea33bdE7cb88d2E93265B6A;
 
     /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x462a3091a108D088DFdD029ba1BDFf593A55806E;
-    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0xFE05dA9BBd5e798B18c3a1D1ae824a4a46cC1674;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xAB24feF14E89558D3531E05E3096D1add6A77a1C;
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0xeaC942C6078B77904498F59f2f6605f9964ECe8C;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -44,8 +44,35 @@ library DeploymentsSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x11dD23Bd02eFAEC83CD4AdB2B23616A79196c107;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xBae6fA24aF026D1309632A76308894c62B6E029E;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x9405f56c966BE3d40Dd77d1384d356330370b6Cb;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xa76d696532Cb6Eaba7f2b05FEc0011C2eC1CE66b;
+
+    // --- Creator vaults ---
+    /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
+    address internal constant CREATOR_VAULT_IMPL = 0xe5aF8d840963060302cf5021630d6dBF41a9e07b;
+    /// @notice `LivoCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
+    address internal constant CREATOR_VAULT_FACTORY = 0x804ad45394FCF755350d924f712EC463E5E3147D;
+    /// @notice `LivoCreatorVaultFactory` implementation behind the proxy. Update after deploying.
+    address internal constant CREATOR_VAULT_FACTORY_IMPL = 0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47;
+
+    /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveConfigurable`),
+    ///         one per locked allocation. Update after deploying with `DeployCreatorVaultSystem`.
+    address internal constant VAULT_CURVE_5 = 0xDAB2D2a31E5d659f99E3AC786884793223bafBB4;
+    address internal constant VAULT_CURVE_10 = 0xAB6161195d96A824c9cef14B1cd43455ec3cE9DA;
+    address internal constant VAULT_CURVE_15 = 0x5aB30fB5453845B10239A569Cdb8199B3214339e;
+    address internal constant VAULT_CURVE_20 = 0x35DC2fbD3ad6917C51658d1891859A6e9DaAc16e;
+    address internal constant VAULT_CURVE_25 = 0x321A86a8b27Ff81dcdb3C5d51FF0a2936f5c2c68;
+    address internal constant VAULT_CURVE_30 = 0x590e303AaaAdE7634Ec4d9d16bD135b4790FA42b;
+
+    /// @notice The six vault curves as the `address[6]` the unified-factory constructors expect.
+    function vaultBondingCurves() internal pure returns (address[6] memory c) {
+        c[0] = VAULT_CURVE_5;
+        c[1] = VAULT_CURVE_10;
+        c[2] = VAULT_CURVE_15;
+        c[3] = VAULT_CURVE_20;
+        c[4] = VAULT_CURVE_25;
+        c[5] = VAULT_CURVE_30;
+    }
 
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

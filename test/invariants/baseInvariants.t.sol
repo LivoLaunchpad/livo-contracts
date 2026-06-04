@@ -91,6 +91,8 @@ contract LaunchpadInvariants is Test {
         // The unified factories take both base and sniper-protected token impls. The invariant
         // helper only ever uses the base path (no anti-sniper, no tax), so we pass `tokenImplementation`
         // for both slots — sniper impls are never cloned in this suite.
+        // Creator-vault infra is unused in this suite, so the vault factory / curves are left zero.
+        address[6] memory emptyVaultCurves;
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 address(launchpad),
@@ -100,7 +102,9 @@ contract LaunchpadInvariants is Test {
                 address(tokenImplementation),
                 address(bondingCurve),
                 address(graduatorV2),
-                address(feeHandler)
+                address(feeHandler),
+                address(0),
+                emptyVaultCurves
             )
         );
         factoryV2 = LivoFactoryUniV2Unified(
@@ -117,7 +121,9 @@ contract LaunchpadInvariants is Test {
                 address(bondingCurve),
                 address(graduatorV4),
                 address(graduatorV4),
-                address(feeHandler)
+                address(feeHandler),
+                address(0),
+                emptyVaultCurves
             )
         );
         factoryV4 = LivoFactoryUniV4Unified(

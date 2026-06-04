@@ -24,7 +24,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address masterFeeHandler
+        address masterFeeHandler,
+        address creatorVaultFactory,
+        address[6] memory vaultBondingCurves
     )
         LivoFactoryAbstract(
             launchpad,
@@ -34,7 +36,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
             tokenImplTaxAntiSniper,
             bondingCurve,
             graduator,
-            masterFeeHandler
+            masterFeeHandler,
+            creatorVaultFactory,
+            vaultBondingCurves
         )
     {}
 
@@ -44,6 +48,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
     ///         The per-token fee config is registered with the master fee handler at deploy time.
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
+    /// @dev DEPRECATED: legacy positional overload, kept for backwards compatibility. New
+    ///      integrations should use the struct-based overload that takes `creatorVaults`.
+    ///      Always deploys with no creator vaults.
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -58,12 +65,15 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // `LpFeeBpsSet` is emitted only by the V4 factory — V2 has no LP-fee concept.
         _validateTotalFee(0, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
-        token = _createToken(tokenSetup, address(0), address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg);
+        token = _createToken(
+            tokenSetup, address(0), address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0)
+        );
     }
 
-    /// @notice Struct-based overload. Equivalent to the positional `createToken` above; exists to
-    ///         keep the ABI extensible without hitting stack-too-deep when new features add inputs.
-    ///         Inputs and behaviour are identical to the positional form.
+    /// @notice Struct-based overload without creator vaults. Keeps the ABI extensible without
+    ///         hitting stack-too-deep when new features add inputs.
+    /// @dev DEPRECATED: kept for backwards compatibility. New integrations should use the
+    ///      struct-based overload that takes `creatorVaults`. Always deploys with no creator vaults.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,
@@ -72,8 +82,31 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(0, taxConfigs);
-        token =
-            _createToken(tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs);
+        token = _createToken(
+            tokenSetup,
+            address(0),
+            address(GRADUATOR),
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            new CreatorVault[](0)
+        );
+    }
+
+    /// @notice Struct-based overload. Equivalent to the deprecated struct-based overload above, plus
+    ///         the `creatorVaults` array (pass empty for none). This is the current recommended overload.
+    function createToken(
+        TokenSetup calldata tokenSetup,
+        TaxConfigInit calldata taxConfigs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults
+    ) external payable returns (address token) {
+        // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
+        _validateTotalFee(0, taxConfigs);
+        token = _createToken(
+            tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
+        );
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
