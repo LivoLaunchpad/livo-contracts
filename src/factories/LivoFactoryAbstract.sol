@@ -411,7 +411,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
 
     /// @dev Maps a total locked allocation (in bps) to the matching bonding curve. `totalBps == 0`
     ///      uses the base curve; otherwise it is guaranteed by `_validateCreatorVaults` to be a
-    ///      multiple of 500 in [500, 3000].
+    ///      multiple of 500 in [500, 3000]. The final `== 3000` check and `else` revert make this a
+    ///      total function rather than relying on that upstream invariant, so any unexpected value
+    ///      fails loudly instead of silently defaulting to `VAULT_CURVE_30`.
     function _resolveBondingCurve(uint256 totalBps) internal view returns (ILivoBondingCurve) {
         if (totalBps == 0) return BONDING_CURVE;
         if (totalBps == 500) return VAULT_CURVE_5;
@@ -419,7 +421,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         if (totalBps == 1500) return VAULT_CURVE_15;
         if (totalBps == 2000) return VAULT_CURVE_20;
         if (totalBps == 2500) return VAULT_CURVE_25;
-        return VAULT_CURVE_30; // totalBps == 3000
+        if (totalBps == 3000) return VAULT_CURVE_30;
+        revert InvalidCreatorVault();
     }
 
     /// @dev Deploys one `LivoCreatorVault` per entry via the vault factory and funds each with its
