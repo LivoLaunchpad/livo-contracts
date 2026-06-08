@@ -39,10 +39,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("ConstantProductBondingCurve", DeploymentsMainnet.BONDING_CURVE));
         s = string.concat(s, _row("LivoGraduatorUniswapV2", DeploymentsMainnet.GRADUATOR_UNIV2));
         s = string.concat(s, _row("LivoGraduatorUniswapV4", DeploymentsMainnet.GRADUATOR_UNIV4));
-        s = string.concat(s, _row("LivoGraduatorUniswapV4 (0.5% hook)", DeploymentsMainnet.GRADUATOR_UNIV4_0P5));
         s = string.concat(s, _row("LivoMasterFeeHandler", DeploymentsMainnet.MASTER_FEE_HANDLER));
         s = string.concat(s, _row("LivoSwapHook", DeploymentsMainnet.SWAP_HOOK));
-        s = string.concat(s, _row("LivoSwapHook (0.5%)", DeploymentsMainnet.SWAP_HOOK_0P5));
         s = string.concat(s, _row("LivoQuoter", DeploymentsMainnet.QUOTER));
         s = string.concat(s, _row("LivoLpFeeRouter (proxy)", DeploymentsMainnet.LP_FEE_ROUTER));
         s = string.concat(s, _row("LivoLpFeeRouter (impl)", DeploymentsMainnet.LP_FEE_ROUTER_IMPL));
@@ -99,10 +97,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("ConstantProductBondingCurve", DeploymentsSepolia.BONDING_CURVE));
         s = string.concat(s, _row("LivoGraduatorUniswapV2", DeploymentsSepolia.GRADUATOR_UNIV2));
         s = string.concat(s, _row("LivoGraduatorUniswapV4", DeploymentsSepolia.GRADUATOR_UNIV4));
-        s = string.concat(s, _row("LivoGraduatorUniswapV4 (0.5% hook)", DeploymentsSepolia.GRADUATOR_UNIV4_0P5));
         s = string.concat(s, _row("LivoMasterFeeHandler", DeploymentsSepolia.MASTER_FEE_HANDLER));
         s = string.concat(s, _row("LivoSwapHook", DeploymentsSepolia.SWAP_HOOK));
-        s = string.concat(s, _row("LivoSwapHook (0.5%)", DeploymentsSepolia.SWAP_HOOK_0P5));
         s = string.concat(s, _row("LivoQuoter", DeploymentsSepolia.QUOTER));
         s = string.concat(s, _row("LivoLpFeeRouter (proxy)", DeploymentsSepolia.LP_FEE_ROUTER));
         s = string.concat(s, _row("LivoLpFeeRouter (impl)", DeploymentsSepolia.LP_FEE_ROUTER_IMPL));

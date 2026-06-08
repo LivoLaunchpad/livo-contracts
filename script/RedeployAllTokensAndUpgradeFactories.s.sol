@@ -72,7 +72,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
     }
 
@@ -97,7 +96,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER
             });
             require(
@@ -116,7 +114,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER
             });
             require(
@@ -137,7 +134,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
     }
 
