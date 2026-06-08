@@ -10,11 +10,11 @@
 | ConstantProductBondingCurve                  | `0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23` |
 | LivoGraduatorUniswapV2                       | `0x7cC6AC0aa4130A5dFe7d00C85645f6Cd2bd7e1cC` |
 | LivoGraduatorUniswapV4                       | `0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944` |
-| LivoGraduatorUniswapV4 (0.5% hook)           | `0xB2B7157e51d592356c5E7706F8371e2f0a425B7e` |
 | LivoMasterFeeHandler                         | `0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC` |
-| LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
-| LivoSwapHook (0.5%)                          | `0x068241d20c59980AbEAeDED990d2441F05f5C0Cc` |
+| LivoSwapHook                                 | `0xD257093d7a08b01216E9446f1322ab47e2A780cc` |
 | LivoQuoter                                   | `0x035693207fb473358b41A81FF09445dB1f3889D1` |
+| LivoLpFeeRouter (proxy)                      | `0x8fC6Fd4F06e00041242321B986aE5e7aE4a87635` |
+| LivoLpFeeRouter (impl)                       | `0x97E94b79b4E9d8338CD1aCaF152B8a690Be2C54C` |
 | LivoToken (impl)                             | `0x7F485770f390f8E98584B820d3e2C8d2091F9eE5` |
 | LivoTaxableTokenUniV4 (impl)                 | `0x88138021037Fb70921FcBC4183d151381BC434Cb` |
 | LivoTokenSniperProtected (impl)              | `0xA096628577928A8983eC3322904aC2aD5ba69a60` |

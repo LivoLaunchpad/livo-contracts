@@ -74,6 +74,8 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
 contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTests {
     function setUp() public override {
         super.setUp();
+        // Non-tax V4 tokens charge the same 1% LP fee as tax tokens (set by the factory), so the
+        // base's tier-0 `_suiteLp*` helpers apply unchanged.
     }
 
     /// @notice Graduation succeeds with multi-recipient master fee config
@@ -98,7 +100,7 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
         assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 
-    /// @notice Total fees across shareholders match expected 0.5% creator LP fee
+    /// @notice Total fees across shareholders match expected tier-0 creator LP share
     function test_totalFeesMatchExpected() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 s1Before = shareholder1.balance;
         uint256 s2Before = shareholder2.balance;
@@ -111,8 +113,11 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
         uint256 graduationCompensation = CREATOR_GRADUATION_COMPENSATION;
         uint256 lpFeesOnly = totalShareholderFees - graduationCompensation;
 
-        // Treasury LP share sent during swap by hook; shareholders get creator's 0.5% share
-        assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 1, "shareholder LP fees should be 0.5% of buy amount");
+        // Treasury LP share sent during swap by hook; shareholders get creator's tier-0 share.
+        // For non-tax suites the per-suite helper returns 0 (no LP fee charged).
+        assertApproxEqAbs(
+            lpFeesOnly, _suiteLpCreatorShare(1 ether), 1, "shareholder LP fees should match tier-0 creator share"
+        );
     }
 
     /// @notice getClaimable on master handler returns correct values before claim

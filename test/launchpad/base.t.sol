@@ -33,6 +33,7 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
+import {LivoLpFeeRouter} from "src/feeRouters/LivoLpFeeRouter.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
@@ -126,6 +127,38 @@ contract LaunchpadBaseTests is Test {
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoSwapHook public taxHook;
+    LivoLpFeeRouter public lpFeeRouter;
+
+    // Default tier thresholds used in tests (ETH wei). T0 covers `[0, T1)`.
+    uint256 public constant LP_TIER_THRESHOLD_1 = 30 ether;
+    uint256 public constant LP_TIER_THRESHOLD_2 = 150 ether;
+    uint256 public constant LP_TIER_THRESHOLD_3 = 300 ether;
+    uint256 public constant LP_TIER_THRESHOLD_4 = 600 ether;
+    uint256 public constant LP_TIER_THRESHOLD_5 = 900 ether;
+    uint256 public constant LP_TIER_THRESHOLD_6 = 1500 ether;
+
+    // Treasury share per tier (in BPS). Creator share is the complement to 10_000.
+    uint16 public constant LP_TIER0_TREASURY_BPS = 4000; // post-grad: 40/60
+    uint16 public constant LP_TIER1_TREASURY_BPS = 3500; // >100K USD
+    uint16 public constant LP_TIER2_TREASURY_BPS = 3000; // >500K USD
+    uint16 public constant LP_TIER3_TREASURY_BPS = 2500; // >1M USD
+    uint16 public constant LP_TIER4_TREASURY_BPS = 2000; // >2M USD
+    uint16 public constant LP_TIER5_TREASURY_BPS = 1500; // >3M USD
+    uint16 public constant LP_TIER6_TREASURY_BPS = 1000; // >5M USD
+
+    uint256 public constant LP_FEE_BPS_DEFAULT = 100; // 1%
+
+    /// @dev Returns the expected creator share of LP fees at tier 0 for a gross ETH amount.
+    function _lpCreatorShareTier0(uint256 grossEth) internal pure returns (uint256) {
+        uint256 totalLpFee = (grossEth * LP_FEE_BPS_DEFAULT) / 10_000;
+        return totalLpFee - (totalLpFee * LP_TIER0_TREASURY_BPS) / 10_000;
+    }
+
+    /// @dev Returns the expected treasury share of LP fees at tier 0 for a gross ETH amount.
+    function _lpTreasuryShareTier0(uint256 grossEth) internal pure returns (uint256) {
+        uint256 totalLpFee = (grossEth * LP_FEE_BPS_DEFAULT) / 10_000;
+        return (totalLpFee * LP_TIER0_TREASURY_BPS) / 10_000;
+    }
 
     uint256 internal _saltCounter;
 
@@ -169,6 +202,8 @@ contract LaunchpadBaseTests is Test {
     }
 
     /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`.
+    ///      The LP fee is not part of `TaxConfigInit`; the factory sets it (V4 positional overload =
+    ///      100 bps, struct overload = `UniV4Configs.lpFeeBps`, V2 = 0).
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
@@ -194,6 +229,29 @@ contract LaunchpadBaseTests is Test {
         return AntiSniperConfigs({
             maxBuyPerTxBps: 300, maxWalletBps: 300, protectionWindowSeconds: 3 hours, whitelist: new address[](0)
         });
+    }
+
+    /// @dev Default `LivoLpFeeRouter.Config` used by the test fixtures. Mirrors the tier policy
+    ///      that the production deployment is expected to start with.
+    function _defaultLpRouterCfg() internal pure returns (LivoLpFeeRouter.Config memory) {
+        uint256[6] memory thresholds = [
+            LP_TIER_THRESHOLD_1,
+            LP_TIER_THRESHOLD_2,
+            LP_TIER_THRESHOLD_3,
+            LP_TIER_THRESHOLD_4,
+            LP_TIER_THRESHOLD_5,
+            LP_TIER_THRESHOLD_6
+        ];
+        uint16[7] memory treasuryBps = [
+            LP_TIER0_TREASURY_BPS,
+            LP_TIER1_TREASURY_BPS,
+            LP_TIER2_TREASURY_BPS,
+            LP_TIER3_TREASURY_BPS,
+            LP_TIER4_TREASURY_BPS,
+            LP_TIER5_TREASURY_BPS,
+            LP_TIER6_TREASURY_BPS
+        ];
+        return LivoLpFeeRouter.Config({thresholds: thresholds, treasuryBps: treasuryBps});
     }
 
     /// @dev Build a custom `AntiSniperConfigs`.
@@ -244,8 +302,18 @@ contract LaunchpadBaseTests is Test {
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
 
+        // Deploy LP fee router behind a UUPS proxy with the default tier configuration. The hook
+        // forwards every LP fee to this router, which then performs the marketcap-tiered split.
+        LivoLpFeeRouter.Config memory routerCfg = _defaultLpRouterCfg();
+        address lpRouterImpl = address(new LivoLpFeeRouter(treasury, routerCfg));
+        lpFeeRouter = LivoLpFeeRouter(
+            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(LivoLpFeeRouter.initialize, ()))))
+        );
+
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
+            "LivoSwapHook.sol:LivoSwapHook",
+            abi.encode(poolManagerAddress, address(lpFeeRouter), treasury),
+            TEST_HOOK_ADDRESS
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
@@ -289,7 +357,6 @@ contract LaunchpadBaseTests is Test {
                 address(livoTaxToken),
                 address(livoTaxTokenSniper),
                 address(bondingCurve),
-                address(graduatorV4),
                 address(graduatorV4),
                 address(feeHandler),
                 address(creatorVaultFactory),

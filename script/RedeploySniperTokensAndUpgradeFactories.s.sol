@@ -65,7 +65,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
         address tokenImpl;
         address taxTokenImpl;
@@ -90,7 +89,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
                 taxTokenImpl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
@@ -112,7 +110,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
                 taxTokenImpl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
@@ -136,7 +133,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
@@ -202,7 +198,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
                 fresh.taxTokenV4SniperImpl,
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor()

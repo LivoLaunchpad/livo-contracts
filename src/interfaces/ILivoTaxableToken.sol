@@ -5,7 +5,10 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @notice Initialization-time tax configuration for taxable tokens.
-/// @dev Separate from `ILivoToken.TaxConfig` (which adds the post-init `graduationTimestamp`).
+/// @dev Init-time config only; the token's live fee state (incl. the post-graduation timestamp)
+///      is tracked separately and read via `ILivoToken.getCurrentFees`.
+/// @dev The per-swap LP fee is NOT part of this struct: it is a venue property set by the factory
+///      via `ILivoToken.InitializeParams.lpFeeBps` (0 for V2, 50 or 100 for V4).
 struct TaxConfigInit {
     uint16 buyTaxBps;
     uint16 sellTaxBps;

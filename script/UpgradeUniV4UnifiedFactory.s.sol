@@ -13,27 +13,25 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Upgrade the LivoFactoryUniV4Unified proxy to the dual-graduator implementation
-/// @notice Rolls out the 0.5% LP-fee variant: the new `LivoFactoryUniV4Unified` constructor now
-///         takes both `graduator` (100 bps) and `graduator0p5` (50 bps) and routes `createToken`
-///         calls between them based on `UniV4Configs.lpFeeBps`. Only the V4 unified factory proxy
-///         is touched — the V2 unified factory is untouched, and the launchpad's
+/// @title Upgrade the LivoFactoryUniV4Unified proxy to the single-graduator implementation
+/// @notice Rolls out the consolidated LP-fee model: the `LivoFactoryUniV4Unified` constructor now
+///         takes a single `graduator`, and `UniV4Configs.lpFeeBps` (100 or 50) is stored on the
+///         token instead of selecting between graduator/hook pairs. Only the V4 unified factory
+///         proxy is touched — the V2 unified factory is untouched, and the launchpad's
 ///         `whitelistedFactories` mapping is unchanged because the proxy address doesn't move.
 ///
 ///         Single broadcast:
 ///         1. deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the addresses in
-///            the per-chain manifest (`src/config/deployments.{mainnet,sepolia}.sol`), including
-///            the new `GRADUATOR_UNIV4_0P5`.
+///            the per-chain manifest (`src/config/deployments.{mainnet,sepolia}.sol`).
 ///         2. calls `upgradeToAndCall(newImpl, "")` on the existing V4 factory proxy.
 ///
-///         No init data is passed — no new storage slots are added by this implementation
-///         (`GRADUATOR_0P5` is an immutable, baked into the bytecode).
+///         No init data is passed — no new storage slots are added by this implementation.
 ///
 ///         The broadcaster MUST be the proxy owner. If not, `_authorizeUpgrade` reverts with
 ///         `OwnableUnauthorizedAccount(broadcaster)` and no state changes.
 ///
-///         Pre-flight: `GRADUATOR_UNIV4_0P5` must already be deployed and recorded in the manifest.
-///         Use `script/DeployUniV4Graduator0p5.s.sol` first if it's still `address(0)`.
+///         Pre-flight: `GRADUATOR_UNIV4` must already be deployed (wired to the current `SWAP_HOOK`)
+///         and recorded in the manifest.
 ///
 ///         Post-broadcast: update `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/deployments.<chain>.sol`,
 ///         then run `just export-deployments`.
@@ -50,7 +48,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address launchpad;
         address bondingCurve;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
         address tokenImpl;
         address tokenSniperImpl;
@@ -65,7 +62,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
@@ -82,7 +78,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
@@ -101,7 +96,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing (deploy it first)");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
@@ -117,13 +111,12 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address proxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(proxyOwner != address(0), "V4 proxy not initialized");
 
-        console.log("=== Livo UniV4 Unified Factory Upgrade (dual-graduator routing) ===");
+        console.log("=== Livo UniV4 Unified Factory Upgrade (single graduator) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", proxyOwner);
         console.log("V4 factory proxy:        ", d.factoryV4Proxy);
-        console.log("Graduator (100 bps):     ", d.graduatorV4);
-        console.log("Graduator (50 bps):      ", d.graduatorV4_0p5);
+        console.log("Graduator:               ", d.graduatorV4);
         console.log("");
 
         vm.startBroadcast();
@@ -140,7 +133,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 d.taxTokenSniperImpl,
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor()

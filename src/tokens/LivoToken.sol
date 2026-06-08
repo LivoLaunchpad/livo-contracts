@@ -32,6 +32,11 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Whether the token has graduated already or not
     bool public graduated;
 
+    /// @notice Per-swap LP fee `LivoSwapHook` charges, in basis points. Set once at init and
+    ///         surfaced via `getCurrentFees`. 0 for Uniswap V2 (no hook LP fee); 50 or 100 for V4.
+    /// @dev Packs into the same slot as `pair` + `graduated`.
+    uint16 public lpFeeBps;
+
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
@@ -107,6 +112,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         graduator = params.graduator;
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
+        lpFeeBps = params.lpFeeBps;
         tokenFactory = msg.sender;
         pair = ILivoGraduator(params.graduator).initialize(address(this));
 
@@ -193,8 +199,11 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         return ILivoMasterFeeHandler(feeHandler).getRecipients(address(this));
     }
 
-    /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
-    function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+    /// @notice Default current-fees: the always-on LP fee with zero buy/sell tax. Taxable variants
+    ///         override to add the windowed tax. `lpFeeBps` is set at init (0 for V2).
+    function getCurrentFees() external view virtual returns (uint16, uint16, uint16) {
+        return (0, 0, lpFeeBps);
+    }
 
     /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
     function maxTokenPurchase(address) external view virtual returns (uint256) {

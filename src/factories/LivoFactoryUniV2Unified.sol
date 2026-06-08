@@ -65,9 +65,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // `LpFeeBpsSet` is emitted only by the V4 factory — V2 has no LP-fee concept.
         _validateTotalFee(0, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
-        token = _createToken(
-            tokenSetup, address(0), address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0)
-        );
+        token = _createToken(tokenSetup, address(0), 0, supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0));
     }
 
     /// @notice Struct-based overload without creator vaults. Keeps the ABI extensible without
@@ -83,13 +81,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(0, taxConfigs);
         token = _createToken(
-            tokenSetup,
-            address(0),
-            address(GRADUATOR),
-            buyOnDeployShares,
-            taxConfigs,
-            antiSniperConfigs,
-            new CreatorVault[](0)
+            tokenSetup, address(0), 0, buyOnDeployShares, taxConfigs, antiSniperConfigs, new CreatorVault[](0)
         );
     }
 
@@ -104,9 +96,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(0, taxConfigs);
-        token = _createToken(
-            tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
-        );
+        token = _createToken(tokenSetup, address(0), 0, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.

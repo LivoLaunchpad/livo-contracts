@@ -12,6 +12,9 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         return false;
     }
 
+    // Non-tax V4 tokens charge the same 1% LP fee as tax tokens (set by the factory), so the base's
+    // tier-0 `_suiteLp*` helpers apply unchanged. Only the sell tax differs (zero for this variant).
+
     /// @notice When feeReceiver != tokenOwner at creation, getClaimable returns non-zero for feeReceiver
     function test_viewFunction_getClaimable_feeReceiverDifferentFromOwner() public {
         // Create token with creator as msg.sender (owner), alice as feeReceiver

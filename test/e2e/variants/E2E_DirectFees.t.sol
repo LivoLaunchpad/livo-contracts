@@ -35,18 +35,23 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
         // Creator graduation compensation is 0.125 ETH; alice receives it directly
         assertEq(alice.balance - aliceBefore, CREATOR_GRADUATION_COMPENSATION, "graduation fee forwarded directly");
 
-        // Post-graduation swap → hook charges 1% LP fee, half goes to creator (alice direct).
+        // Post-graduation swap. Non-tax V4 tokens charge the 1% LP fee, whose creator portion
+        // (tier-0 = 60%) is forwarded directly to alice on the swap — no claim() needed.
         uint256 aliceAfterGrad = alice.balance;
         // _launchpadBuy left buyer at 0 balance via vm.deal — refund for the post-grad swap.
         vm.deal(buyer, 1 ether);
         _swapBuyV4(buyer, token, 1 ether, 0, true);
 
-        // alice should have received MORE eth — half of the 1% LP fee on a 1 ETH buy is 5e15 wei.
-        assertGt(alice.balance - aliceAfterGrad, 0, "post-grad LP fee forwarded directly");
-        // Sanity: alice never called claim and has no pending balance in the handler.
+        assertApproxEqAbs(
+            alice.balance - aliceAfterGrad,
+            _lpCreatorShareTier0(1 ether),
+            1,
+            "direct receiver auto-receives the tier-0 LP creator share"
+        );
+        // Sanity: alice never called claim and (as a direct receiver) accrues no pending balance.
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        assertEq(feeHandler.getClaimable(tokens, alice)[0], 0, "no pending: all forwarded");
+        assertEq(feeHandler.getClaimable(tokens, alice)[0], 0, "direct receiver has no pending: forwarded immediately");
     }
 
     /// @dev Multi-recipient mode: alice (direct) receives her share immediately, bob (claimable) accrues.

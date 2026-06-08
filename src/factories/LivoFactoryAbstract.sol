@@ -330,10 +330,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      without growing this function's stack frame. Callers derive `tokenOwner` per their
     ///      venue policy (V2: always `address(0)`; V4: `msg.sender` unless renounced).
     ///
-    ///      `graduator` is passed in by the caller (instead of read from the `GRADUATOR` immutable)
-    ///      so V4 can pick between multiple graduators per call based on `UniV4Configs.lpFeeBps`
-    ///      (one graduator per hardcoded LP-fee hook variant). V2 has a single graduator and
-    ///      always passes `address(GRADUATOR)`.
+    ///      `lpFeeBps` is passed in by the caller (the per-swap LP fee the hook charges, surfaced by
+    ///      the token via `getCurrentFees`): 0 for V2 (no hook LP fee), 50 or 100 for V4. The single
+    ///      `GRADUATOR` immutable is used for every token now that one hook reads the fee from the
+    ///      token instead of hardcoding it per graduator/hook variant.
     /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
     ///      calldata args — can build a `TokenSetup` in memory and call this same umbrella. The
     ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
@@ -344,7 +344,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     function _createToken(
         TokenSetup memory tokenSetup,
         address tokenOwner,
-        address graduator,
+        uint16 lpFeeBps,
         SupplyShare[] calldata buyOnDeployShares,
         TaxConfigInit calldata taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
@@ -365,7 +365,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             tokenSetup.symbol,
             tokenSetup.salt,
             tokenOwner,
-            graduator,
+            lpFeeBps,
             vaultAllocation,
             taxConfigs,
             antiSniperConfigs
@@ -472,13 +472,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string memory symbol,
         bytes32 salt,
         address tokenOwner,
-        address graduator,
+        uint16 lpFeeBps,
         uint256 vaultAllocation
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
 
+        address graduator = address(GRADUATOR);
         emit TokenCreated(token, name, symbol, tokenOwner, address(LAUNCHPAD), graduator, address(MASTER_FEE_HANDLER));
 
         params = ILivoToken.InitializeParams({
@@ -488,7 +489,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             graduator: graduator,
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER),
-            vaultAllocation: vaultAllocation
+            vaultAllocation: vaultAllocation,
+            lpFeeBps: lpFeeBps
         });
     }
 
@@ -502,6 +504,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
         } else {
+            // Sentinel consistency: an unset tax config must be entirely zeroed out so
+            // the dispatch flag (`taxDurationSeconds == 0`) is the single source of truth.
             require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
         }
     }
@@ -554,7 +558,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string memory symbol,
         bytes32 salt,
         address tokenOwner,
-        address graduator,
+        uint16 lpFeeBps,
         uint256 vaultAllocation,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
@@ -562,11 +566,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
             token = _initializeTaxToken(
-                impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, taxCfg, antiSniperCfg
+                impl, name, symbol, salt, tokenOwner, lpFeeBps, vaultAllocation, taxCfg, antiSniperCfg
             );
         } else {
             token =
-                _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, antiSniperCfg);
+                _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, lpFeeBps, vaultAllocation, antiSniperCfg);
         }
     }
 
@@ -580,13 +584,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string memory symbol,
         bytes32 salt,
         address tokenOwner,
-        address graduator,
+        uint16 lpFeeBps,
         uint256 vaultAllocation,
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, lpFeeBps, vaultAllocation);
 
         if (_isAntiSniperConfigured(antiSniperCfg)) {
             ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
@@ -604,12 +608,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         string memory symbol,
         bytes32 salt,
         address tokenOwner,
-        address graduator,
+        uint16 lpFeeBps,
         uint256 vaultAllocation,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, lpFeeBps, vaultAllocation);
 
         if (_isAntiSniperConfigured(antiSniperCfg)) {
             LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
