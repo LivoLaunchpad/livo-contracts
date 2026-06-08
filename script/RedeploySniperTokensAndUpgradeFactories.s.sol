@@ -202,7 +202,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
                 fresh.taxTokenV4SniperImpl,
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor()

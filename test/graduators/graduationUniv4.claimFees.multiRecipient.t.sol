@@ -74,15 +74,8 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
 contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTests {
     function setUp() public override {
         super.setUp();
-    }
-
-    // Non-tax `LivoToken` clones currently return `lpFeeBps == 0`, so the hook charges no LP fee.
-    function _suiteLpCreatorShare(uint256) internal pure override returns (uint256) {
-        return 0;
-    }
-
-    function _suiteLpTreasuryShare(uint256) internal pure override returns (uint256) {
-        return 0;
+        // Non-tax V4 tokens charge the same 1% LP fee as tax tokens (set by the factory), so the
+        // base's tier-0 `_suiteLp*` helpers apply unchanged.
     }
 
     /// @notice Graduation succeeds with multi-recipient master fee config

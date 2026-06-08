@@ -30,12 +30,6 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///         via `setTaxBps` (decrease-only — increases revert).
     uint16 public sellTaxBps;
 
-    /// @notice LP fee rate in basis points charged by LivoSwapHook on every swap.
-    ///         Set during initialization, cannot be changed. 0 means no LP fee (the hook takes the
-    ///         value literally). The hook reverts a swap whose combined LP fee + tax exceeds its
-    ///         overall cap (`MAX_OVERALL_FEE_BPS`).
-    uint16 public lpFeeBps;
-
     /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
     uint40 public taxDurationSeconds;
 
@@ -166,13 +160,13 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     }
 
     /// @notice Internal helper to store tax configuration.
-    /// @dev Tax-bps, lpFeeBps and duration bounds are enforced upstream in the factory.
+    /// @dev Tax-bps and duration bounds are enforced upstream in the factory. The LP fee is set on
+    ///      the base `LivoToken` from `InitializeParams.lpFeeBps`, not here.
     function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
         emit LivoTaxableTokenInitialized(cfg.buyTaxBps, cfg.sellTaxBps, uint40(cfg.taxDurationSeconds));
 
         buyTaxBps = cfg.buyTaxBps;
         sellTaxBps = cfg.sellTaxBps;
-        lpFeeBps = cfg.lpFeeBps;
         taxDurationSeconds = uint40(cfg.taxDurationSeconds);
     }
 }

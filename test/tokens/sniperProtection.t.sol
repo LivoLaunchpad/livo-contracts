@@ -599,7 +599,8 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 graduator: address(graduator),
                 launchpad: launchpad,
                 feeHandler: feeHandler,
-                vaultAllocation: 0
+                vaultAllocation: 0,
+                lpFeeBps: 0
             }),
             _defaultCfg()
         );
@@ -626,7 +627,8 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     graduator: address(graduator),
                     launchpad: launchpad,
                     feeHandler: feeHandler,
-                    vaultAllocation: 0
+                    vaultAllocation: 0,
+                    lpFeeBps: 0
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -661,9 +663,10 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 graduator: address(graduator),
                 launchpad: launchpad,
                 feeHandler: feeHandler,
-                vaultAllocation: 0
+                vaultAllocation: 0,
+                lpFeeBps: 0
             }),
-            TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, lpFeeBps: 0, taxDurationSeconds: uint32(1 days)}),
+            TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
         );
     }
@@ -689,9 +692,10 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     graduator: address(graduator),
                     launchpad: launchpad,
                     feeHandler: feeHandler,
-                    vaultAllocation: 0
+                    vaultAllocation: 0,
+                    lpFeeBps: 0
                 }),
-                TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, lpFeeBps: 0, taxDurationSeconds: uint32(1 days)}),
+                TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
                     maxWalletBps: maxWalletBps,

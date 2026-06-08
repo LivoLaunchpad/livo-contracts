@@ -7,12 +7,11 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 /// @notice Initialization-time tax configuration for taxable tokens.
 /// @dev Init-time config only; the token's live fee state (incl. the post-graduation timestamp)
 ///      is tracked separately and read via `ILivoToken.getCurrentFees`.
-/// @dev `lpFeeBps` selects the per-swap LP fee charged by `LivoSwapHook`; 0 means "use the hook's
-///      default" (100 bps = 1%). Currently the only supported non-default value is 50 (0.5%).
+/// @dev The per-swap LP fee is NOT part of this struct: it is a venue property set by the factory
+///      via `ILivoToken.InitializeParams.lpFeeBps` (0 for V2, 50 or 100 for V4).
 struct TaxConfigInit {
     uint16 buyTaxBps;
     uint16 sellTaxBps;
-    uint16 lpFeeBps;
     uint32 taxDurationSeconds;
 }
 

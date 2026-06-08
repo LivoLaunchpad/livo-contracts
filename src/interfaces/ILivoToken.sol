@@ -15,6 +15,8 @@ interface ILivoToken is IERC20 {
     /// @dev `vaultAllocation` is the amount of supply that is minted to the factory (`msg.sender` of
     ///      `initialize`) instead of the launchpad, so the factory can lock it in creator vaults.
     ///      Zero for normal tokens (full supply minted to the launchpad, identical to before).
+    /// @dev `lpFeeBps` is the per-swap LP fee `LivoSwapHook` charges, surfaced via `getCurrentFees`.
+    ///      Set by the factory per venue: 0 for Uniswap V2 (no hook LP fee), 50 or 100 for V4.
     struct InitializeParams {
         string name;
         string symbol;
@@ -23,6 +25,7 @@ interface ILivoToken is IERC20 {
         address launchpad;
         address feeHandler;
         uint256 vaultAllocation;
+        uint16 lpFeeBps;
     }
 
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
@@ -49,9 +52,10 @@ interface ILivoToken is IERC20 {
 
     /// @notice Returns the fees `LivoSwapHook` charges on a swap right now: the always-on LP fee
     ///         plus the buy/sell tax, which is non-zero only inside the post-graduation tax window.
-    /// @dev Returns all-zero for non-taxable tokens; taxable variants override with live values.
-    ///      Replaces the former `getTaxConfig`: the hook needs only the currently-effective rates,
-    ///      not the raw stored config, so the tax-window logic lives in the token now.
+    /// @dev Non-taxable tokens return only the LP fee (zero buy/sell tax); taxable variants override
+    ///      to add the windowed tax. Replaces the former `getTaxConfig`: the hook needs only the
+    ///      currently-effective rates, not the raw stored config, so the tax-window logic lives in
+    ///      the token now.
     /// @return buyTaxBps Currently-effective buy tax in basis points (0 outside the tax window).
     /// @return sellTaxBps Currently-effective sell tax in basis points (0 outside the tax window).
     /// @return lpFeeBps LP fee in basis points (always effective).

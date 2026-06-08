@@ -200,11 +200,12 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
 
     function _taxCfg(ForkIntegrationCaseLib.IntegrationCase memory c) internal pure returns (TaxConfigInit memory) {
         if (_hasTax(c)) {
-            return TaxConfigInit({
-                buyTaxBps: TAX_BUY_BPS, sellTaxBps: TAX_SELL_BPS, lpFeeBps: 0, taxDurationSeconds: TAX_DURATION_SECONDS
-            });
+            return
+                TaxConfigInit({
+                    buyTaxBps: TAX_BUY_BPS, sellTaxBps: TAX_SELL_BPS, taxDurationSeconds: TAX_DURATION_SECONDS
+                });
         }
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, lpFeeBps: 0, taxDurationSeconds: 0});
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
     }
 
     function _antiSniperCfg(ForkIntegrationCaseLib.IntegrationCase memory c)
@@ -278,7 +279,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             impl = factoryV4.previewTokenImplementation(fees, supply, _taxCfg(c), sniper);
         } else {
             impl = factoryV2.previewTokenImplementation(
-                fees, supply, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, lpFeeBps: 0, taxDurationSeconds: 0}), sniper
+                fees, supply, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}), sniper
             );
         }
     }
@@ -341,7 +342,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
                 input.salt,
                 input.fees,
                 input.supply,
-                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, lpFeeBps: 0, taxDurationSeconds: 0}),
+                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}),
                 _antiSniperCfg(c)
             );
         }

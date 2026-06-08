@@ -12,16 +12,8 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         return false;
     }
 
-    // Non-tax `LivoToken` clones return `lpFeeBps == 0`, so the hook charges no LP fee on swaps.
-    // Override the per-suite expected-share helpers to 0 so the shared assertion paths in
-    // `UniswapV4ClaimFeesViewFunctionsBase` stay correct for the non-tax variant.
-    function _suiteLpCreatorShare(uint256) internal pure override returns (uint256) {
-        return 0;
-    }
-
-    function _suiteLpTreasuryShare(uint256) internal pure override returns (uint256) {
-        return 0;
-    }
+    // Non-tax V4 tokens charge the same 1% LP fee as tax tokens (set by the factory), so the base's
+    // tier-0 `_suiteLp*` helpers apply unchanged. Only the sell tax differs (zero for this variant).
 
     /// @notice When feeReceiver != tokenOwner at creation, getClaimable returns non-zero for feeReceiver
     function test_viewFunction_getClaimable_feeReceiverDifferentFromOwner() public {

@@ -202,35 +202,19 @@ contract LaunchpadBaseTests is Test {
     }
 
     /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`.
-    ///      Defaults `lpFeeBps` to 0 ⇒ hook applies its 100 bps default (1% LP fee).
-    /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`.
-    ///      Defaults `lpFeeBps` to 100 (1%) to mirror the production default for tax variants —
-    ///      the hook charges nothing when `lpFeeBps == 0`, so tests that just want "the normal
-    ///      LP fee on top of taxes" should not have to spell it out every time.
+    ///      The LP fee is not part of `TaxConfigInit`; the factory sets it (V4 positional overload =
+    ///      100 bps, struct overload = `UniV4Configs.lpFeeBps`, V2 = 0).
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
         returns (TaxConfigInit memory)
     {
-        return TaxConfigInit({
-            buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, lpFeeBps: 100, taxDurationSeconds: taxDurationSeconds
-        });
-    }
-
-    /// @dev Build a `TaxConfigInit` struct with an explicit `lpFeeBps` (e.g. 50 for 0.5% LP fee).
-    function _taxCfgWithLpFee(uint16 buyTaxBps, uint16 sellTaxBps, uint16 lpFeeBps, uint32 taxDurationSeconds)
-        internal
-        pure
-        returns (TaxConfigInit memory)
-    {
-        return TaxConfigInit({
-            buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, lpFeeBps: lpFeeBps, taxDurationSeconds: taxDurationSeconds
-        });
+        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
     }
 
     /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 disables dispatch).
     function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, lpFeeBps: 0, taxDurationSeconds: 0});
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
     }
 
     /// @dev Empty `AntiSniperConfigs` — sentinel for "no sniper protection" (protectionWindowSeconds == 0).
@@ -373,7 +357,6 @@ contract LaunchpadBaseTests is Test {
                 address(livoTaxToken),
                 address(livoTaxTokenSniper),
                 address(bondingCurve),
-                address(graduatorV4),
                 address(graduatorV4),
                 address(feeHandler),
                 address(creatorVaultFactory),

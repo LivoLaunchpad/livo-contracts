@@ -165,7 +165,6 @@ contract DeploymentsUnifiedFactories is Script {
                 d.taxTokenSniperImpl,
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor()

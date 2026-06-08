@@ -13,19 +13,14 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         and `LivoFactoryTaxTokenSniperProtected`.
 contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     /// @notice V4-specific config bundle for the struct-based `createToken` overload.
-    /// @dev `lpFeeBps` selects which graduator (and thus which `LivoSwapHook` instance) the token
-    ///      will use. Today only two values are accepted: `100` (routes to `GRADUATOR`) and `50`
-    ///      (routes to `GRADUATOR_0P5`). The fee itself is still hardcoded in each hook's bytecode;
-    ///      this field is the dispatch key, not a free-form bps value. `_validateUniv4Configs`
-    ///      enforces the allowlist so misconfiguration is loud.
+    /// @dev `lpFeeBps` is the per-swap LP fee `LivoSwapHook` charges. It is stored on the token (via
+    ///      `InitializeParams.lpFeeBps`) and read back by the hook through `getCurrentFees`. Only
+    ///      `100` (1%) and `50` (0.5%) are accepted; `_validateUniv4Configs` enforces the allowlist
+    ///      so misconfiguration is loud. A single graduator/hook pair serves both fees.
     struct UniV4Configs {
         bool renounceOwnership;
         uint16 lpFeeBps;
     }
-
-    /// @notice Graduator paired with the 50-bps `LivoSwapHook` variant. The 100-bps graduator lives
-    ///         in the abstract base as `GRADUATOR`.
-    address public immutable GRADUATOR_0P5;
 
     error InvalidLpFeeBps();
 
@@ -37,7 +32,6 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         address tokenImplTaxAntiSniper,
         address bondingCurve,
         address graduator,
-        address graduator0p5,
         address masterFeeHandler,
         address creatorVaultFactory,
         address[6] memory vaultBondingCurves
@@ -54,9 +48,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
             creatorVaultFactory,
             vaultBondingCurves
         )
-    {
-        GRADUATOR_0P5 = graduator0p5;
-    }
+    {}
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
@@ -73,7 +65,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
     /// @dev DEPRECATED: legacy positional overload, kept for backwards compatibility. New
     ///      integrations should use the struct-based overload that takes `creatorVaults`.
-    ///      Always deploys with the 100-bps graduator/hook pair and no creator vaults.
+    ///      Always deploys with the 100-bps LP fee and no creator vaults.
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -84,20 +76,18 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         TaxConfigInit calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
-        // Positional overload always uses the 100-bps graduator/hook pair — only the struct-based
-        // overload below exposes the 50-bps variant. See the "V4-only event-emission rule" comment
-        // above for why the emit lives here.
+        // Positional overload always uses the 100-bps LP fee — only the struct-based overload below
+        // exposes the 50-bps variant. See the "V4-only event-emission rule" comment above for why
+        // the emit lives here.
         _validateTotalFee(100, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
-        token = _createToken(
-            tokenSetup, tokenOwner, address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0)
-        );
+        token = _createToken(tokenSetup, tokenOwner, 100, supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0));
         emit LpFeeBpsSet(token, 100);
     }
 
-    /// @notice Struct-based overload without creator vaults. `univ4Configs.lpFeeBps` selects which
-    ///         graduator/hook pair to use (100 or 50).
+    /// @notice Struct-based overload without creator vaults. `univ4Configs.lpFeeBps` sets the
+    ///         per-swap LP fee stored on the token (100 or 50).
     /// @dev DEPRECATED: kept for backwards compatibility. New integrations should use the
     ///      struct-based overload that takes `creatorVaults`. Always deploys with no creator vaults.
     function createToken(
@@ -110,16 +100,21 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateUniv4Configs(univ4Configs);
         _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
         token = _createToken(
-            tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, new CreatorVault[](0)
+            tokenSetup,
+            tokenOwner,
+            univ4Configs.lpFeeBps,
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            new CreatorVault[](0)
         );
         emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
     }
 
     /// @notice Struct-based overload. Equivalent to the deprecated struct-based overload above, plus
-    ///         the `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects which
-    ///         graduator/hook pair to use (100 or 50). This is the current recommended overload.
+    ///         the `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` sets the
+    ///         per-swap LP fee stored on the token (100 or 50). This is the current recommended overload.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,
@@ -131,28 +126,26 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateUniv4Configs(univ4Configs);
         _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
         token = _createToken(
-            tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
+            tokenSetup,
+            tokenOwner,
+            univ4Configs.lpFeeBps,
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
         );
         emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    /// @dev V4-specific config validation. `lpFeeBps` is the dispatch key for graduator/hook
-    ///      selection — only the values matching a deployed hook variant are accepted, so a typo
-    ///      reverts instead of silently routing to the wrong graduator. Add further V4-only
-    ///      invariants here as the struct grows.
+    /// @dev V4-specific config validation. `lpFeeBps` is the per-swap LP fee stored on the token —
+    ///      only the two supported tiers (100 = 1%, 50 = 0.5%) are accepted, so a typo reverts
+    ///      instead of silently storing an unsupported fee. Add further V4-only invariants here as
+    ///      the struct grows.
     function _validateUniv4Configs(UniV4Configs calldata configs) internal pure {
         require(configs.lpFeeBps == 100 || configs.lpFeeBps == 50, InvalidLpFeeBps());
-    }
-
-    /// @dev Maps `lpFeeBps` to the graduator that pairs with the matching `LivoSwapHook` variant.
-    ///      Callers MUST pre-validate `lpFeeBps` via `_validateUniv4Configs`; this function trusts
-    ///      its input and treats anything other than 100 as the 50-bps branch.
-    function _resolveGraduator(uint16 lpFeeBps) internal view returns (address) {
-        return lpFeeBps == 100 ? address(GRADUATOR) : GRADUATOR_0P5;
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.

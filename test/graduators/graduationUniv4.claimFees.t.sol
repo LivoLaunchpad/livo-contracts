@@ -1265,22 +1265,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 contract BaseUniswapV4ClaimFees_NormalToken is BaseUniswapV4ClaimFeesBase {
     function setUp() public override {
         super.setUp();
-        // Uses default implementation (livoToken) from base
-    }
-
-    // Non-tax `LivoToken` clones currently return `lpFeeBps == 0` from `getCurrentFees()`, so the
-    // hook charges no LP fee on their swaps. Override the per-suite expected-share helpers to 0
-    // so the shared assertion paths stay correct.
-    function _suiteLpFeeBps() internal pure override returns (uint256) {
-        return 0;
-    }
-
-    function _suiteLpCreatorShare(uint256) internal pure override returns (uint256) {
-        return 0;
-    }
-
-    function _suiteLpTreasuryShare(uint256) internal pure override returns (uint256) {
-        return 0;
+        // Uses default implementation (livoToken) from base. Non-tax V4 tokens charge the same
+        // 1% LP fee as tax tokens (set by the factory's positional overload), so the base's
+        // tier-0 `_suiteLp*` helpers apply unchanged — only the sell tax differs (zero here).
     }
 }
 
