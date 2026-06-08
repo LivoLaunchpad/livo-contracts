@@ -15,6 +15,8 @@
 | LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
 | LivoSwapHook (0.5%)                          | `0x068241d20c59980AbEAeDED990d2441F05f5C0Cc` |
 | LivoQuoter                                   | `0x035693207fb473358b41A81FF09445dB1f3889D1` |
+| LivoLpFeeRouter (proxy)                      | _(not deployed)_                             |
+| LivoLpFeeRouter (impl)                       | _(not deployed)_                             |
 | LivoToken (impl)                             | `0x7F485770f390f8E98584B820d3e2C8d2091F9eE5` |
 | LivoTaxableTokenUniV4 (impl)                 | `0x88138021037Fb70921FcBC4183d151381BC434Cb` |
 | LivoTokenSniperProtected (impl)              | `0xA096628577928A8983eC3322904aC2aD5ba69a60` |

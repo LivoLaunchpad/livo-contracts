@@ -26,9 +26,9 @@ library DeploymentsSepolia {
 
     /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`. Splits LP fees between the
     ///         protocol treasury and the per-token creator using a marketcap-tiered policy.
-    address internal constant LP_FEE_ROUTER = address(0);
+    address internal constant LP_FEE_ROUTER = 0x0cEC114e1b8712EBd9d67a773381410F0F78985A;
     /// @notice Implementation currently set behind `LP_FEE_ROUTER`. Tracked for verification only.
-    address internal constant LP_FEE_ROUTER_IMPL = address(0);
+    address internal constant LP_FEE_ROUTER_IMPL = 0x215a7Cf7Cb881f52CA5350032ae56d27018A5889;
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x51711129C86b5f1D374B48F14f033cb38f6946F6;
