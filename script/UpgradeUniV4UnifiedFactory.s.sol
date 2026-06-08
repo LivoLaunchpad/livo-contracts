@@ -48,7 +48,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address launchpad;
         address bondingCurve;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
         address tokenImpl;
         address tokenSniperImpl;
@@ -63,7 +62,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 launchpad: DeploymentsMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsMainnet.BONDING_CURVE,
                 graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
@@ -80,7 +78,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 launchpad: DeploymentsSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsSepolia.BONDING_CURVE,
                 graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
                 tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
@@ -99,7 +96,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing (deploy it first)");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
@@ -115,13 +111,12 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address proxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(proxyOwner != address(0), "V4 proxy not initialized");
 
-        console.log("=== Livo UniV4 Unified Factory Upgrade (dual-graduator routing) ===");
+        console.log("=== Livo UniV4 Unified Factory Upgrade (single graduator) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", proxyOwner);
         console.log("V4 factory proxy:        ", d.factoryV4Proxy);
-        console.log("Graduator (100 bps):     ", d.graduatorV4);
-        console.log("Graduator (50 bps):      ", d.graduatorV4_0p5);
+        console.log("Graduator:               ", d.graduatorV4);
         console.log("");
 
         vm.startBroadcast();
