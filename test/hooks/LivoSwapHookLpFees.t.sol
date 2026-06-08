@@ -644,7 +644,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
     // ───────────────────────── overall fee cap ──────────────────────────────
 
-    /// @notice The hook caps the COMBINED fee (LP fee + active tax) at `MAX_OVERALL_FEE_BPS` (25%):
+    /// @notice The hook caps the COMBINED fee (LP fee + active tax) at `MAX_OVERALL_FEE_BPS` (20%):
     ///         a config exactly at the cap swaps fine, one bps over reverts with `FeeTooHigh`. The
     ///         two cases differ by a single bps, so the revert is attributable to the cap alone. The
     ///         factory can't configure a token above the cap (`MAX_TOTAL_FEE_BPS` = 5%), so the
@@ -652,13 +652,13 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     function test_swapReverts_whenCombinedFeeExceedsCap() public createDefaultTaxToken {
         _graduateToken();
 
-        // Exactly at the 25% cap (lpFee 0 + buyTax 2500): allowed.
-        _mockBuyFeeBps(testToken, 0, 2500);
+        // Exactly at the 20% cap (lpFee 0 + buyTax 2000): allowed.
+        _mockBuyFeeBps(testToken, 0, 2000);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
 
-        // One bps over the cap (lpFee 1 + buyTax 2500 = 2501): reverts with FeeTooHigh.
-        _mockBuyFeeBps(testToken, 1, 2500);
+        // One bps over the cap (lpFee 1 + buyTax 2000 = 2001): reverts with FeeTooHigh.
+        _mockBuyFeeBps(testToken, 1, 2000);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, false);
     }

@@ -61,8 +61,8 @@ contract LivoSwapHook is BaseHook {
     ///         so a misconfigured token can never overcharge users. The swap reverts if the token's
     ///         `lpFeeBps + taxBps` exceeds this; the hook stays agnostic to how the token splits the
     ///         budget between LP fee and taxes.
-    /// @dev    The high fee (25%) is to allow teams to have temporary high taxes which decay over some hours
-    uint16 private constant MAX_OVERALL_FEE_BPS = 2500; // 25%
+    /// @dev    The high fee (20%) is to allow teams to have temporary high taxes which decay over some hours
+    uint16 private constant MAX_OVERALL_FEE_BPS = 2000; // 20%
 
     /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized with generous headroom
     ///         over the router's worst-case path: the marketcap split, the treasury transfer, the
@@ -355,7 +355,7 @@ contract LivoSwapHook is BaseHook {
     /// @dev Grosses up an exact-output amount into the equivalent gross that yields it net of fee:
     ///      `amount * 10000 / (10000 - totalBps)`. Used on the ETH input of an exact-output buy and
     ///      the ETH output of an exact-output sell. Division is safe: `_currentFeeBps` caps
-    ///      `totalBps` at `MAX_OVERALL_FEE_BPS` (2500), well below `BASIS_POINTS` (10000), so the
+    ///      `totalBps` at `MAX_OVERALL_FEE_BPS` (2000), well below `BASIS_POINTS` (10000), so the
     ///      denominator never reaches zero.
     function _grossUp(uint256 amount, uint256 totalBps) private pure returns (uint256) {
         if (totalBps == 0) return amount;
