@@ -13,27 +13,25 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 
-/// @title Upgrade the LivoFactoryUniV4Unified proxy to the dual-graduator implementation
-/// @notice Rolls out the 0.5% LP-fee variant: the new `LivoFactoryUniV4Unified` constructor now
-///         takes both `graduator` (100 bps) and `graduator0p5` (50 bps) and routes `createToken`
-///         calls between them based on `UniV4Configs.lpFeeBps`. Only the V4 unified factory proxy
-///         is touched — the V2 unified factory is untouched, and the launchpad's
+/// @title Upgrade the LivoFactoryUniV4Unified proxy to the single-graduator implementation
+/// @notice Rolls out the consolidated LP-fee model: the `LivoFactoryUniV4Unified` constructor now
+///         takes a single `graduator`, and `UniV4Configs.lpFeeBps` (100 or 50) is stored on the
+///         token instead of selecting between graduator/hook pairs. Only the V4 unified factory
+///         proxy is touched — the V2 unified factory is untouched, and the launchpad's
 ///         `whitelistedFactories` mapping is unchanged because the proxy address doesn't move.
 ///
 ///         Single broadcast:
 ///         1. deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the addresses in
-///            the per-chain manifest (`src/config/deployments.{mainnet,sepolia}.sol`), including
-///            the new `GRADUATOR_UNIV4_0P5`.
+///            the per-chain manifest (`src/config/deployments.{mainnet,sepolia}.sol`).
 ///         2. calls `upgradeToAndCall(newImpl, "")` on the existing V4 factory proxy.
 ///
-///         No init data is passed — no new storage slots are added by this implementation
-///         (`GRADUATOR_0P5` is an immutable, baked into the bytecode).
+///         No init data is passed — no new storage slots are added by this implementation.
 ///
 ///         The broadcaster MUST be the proxy owner. If not, `_authorizeUpgrade` reverts with
 ///         `OwnableUnauthorizedAccount(broadcaster)` and no state changes.
 ///
-///         Pre-flight: `GRADUATOR_UNIV4_0P5` must already be deployed and recorded in the manifest.
-///         Use `script/DeployUniV4Graduator0p5.s.sol` first if it's still `address(0)`.
+///         Pre-flight: `GRADUATOR_UNIV4` must already be deployed (wired to the current `SWAP_HOOK`)
+///         and recorded in the manifest.
 ///
 ///         Post-broadcast: update `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/deployments.<chain>.sol`,
 ///         then run `just export-deployments`.
