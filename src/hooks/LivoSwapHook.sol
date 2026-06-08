@@ -18,7 +18,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLpFeeRouter} from "src/interfaces/ILivoLpFeeRouter.sol";
 
-/// @title LivoSwapHook
+/// @title LivoSwapHook V2
 /// @notice Uniswap V4 hook that collects LP fees and time-limited buy/sell taxes on swaps of
 ///         tokens graduated via LivoGraduatorUniswapV4.
 /// @dev Singleton, ownerless hook shared by every taxable token. Per-token LP-fee + tax rates come
@@ -41,6 +41,8 @@ import {ILivoLpFeeRouter} from "src/interfaces/ILivoLpFeeRouter.sol";
 ///      - exact-output buy:  ETH is the input, size unknown until the swap → settled in `afterSwap`.
 ///      - exact-input sell:  ETH is the output, size unknown until the swap → settled in `afterSwap`.
 contract LivoSwapHook is BaseHook {
+    uint256 public constant VERSION = 2;
+
     /// @notice LP fee router that splits forwarded fees between treasury and creator.
     /// @dev Resolved at swap time; upgrade the router via its own UUPS proxy without redeploying
     ///      this hook.
@@ -59,6 +61,7 @@ contract LivoSwapHook is BaseHook {
     ///         so a misconfigured token can never overcharge users. The swap reverts if the token's
     ///         `lpFeeBps + taxBps` exceeds this; the hook stays agnostic to how the token splits the
     ///         budget between LP fee and taxes.
+    /// @dev    The high fee (25%) is to allow teams to have temporary high taxes which decay over some hours
     uint16 private constant MAX_OVERALL_FEE_BPS = 2500; // 25%
 
     /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized with generous headroom
