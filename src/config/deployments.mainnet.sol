@@ -17,7 +17,7 @@ library DeploymentsMainnet {
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
     address internal constant MASTER_FEE_HANDLER = 0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC;
 
-    address internal constant SWAP_HOOK = 0x9cd5577f3A749dE70B13A676F4D56BD6fD6C00cc;
+    address internal constant SWAP_HOOK = 0xD257093d7a08b01216E9446f1322ab47e2A780cc;
     address internal constant QUOTER = 0x035693207fb473358b41A81FF09445dB1f3889D1;
 
     /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`. Splits LP fees between the

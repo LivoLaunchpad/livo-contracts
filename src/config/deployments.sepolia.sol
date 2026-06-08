@@ -18,7 +18,7 @@ library DeploymentsSepolia {
     address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
     address internal constant MASTER_FEE_HANDLER = 0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f;
 
-    address internal constant SWAP_HOOK = 0x8316eaA29DF0590dce30268a6762a44FF56F40CC;
+    address internal constant SWAP_HOOK = 0xea19e8A7526B9CcE5cc6788334F362A2ceB900cC;
     address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;
 
     /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`. Splits LP fees between the
