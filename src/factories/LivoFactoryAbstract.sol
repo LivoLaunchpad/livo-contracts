@@ -488,7 +488,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             graduator: graduator,
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER),
-            vaultAllocation: vaultAllocation
+            vaultAllocation: vaultAllocation,
+            // TODO(launchpad-fees step): thread per-token fee config from createToken. Defaults below
+            // reproduce the legacy global launchpad behavior (1% buy/sell, 100% to treasury).
+            buyFeeBps: 100,
+            sellFeeBps: 100,
+            treasuryShareBps: 10_000
         });
     }
 

@@ -62,7 +62,10 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
                 graduator: address(graduatorV2),
                 launchpad: address(this),
                 feeHandler: address(feeHandler),
-                vaultAllocation: 0
+                vaultAllocation: 0,
+                buyFeeBps: 100,
+                sellFeeBps: 100,
+                treasuryShareBps: 10_000
             })
         );
     }

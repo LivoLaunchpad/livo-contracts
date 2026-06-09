@@ -599,7 +599,10 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 graduator: address(graduator),
                 launchpad: launchpad,
                 feeHandler: feeHandler,
-                vaultAllocation: 0
+                vaultAllocation: 0,
+                buyFeeBps: 100,
+                sellFeeBps: 100,
+                treasuryShareBps: 10_000
             }),
             _defaultCfg()
         );
@@ -626,7 +629,10 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     graduator: address(graduator),
                     launchpad: launchpad,
                     feeHandler: feeHandler,
-                    vaultAllocation: 0
+                    vaultAllocation: 0,
+                    buyFeeBps: 100,
+                    sellFeeBps: 100,
+                    treasuryShareBps: 10_000
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -661,7 +667,10 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 graduator: address(graduator),
                 launchpad: launchpad,
                 feeHandler: feeHandler,
-                vaultAllocation: 0
+                vaultAllocation: 0,
+                buyFeeBps: 100,
+                sellFeeBps: 100,
+                treasuryShareBps: 10_000
             }),
             TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
@@ -689,7 +698,10 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     graduator: address(graduator),
                     launchpad: launchpad,
                     feeHandler: feeHandler,
-                    vaultAllocation: 0
+                    vaultAllocation: 0,
+                    buyFeeBps: 100,
+                    sellFeeBps: 100,
+                    treasuryShareBps: 10_000
                 }),
                 TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({

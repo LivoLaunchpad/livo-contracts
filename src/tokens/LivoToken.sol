@@ -38,6 +38,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
+    /// @notice Pre-graduation buy fee in basis points, read by the launchpad on every buy.
+    /// @dev Set at init; the token owner or launchpad owner can only lower it via `setLaunchpadFees`.
+    uint16 public buyFeeBps;
+
+    /// @notice Pre-graduation sell fee in basis points, read by the launchpad on every sell.
+    /// @dev Set at init; the token owner or launchpad owner can only lower it via `setLaunchpadFees`.
+    uint16 public sellFeeBps;
+
+    /// @notice Share of the pre-graduation fee routed to the treasury (bps); the remainder goes to
+    ///         the creator via `accrueFees`. Set at init and fixed (decrease-only setter touches rates only).
+    uint16 public treasuryShareBps;
+
     /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
     /// @dev Lives in transient storage: the factory calls `initialize` and `registerFees` in the
     ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
@@ -82,6 +94,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error Unauthorized();
+    error LaunchpadFeesCanOnlyDecrease();
 
     //////////////////////////////////////////////////////
 
@@ -127,6 +140,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         if (vaultAllocation > 0) {
             _mint(msg.sender, vaultAllocation);
         }
+
+        // Pre-graduation fee policy carried by the token and read by the launchpad each trade.
+        // Bounds are enforced upstream in the factory (and re-capped by the launchpad at read time).
+        // TODO make sure this is gas efficient. Storage packing? should we use a struct?
+        buyFeeBps = params.buyFeeBps;
+        sellFeeBps = params.sellFeeBps;
+        treasuryShareBps = params.treasuryShareBps;
+        emit LaunchpadFeesInitialized(params.buyFeeBps, params.sellFeeBps, params.treasuryShareBps);
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -171,6 +192,22 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit OwnershipTransferred(address(0));
     }
 
+    /// @notice Lowers the pre-graduation buy/sell fee rates. Decrease-only — raising either reverts
+    ///         with `LaunchpadFeesCanOnlyDecrease`. Equal values are accepted (no-op for that side).
+    ///         `treasuryShareBps` is untouched.
+    /// @dev Callable by the token owner OR the launchpad owner — same dual-auth pattern as the
+    ///      taxable variant's `setTaxBps`. On factory-deployed ownerless tokens (`owner == address(0)`)
+    ///      only the launchpad-owner branch is reachable, which is intentional.
+    function setLaunchpadFees(uint16 newBuyFeeBps, uint16 newSellFeeBps) external {
+        require(msg.sender == owner || msg.sender == launchpad.owner(), Unauthorized());
+        require(newBuyFeeBps <= buyFeeBps && newSellFeeBps <= sellFeeBps, LaunchpadFeesCanOnlyDecrease());
+
+        emit LaunchpadFeesUpdated(newBuyFeeBps, newSellFeeBps);
+
+        buyFeeBps = newBuyFeeBps;
+        sellFeeBps = newSellFeeBps;
+    }
+
     //////////////////////// fee accrual ////////////////////////
 
     /// @notice Registers this token's initial fee shares in the master fee handler.
@@ -195,6 +232,19 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+
+    /// @notice Returns the pre-graduation fee policy for a trade. The base implementation returns the
+    ///         statically configured rates; `virtual` so future variants can compute dynamic rates.
+    function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata trade)
+        external
+        view
+        virtual
+        returns (ILivoToken.LaunchpadFees memory)
+    {
+        return ILivoToken.LaunchpadFees({
+            feeBps: trade.isBuy ? buyFeeBps : sellFeeBps, treasuryShareBps: treasuryShareBps
+        });
+    }
 
     /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
     function maxTokenPurchase(address) external view virtual returns (uint256) {
