@@ -36,8 +36,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
 
     /// @notice Test that no taxes are charged before graduation when purchasing through launchpad
-    function test_noTaxesBeforeGraduation_launchpadPurchases() public createDefaultTaxToken {
-        uint256 creatorPendingTaxesBefore = _pendingTaxes(testToken, creator);
+    /// @dev Pre-graduation, the creator accrues their share of the LP/trading fee on every buy. The
+    ///      default tax token has buyTax = 0, so no buy tax adds on top (taxes still apply
+    ///      post-graduation). This is the per-token, creator-splittable pre-graduation fee model.
+    function test_creatorAccruesLpFeeShareBeforeGraduation_launchpadPurchases() public createDefaultTaxToken {
+        uint256 creatorPendingBefore = _pendingTaxes(testToken, creator);
 
         (,, uint256 tokensToReceive) = launchpad.quoteBuyTokensWithExactEth(testToken, 1 ether);
 
@@ -49,21 +52,24 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertEq(
             IERC20(testToken).balanceOf(buyer),
             buyerTokenBalanceBefore + tokensToReceive,
-            "Buyer should receive the correct amount of tokens, no taxes involved"
+            "Buyer should receive the quoted amount of tokens (LP fee only, buyTax is 0)"
         );
 
         vm.deal(alice, 2 ether);
         vm.prank(alice);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
 
-        // Verify token owner (creator) has no accrued taxes before graduation
+        // Each 1-ETH buy charges a 100 bps LP fee; the creator receives the non-treasury share. buyTax
+        // is 0, so nothing adds on top. Both buys accrue to the creator's claimable.
+        uint256 lpFeePerBuy = (1 ether * 100) / 10000;
+        uint256 creatorSharePerBuy = lpFeePerBuy - _treasuryShareOf(lpFeePerBuy);
         assertEq(
             _pendingTaxes(testToken, creator),
-            creatorPendingTaxesBefore,
-            "Creator should not accrue taxes before graduation"
+            creatorPendingBefore + 2 * creatorSharePerBuy,
+            "Creator accrues only the LP-fee share before graduation (buyTax is 0)"
         );
 
-        // Verify buyers received tokens (only launchpad fees deducted, no tax)
+        // Verify buyers received tokens (LP fee deducted, no buy tax)
         assertGt(IERC20(testToken).balanceOf(buyer), 0, "Buyer should have received tokens");
         assertGt(IERC20(testToken).balanceOf(alice), 0, "Alice should have received tokens");
 

@@ -370,9 +370,14 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         address[] memory tokens = _singleToken(testToken);
 
         uint256 claimableAfterGraduation = feeHandler.getClaimable(tokens, creator)[0];
+        // Right after graduation the creator's claimable is the graduation compensation PLUS the
+        // creator's share of the pre-graduation LP fee on the graduating buy.
+        uint256 gradMissing = (GRADUATION_THRESHOLD * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 gradTradingFee = (gradMissing * BASE_BUY_FEE_BPS) / 10000;
+        uint256 creatorGradTradingShare = gradTradingFee - _treasuryShareOf(gradTradingFee);
         assertEq(
             claimableAfterGraduation,
-            CREATOR_GRADUATION_COMPENSATION,
+            CREATOR_GRADUATION_COMPENSATION + creatorGradTradingShare,
             "claimable should be graduation deposit right after graduation"
         );
 
@@ -384,7 +389,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS - SELL_TAX_BPS)
         uint256 denominator = 10000 - 100 - SELL_TAX_BPS;
         uint256 sellCreatorShare = ethReceived * (50 + SELL_TAX_BPS) / denominator;
-        uint256 expectedClaimableAfterSell = CREATOR_GRADUATION_COMPENSATION + sellCreatorShare;
+        uint256 expectedClaimableAfterSell = claimableAfterGraduation + sellCreatorShare;
         assertApproxEqAbs(
             feeHandler.getClaimable(tokens, creator)[0],
             expectedClaimableAfterSell,

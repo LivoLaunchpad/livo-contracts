@@ -38,7 +38,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
         assertEq(state.releasedSupply, expectedTokensToReceive);
-        assertEq(treasury.balance, expectedEthFee);
+        assertEq(treasury.balance, _treasuryShareOf(expectedEthFee));
     }
 
     function testBuyTokensWithExactEth_multipleBuys() public createTestToken {
@@ -220,7 +220,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        assertEq(treasury.balance - treasuryBefore, expectedFee);
+        assertEq(treasury.balance - treasuryBefore, _treasuryShareOf(expectedFee));
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
@@ -242,7 +242,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 tokensReceived = IERC20(testToken).balanceOf(buyer);
 
         // Verify quote accuracy
-        assertEq(treasury.balance - treasuryBefore, quotedEthFee);
+        assertEq(treasury.balance - treasuryBefore, _treasuryShareOf(quotedEthFee));
         assertEq(stateAfter.ethCollected - stateBefore.ethCollected, quotedEthForPurchase);
         assertEq(tokensReceived, quotedTokens);
     }

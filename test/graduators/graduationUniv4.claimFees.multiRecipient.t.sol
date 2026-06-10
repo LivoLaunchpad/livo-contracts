@@ -107,12 +107,16 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
 
         uint256 totalShareholderFees = (shareholder1.balance - s1Before) + (shareholder2.balance - s2Before);
 
-        // graduation compensation (0.1 ETH) is routed through the master handler to shareholders
-        uint256 graduationCompensation = CREATOR_GRADUATION_COMPENSATION;
-        uint256 lpFeesOnly = totalShareholderFees - graduationCompensation;
+        // The graduation compensation AND the creator's share of the pre-graduation LP fee on the
+        // graduating buy are both routed through the master handler to shareholders.
+        uint256 gradMissing = (GRADUATION_THRESHOLD * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 gradTradingFee = (gradMissing * BASE_BUY_FEE_BPS) / 10000;
+        uint256 graduationDeposits =
+            CREATOR_GRADUATION_COMPENSATION + (gradTradingFee - _treasuryShareOf(gradTradingFee));
+        uint256 lpFeesOnly = totalShareholderFees - graduationDeposits;
 
         // Treasury LP share sent during swap by hook; shareholders get creator's 0.5% share
-        assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 1, "shareholder LP fees should be 0.5% of buy amount");
+        assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 2, "shareholder LP fees should be 0.5% of buy amount");
     }
 
     /// @notice getClaimable on master handler returns correct values before claim

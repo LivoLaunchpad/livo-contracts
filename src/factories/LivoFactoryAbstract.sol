@@ -339,10 +339,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
     ///      calldata args — can build a `TokenSetup` in memory and call this same umbrella. The
     ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
-    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/
-    ///      `_initializeTaxToken`/`_initializeNonTaxToken`/`_finalizeCreation` to accept `memory`
-    ///      for those fields too. Once the legacy overload is removed, switch `tokenSetup` (and
-    ///      the cascaded fields) back to `calldata` to skip the one-time copy (~100–250 gas/deploy).
+    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`
+    ///      to accept `memory` for those fields too. Once the legacy overload is removed, switch
+    ///      `tokenSetup` (and the cascaded fields) back to `calldata` to skip the one-time copy
+    ///      (~100–250 gas/deploy).
     function _createToken(
         TokenSetup memory tokenSetup,
         address tokenOwner,
@@ -463,6 +463,18 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         require(bytes(symbol).length <= 96, InvalidNameOrSymbol());
     }
 
+    /// @notice Pre-graduation LP/trading fee (bps) the launchpad charges on bonding-curve trades for a
+    ///         token whose post-graduation venue is `graduator`. For V4 this equals the selected hook's
+    ///         LP fee, so the rate is identical before and after graduation; V2 has no post-graduation
+    ///         LP fee and returns a fixed pre-graduation rate. Split between treasury and creator by
+    ///         `_launchpadTreasuryShareBps`.
+    /// @dev Inverse of the concrete factory's graduator selection — keep in sync with `_resolveGraduator`.
+    function _launchpadLpFeeBps(address graduator) internal view virtual returns (uint16);
+
+    /// @notice Share of the pre-graduation LP fee routed to the treasury (bps); the remainder goes to
+    ///         the creator. Venue-specific protocol policy fixed at the factory level, not deployer-set.
+    function _launchpadTreasuryShareBps() internal pure virtual returns (uint16);
+
     /// @dev Clones the resolved token implementation deterministically, enforces the `0x1110` vanity
     ///      suffix, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
     ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
@@ -475,7 +487,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
-        uint256 vaultAllocation
+        uint256 vaultAllocation,
+        TaxConfigInit calldata taxCfg
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -491,13 +504,15 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER),
             vaultAllocation: vaultAllocation,
-            // TODO(launchpad-fees step): thread per-token fee config from createToken. Defaults below
-            // reproduce the legacy global launchpad behavior (1% LP fee, 100% to treasury, no tax).
-            // TODO this doesn't read the token configs . needs a fix
-            lpFeeBps: 100,
-            treasuryShareBps: 10_000,
-            taxBuyBps: 0,
-            taxSellBps: 0
+            // Pre-graduation fee policy carried by the token and read by the launchpad each trade. The
+            // LP fee equals the token's post-graduation LP fee (V4: the selected hook fee; V2: a fixed
+            // pre-graduation rate, as V2 has no post-graduation LP fee). The treasury/creator split is
+            // venue-specific protocol policy. The creator tax mirrors the configured `TaxConfigInit` so
+            // it applies identically pre- and post-graduation (0 for non-tax tokens, where taxCfg is empty).
+            lpFeeBps: _launchpadLpFeeBps(graduator),
+            treasuryShareBps: _launchpadTreasuryShareBps(),
+            taxBuyBps: taxCfg.buyTaxBps,
+            taxSellBps: taxCfg.sellTaxBps
         });
     }
 
@@ -553,11 +568,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         return hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
     }
 
-    /// @dev Resolves the implementation via `_previewTokenImplementation` and then routes to the
-    ///      tax or non-tax sub-helper. Splitting by family keeps each sub-helper's stack frame
-    ///      small enough to compile without `via_ir`. Callers (`createToken` on the derived
-    ///      factory) are responsible for invoking `LAUNCHPAD.launchToken` and `_finalizeCreation`
-    ///      (which registers the token's fee config with the master handler) after this returns.
+    /// @dev Resolves the implementation for the `(taxCfg, antiSniperCfg)` pair, clones it, and runs
+    ///      the matching `initialize` overload. The four combinations dispatch across two interface
+    ///      families: the tax family through the venue-agnostic `ILivoTaxableToken[SniperProtected]`
+    ///      interfaces, the non-tax family through `LivoToken` / `LivoTokenSniperProtected` directly.
+    ///      Impl resolution shares `_previewTokenImplementation` with the public preview, so a salt
+    ///      that previews to a `0x1110` address also clones to one. Callers (`createToken` on the
+    ///      derived factory) invoke `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers
+    ///      the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(
         string memory name,
         string memory symbol,
@@ -569,61 +587,25 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
+
+        ILivoToken.InitializeParams memory params;
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, taxCfg);
+
+        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            token = _initializeTaxToken(
-                impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, taxCfg, antiSniperCfg
-            );
+            // taxCfg is non-empty; the token's pre-graduation tax fields are set from it in `_cloneAndCreateToken`.
+            if (hasAntiSniper) {
+                ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
+            } else {
+                ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
+            }
         } else {
-            token =
-                _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, antiSniperCfg);
-        }
-    }
-
-    /// @dev Clones the resolved tax implementation (passed in by `_dispatchAndInitialize` so the
-    ///      preview/create dispatch share a single source of truth) and dispatches into the 2-arg
-    ///      or 3-arg `initialize` overload through the venue-agnostic
-    ///      `ILivoTaxableToken[SniperProtected]` interfaces.
-    function _initializeTaxToken(
-        address impl,
-        string memory name,
-        string memory symbol,
-        bytes32 salt,
-        address tokenOwner,
-        address graduator,
-        uint256 vaultAllocation,
-        TaxConfigInit calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) internal returns (address token) {
-        ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
-
-        if (_isAntiSniperConfigured(antiSniperCfg)) {
-            ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
-        } else {
-            ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
-        }
-    }
-
-    /// @dev Clones the resolved non-tax implementation (passed in by `_dispatchAndInitialize`) and
-    ///      runs the appropriate `initialize` overload. Identical between V2 and V4 because both
-    ///      venues share the same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
-    function _initializeNonTaxToken(
-        address impl,
-        string memory name,
-        string memory symbol,
-        bytes32 salt,
-        address tokenOwner,
-        address graduator,
-        uint256 vaultAllocation,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) internal returns (address token) {
-        ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
-
-        if (_isAntiSniperConfigured(antiSniperCfg)) {
-            LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
-        } else {
-            LivoToken(token).initialize(params);
+            // non-tax path: taxCfg is empty (validated), so the pre-graduation tax fields resolve to 0.
+            if (hasAntiSniper) {
+                LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
+            } else {
+                LivoToken(token).initialize(params);
+            }
         }
     }
 

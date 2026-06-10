@@ -27,6 +27,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         in the abstract base as `GRADUATOR`.
     address public immutable GRADUATOR_0P5;
 
+    /// @notice Treasury share of the V4 pre-graduation LP fee (bps): 60 treasury / 40 creator.
+    uint16 internal constant V4_LAUNCHPAD_TREASURY_SHARE_BPS = 6_000;
+
     error InvalidLpFeeBps();
 
     constructor(
@@ -153,6 +156,18 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///      its input and treats anything other than 100 as the 50-bps branch.
     function _resolveGraduator(uint16 lpFeeBps) internal view returns (address) {
         return lpFeeBps == 100 ? address(GRADUATOR) : GRADUATOR_0P5;
+    }
+
+    /// @dev Pre-graduation launchpad LP fee = the token's post-graduation hook fee. Inverse of
+    ///      `_resolveGraduator`: the 100-bps graduator (`GRADUATOR`) → 100 bps, the 50-bps graduator
+    ///      (`GRADUATOR_0P5`) → 50 bps. Keep in sync if a new graduator/hook fee variant is added.
+    function _launchpadLpFeeBps(address graduator) internal view override returns (uint16) {
+        return graduator == address(GRADUATOR) ? uint16(100) : uint16(50);
+    }
+
+    /// @inheritdoc LivoFactoryAbstract
+    function _launchpadTreasuryShareBps() internal pure override returns (uint16) {
+        return V4_LAUNCHPAD_TREASURY_SHARE_BPS;
     }
 
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.

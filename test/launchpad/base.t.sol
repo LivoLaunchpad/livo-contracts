@@ -358,8 +358,27 @@ contract LaunchpadBaseTests is Test {
 
     function _graduateToken() internal {
         uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
-        uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        // Gross up by the token's ACTUAL pre-graduation buy fee (LP fee + buy tax), so tax tokens —
+        // whose total fee exceeds `BASE_BUY_FEE_BPS` — still put enough into reserves to graduate.
+        uint256 buyFeeBps = _currentBuyFeeBps(testToken);
+        uint256 missingForGraduation = ((GRADUATION_THRESHOLD - ethReserves) * 10000) / (10000 - buyFeeBps);
         _launchpadBuy(testToken, missingForGraduation);
+    }
+
+    /// @dev The token's current pre-graduation buy fee in bps (LP fee + buy tax), as the launchpad
+    ///      reads it per trade via `getLaunchpadFees`.
+    function _currentBuyFeeBps(address token) internal view returns (uint256) {
+        TokenState memory state = launchpad.getTokenState(token);
+        ILivoToken.LaunchpadFees memory f = ILivoToken(token)
+            .getLaunchpadFees(
+                ILivoToken.LaunchpadTrade({
+                    isBuy: true,
+                    trader: address(0),
+                    ethReserves: state.ethCollected,
+                    releasedSupply: state.releasedSupply
+                })
+            );
+        return uint256(f.lpFeeBps) + f.taxBps;
     }
 
     function _launchpadBuy(address token, uint256 value) internal {
@@ -370,6 +389,14 @@ contract LaunchpadBaseTests is Test {
 
     function _increaseWithFees(uint256 ethIntoReserves) internal pure returns (uint256 ethBuy) {
         ethBuy = (ethIntoReserves * 10000) / (10000 - BASE_BUY_FEE_BPS);
+    }
+
+    /// @dev Treasury's share of a pre-graduation LP fee on `testToken`; the remainder accrues to the
+    ///      creator. The launchpad splits the LP fee by the token's `treasuryShareBps` (a per-venue
+    ///      constant: 5000 for V2, 6000 for V4). Assumes a non-tax token, where the whole trading fee
+    ///      is LP fee.
+    function _treasuryShareOf(uint256 lpFee) internal view returns (uint256) {
+        return lpFee * LivoToken(testToken).treasuryShareBps() / 10_000;
     }
 }
 

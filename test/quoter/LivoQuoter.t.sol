@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {LivoQuoter} from "src/LivoQuoter.sol";
 import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
@@ -416,16 +417,18 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         _assertTreasuryFeeDelta(token, treasuryEthBefore, q.ethFee);
     }
 
-    /// @dev Treasury fee assertion that tolerates graduation triggering. When a buy crosses the
-    ///      graduation threshold, the launchpad emits the trading fee plus the graduator's
-    ///      treasury fee (~0.20 ETH for V4). The quoter's `q.ethFee` only counts the trading fee,
-    ///      so we accept any delta ≥ the trading fee in the post-graduation case.
+    /// @dev Treasury fee assertion that tolerates graduation triggering. The launchpad now splits the
+    ///      LP fee between treasury and creator, so the treasury only receives `treasuryShareBps` of
+    ///      the quoted fee (these tokens are non-tax, so `q.ethFee` is entirely LP fee). When a buy
+    ///      crosses the graduation threshold, the launchpad also pays the graduator's treasury fee
+    ///      (~0.20 ETH for V4), so we accept any delta ≥ the treasury's trading-fee share post-graduation.
     function _assertTreasuryFeeDelta(address token, uint256 treasuryBefore, uint256 quotedFee) internal view {
         uint256 delta = treasury.balance - treasuryBefore;
+        uint256 expectedTreasuryShare = quotedFee * LivoToken(token).treasuryShareBps() / 10_000;
         if (launchpad.getTokenState(token).graduated) {
-            assertGe(delta, quotedFee, "treasury fee delta below quoted (graduated)");
+            assertGe(delta, expectedTreasuryShare, "treasury fee delta below quoted (graduated)");
         } else {
-            assertEq(delta, quotedFee, "treasury fee delta");
+            assertEq(delta, expectedTreasuryShare, "treasury fee delta");
         }
     }
 

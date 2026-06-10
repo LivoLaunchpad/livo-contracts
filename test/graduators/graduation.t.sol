@@ -75,12 +75,19 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         _tokens[0] = testToken;
         uint256 claimableBefore = tokenFeeHandler.getClaimable(_tokens, creator)[0];
 
+        // The graduating buy also pays an LP fee; the creator's share of it accrues to the same
+        // claimable bucket as the graduation compensation.
+        uint256 missingForGraduation =
+            _increaseWithFees(GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected);
+        uint256 tradingFee = (missingForGraduation * BASE_BUY_FEE_BPS) / 10000;
+        uint256 creatorTradingShare = tradingFee - _treasuryShareOf(tradingFee);
+
         _graduateToken();
 
         uint256 claimableAfter = tokenFeeHandler.getClaimable(_tokens, creator)[0];
         assertEq(
             claimableAfter,
-            claimableBefore + _creatorCompensation(),
+            claimableBefore + _creatorCompensation() + creatorTradingShare,
             "Creator claimable should include graduation compensation"
         );
     }
@@ -143,7 +150,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         // Calculate the ETH that will be spent to graduate (for trading fee calculation)
         uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
         uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
-        uint256 expectedTradingFee = (missingForGraduation * BASE_BUY_FEE_BPS) / 10000;
+        // Treasury only collects its share of the trading fee; the creator gets the remainder.
+        uint256 expectedTreasuryTradingFee = _treasuryShareOf((missingForGraduation * BASE_BUY_FEE_BPS) / 10000);
 
         _graduateToken();
 
@@ -153,7 +161,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         assertEq(
             feeCollected,
-            (GRADUATION_FEE - _creatorCompensation() - _triggererCompensation()) + expectedTradingFee,
+            (GRADUATION_FEE - _creatorCompensation() - _triggererCompensation()) + expectedTreasuryTradingFee,
             "Treasury should receive graduation fee share plus trading fees"
         );
     }
@@ -246,7 +254,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
-        uint256 expectedTradingFees = ((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
+        uint256 expectedTradingFees = _treasuryShareOf(((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000);
         assertEq(treasury.balance - treasuryEthBefore, expectedTradingFees, "Treasury should collect expected fees");
 
         uint256 treasuryBalanceBeforeGraduation = treasury.balance;
@@ -257,7 +265,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
 
-        uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
+        // Treasury only collects its share of the trading fee on the graduating buy.
+        uint256 tradingFee = _treasuryShareOf((BASE_BUY_FEE_BPS * purchaseValue) / 10000);
 
         uint256 totalTreasuryChange = treasury.balance - treasuryBalanceBeforeGraduation;
 
