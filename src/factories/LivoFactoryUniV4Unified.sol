@@ -187,4 +187,25 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateTaxConfig(taxCfg);
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
+
+    /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer buy.
+    ///         Pass the same `taxCfg` and `univ4Configs` you'll pass to `createToken`; the buy fee is
+    ///         derived from them (the chosen hook LP fee plus the buy tax) so the frontend doesn't
+    ///         recompute it.
+    /// @param tokenAmount Amount of tokens to receive
+    /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults (0 for none); selects
+    ///        the same curve `createToken` uses. See `_quoteBuyOnDeploy`.
+    /// @param taxCfg The tax config the token will be created with; only `buyTaxBps` affects the buy.
+    /// @param univ4Configs The V4 config the token will be created with; `lpFeeBps` is the pre- and
+    ///        post-graduation LP fee. Validated here so the fee is one of the supported hook variants.
+    /// @return totalEthNeeded The msg.value to pass to createToken
+    function quoteBuyOnDeploy(
+        uint256 tokenAmount,
+        uint256 totalLockedInVaultsBps,
+        TaxConfigInit calldata taxCfg,
+        UniV4Configs calldata univ4Configs
+    ) external view returns (uint256 totalEthNeeded) {
+        _validateUniv4Configs(univ4Configs);
+        return _quoteBuyOnDeploy(tokenAmount, totalLockedInVaultsBps, uint256(univ4Configs.lpFeeBps) + taxCfg.buyTaxBps);
+    }
 }

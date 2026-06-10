@@ -372,8 +372,11 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         ILivoFactory.CreatorVault[] memory vaults = _one(_vault(vaultOwner, 3000, 0, 1 days));
         uint256 tokenAmount = 50_000_000e18; // 5% of supply, under the 10% buy-on-deploy cap
 
-        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000);
-        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount);
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+
+        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000, _emptyTaxCfg(), cfg);
+        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 0, _emptyTaxCfg(), cfg);
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 
@@ -383,8 +386,6 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
             feeShares: _fs(creator)
         });
-        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
 
         vm.deal(creator, ethVaultAware);
         vm.prank(creator);

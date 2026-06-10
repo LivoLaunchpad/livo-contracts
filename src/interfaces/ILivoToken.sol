@@ -54,8 +54,7 @@ interface ILivoToken is IERC20 {
         bool isBuy; // true for buys, false for sells
         address trader; // original caller of the launchpad trade
         uint256 ethReserves; // launchpad ETH reserves for this token, pre-trade
-        // TODO: review if we should have instead `tokenReserves` (pre-trade) and derive circulating supply from `tokenReserves` + `releasedSupply`
-        uint256 releasedSupply; // circulating supply sold by the launchpad, pre-trade
+        uint256 releasedSupply; // circulating supply sold, pre-trade
     }
 
     /// @notice Pre-graduation fee policy returned by the token for a given trade. The launchpad always

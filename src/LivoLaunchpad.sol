@@ -147,7 +147,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         // tax = ethFee - lpFee
         _settleFee(token, lpFee, ethFee - lpFee, treasuryShareBps);
 
-        // TODO consider changing this event signature to include the taxes, feesplit, etc ... watch out for integrators. Consult the developer first
+        // Fee breakdown (lpFee/tax/split) is intentionally NOT included here: it is emitted in the same tx
+        // via LpFeesAccrued/CreatorTaxesAccrued, which mirror LivoSwapHook so the indexer aggregates pre- and
+        // post-graduation fees through one code path.
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
         // if the graduation criteria is met, graduation happens automatically
@@ -387,7 +389,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         uint256 creatorShare = lpFee - treasuryShare;
         uint256 creatorTotal = creatorShare + tax;
 
-        // TODO review this event (any missing args?)
         emit LpFeesAccrued(token, creatorShare, treasuryShare);
         if (tax > 0) emit CreatorTaxesAccrued(token, tax);
 
