@@ -8,17 +8,21 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {Vm} from "forge-std/Vm.sol";
 
 /// @title LivoToken launchpad-phase fee config — base-token unit tests
-/// @notice Exercises the per-token pre-graduation fee policy that the launchpad reads each trade:
-///         the `getLaunchpadFees` view, the init-time config + event, and the decrease-only setter.
+/// @notice Pre-graduation fee policy: an LP/trading fee (split treasury/creator by `treasuryShareBps`)
+///         plus an optional creator tax (100% to creator). Exercises `getLaunchpadFees`, the init
+///         event, and the decrease-only setter.
 contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
     LivoToken internal token;
 
     /// @dev Clones the base LivoToken impl and initializes it with a launchpad-phase fee config.
-    ///      Direct clone+init (no factory) so arbitrary fee configs can be exercised in isolation.
-    function _cloneAndInit(uint16 buyFee, uint16 sellFee, uint16 treasuryShare, address tokenOwner_)
-        internal
-        returns (LivoToken t)
-    {
+    function _cloneAndInit(
+        uint16 lpBuy,
+        uint16 lpSell,
+        uint16 treasuryShare,
+        uint16 taxBuy,
+        uint16 taxSell,
+        address tokenOwner_
+    ) internal returns (LivoToken t) {
         t = LivoToken(Clones.clone(address(livoToken)));
         t.initialize(
             ILivoToken.InitializeParams({
@@ -29,29 +33,35 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 launchpad: address(launchpad),
                 feeHandler: address(feeHandler),
                 vaultAllocation: 0,
-                buyFeeBps: buyFee,
-                sellFeeBps: sellFee,
-                treasuryShareBps: treasuryShare
+                lpBuyFeeBps: lpBuy,
+                lpSellFeeBps: lpSell,
+                treasuryShareBps: treasuryShare,
+                taxBuyBps: taxBuy,
+                taxSellBps: taxSell
             })
         );
     }
 
-    modifier initToken(uint16 buyFee, uint16 sellFee, uint16 treasuryShare) {
-        token = _cloneAndInit(buyFee, sellFee, treasuryShare, creator);
+    modifier initToken(uint16 lpBuy, uint16 lpSell, uint16 treasuryShare, uint16 taxBuy, uint16 taxSell) {
+        token = _cloneAndInit(lpBuy, lpSell, treasuryShare, taxBuy, taxSell, creator);
         _;
     }
 
-    function _trade(bool isBuy) internal pure returns (ILivoToken.LaunchpadTrade memory) {
-        return ILivoToken.LaunchpadTrade({
-            isBuy: isBuy, trader: address(0), ethAmount: 1 ether, tokenAmount: 0, ethReserves: 0, releasedSupply: 0
-        });
+    function _fees(bool isBuy) internal view returns (ILivoToken.LaunchpadFees memory) {
+        return token.getLaunchpadFees(
+            ILivoToken.LaunchpadTrade({
+                isBuy: isBuy, trader: address(0), ethAmount: 1 ether, tokenAmount: 0, ethReserves: 0, releasedSupply: 0
+            })
+        );
     }
 
-    /// @dev when a token is initialized with a fee config, then the fee fields are stored
-    function test_init_assertStoresLaunchpadFees() public initToken(150, 200, 4000) {
-        assertEq(token.buyFeeBps(), 150, "buyFeeBps");
-        assertEq(token.sellFeeBps(), 200, "sellFeeBps");
-        assertEq(token.treasuryShareBps(), 4000, "treasuryShareBps");
+    /// @dev when a token is initialized, then all five pre-graduation fee fields are stored
+    function test_init_assertStoresFees() public initToken(150, 200, 4000, 30, 40) {
+        assertEq(token.lpBuyFeeBps(), 150, "lpBuy");
+        assertEq(token.lpSellFeeBps(), 200, "lpSell");
+        assertEq(token.treasuryShareBps(), 4000, "treasuryShare");
+        assertEq(token.taxBuyBps(), 30, "taxBuy");
+        assertEq(token.taxSellBps(), 40, "taxSell");
     }
 
     /// @dev when a token is initialized, then it emits LaunchpadFeesInitialized with the config
@@ -68,99 +78,104 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 launchpad: address(launchpad),
                 feeHandler: address(feeHandler),
                 vaultAllocation: 0,
-                buyFeeBps: 150,
-                sellFeeBps: 200,
-                treasuryShareBps: 4000
+                lpBuyFeeBps: 150,
+                lpSellFeeBps: 200,
+                treasuryShareBps: 4000,
+                taxBuyBps: 30,
+                taxSellBps: 40
             })
         );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 sig = keccak256("LaunchpadFeesInitialized(uint16,uint16,uint16)");
+        bytes32 sig = keccak256("LaunchpadFeesInitialized(uint16,uint16,uint16,uint16,uint16)");
         bool found;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].emitter == address(t) && logs[i].topics[0] == sig) {
-                (uint16 b, uint16 s, uint16 ts) = abi.decode(logs[i].data, (uint16, uint16, uint16));
-                assertEq(b, 150, "event buyFeeBps");
-                assertEq(s, 200, "event sellFeeBps");
-                assertEq(ts, 4000, "event treasuryShareBps");
+                (uint16 a, uint16 b, uint16 c, uint16 d, uint16 e) =
+                    abi.decode(logs[i].data, (uint16, uint16, uint16, uint16, uint16));
+                assertEq(a, 150, "lpBuy");
+                assertEq(b, 200, "lpSell");
+                assertEq(c, 4000, "treasuryShare");
+                assertEq(d, 30, "taxBuy");
+                assertEq(e, 40, "taxSell");
                 found = true;
             }
         }
         assertTrue(found, "LaunchpadFeesInitialized not emitted");
     }
 
-    /// @dev when getLaunchpadFees is queried for a buy, then it returns the buy fee + treasury share
-    function test_getLaunchpadFees_buy_assertReturnsBuyFee() public initToken(150, 200, 4000) {
-        ILivoToken.LaunchpadFees memory f = token.getLaunchpadFees(_trade(true));
-        assertEq(f.feeBps, 150, "buy feeBps");
+    /// @dev when getLaunchpadFees is queried for a buy, then it returns lpBuy + treasuryShare + taxBuy
+    function test_getLaunchpadFees_buy() public initToken(150, 200, 4000, 30, 40) {
+        ILivoToken.LaunchpadFees memory f = _fees(true);
+        assertEq(f.lpFeeBps, 150, "lpFeeBps");
         assertEq(f.treasuryShareBps, 4000, "treasuryShareBps");
+        assertEq(f.taxBps, 30, "taxBps");
     }
 
-    /// @dev when getLaunchpadFees is queried for a sell, then it returns the sell fee + treasury share
-    function test_getLaunchpadFees_sell_assertReturnsSellFee() public initToken(150, 200, 4000) {
-        ILivoToken.LaunchpadFees memory f = token.getLaunchpadFees(_trade(false));
-        assertEq(f.feeBps, 200, "sell feeBps");
+    /// @dev when getLaunchpadFees is queried for a sell, then it returns lpSell + treasuryShare + taxSell
+    function test_getLaunchpadFees_sell() public initToken(150, 200, 4000, 30, 40) {
+        ILivoToken.LaunchpadFees memory f = _fees(false);
+        assertEq(f.lpFeeBps, 200, "lpFeeBps");
         assertEq(f.treasuryShareBps, 4000, "treasuryShareBps");
+        assertEq(f.taxBps, 40, "taxBps");
     }
 
-    /// @dev when the launchpad owner lowers both fee rates, then storage updates and the event emits
-    function test_setLaunchpadFees_byLaunchpadOwner_assertLowersBoth() public initToken(150, 200, 4000) {
-        // token owned by `creator`; launchpad owner is `admin`. Both auth branches are valid; test admin.
+    /// @dev when the launchpad owner lowers all rates, then storage updates and the event emits
+    function test_setLaunchpadFees_byLaunchpadOwner_lowersAll() public initToken(150, 200, 4000, 30, 40) {
         vm.expectEmit(true, true, true, true, address(token));
-        emit ILivoToken.LaunchpadFeesUpdated(100, 120);
+        emit ILivoToken.LaunchpadFeesUpdated(100, 120, 10, 20);
 
         vm.prank(admin);
-        token.setLaunchpadFees(100, 120);
+        token.setLaunchpadFees(100, 120, 10, 20);
 
-        assertEq(token.buyFeeBps(), 100, "buyFeeBps");
-        assertEq(token.sellFeeBps(), 120, "sellFeeBps");
+        assertEq(token.lpBuyFeeBps(), 100, "lpBuy");
+        assertEq(token.lpSellFeeBps(), 120, "lpSell");
+        assertEq(token.taxBuyBps(), 10, "taxBuy");
+        assertEq(token.taxSellBps(), 20, "taxSell");
     }
 
-    /// @dev when the token owner lowers a fee rate, then it succeeds
-    function test_setLaunchpadFees_byTokenOwner_assertLowers() public initToken(150, 200, 4000) {
+    /// @dev when the token owner lowers rates, then it succeeds
+    function test_setLaunchpadFees_byTokenOwner() public initToken(150, 200, 4000, 30, 40) {
         vm.prank(creator);
-        token.setLaunchpadFees(150, 100);
-        assertEq(token.sellFeeBps(), 100, "sellFeeBps");
+        token.setLaunchpadFees(150, 200, 0, 0);
+        assertEq(token.taxBuyBps(), 0, "taxBuy");
+        assertEq(token.taxSellBps(), 0, "taxSell");
     }
 
     /// @dev when a non-owner calls setLaunchpadFees, then it reverts and storage is untouched
-    function test_setLaunchpadFees_byNonOwner_assertReverts() public initToken(150, 200, 4000) {
+    function test_setLaunchpadFees_byNonOwner_reverts() public initToken(150, 200, 4000, 30, 40) {
         vm.prank(alice);
         vm.expectRevert(LivoToken.Unauthorized.selector);
-        token.setLaunchpadFees(0, 0);
+        token.setLaunchpadFees(0, 0, 0, 0);
 
-        assertEq(token.buyFeeBps(), 150, "buyFeeBps untouched");
-        assertEq(token.sellFeeBps(), 200, "sellFeeBps untouched");
+        assertEq(token.lpBuyFeeBps(), 150, "lpBuy untouched");
     }
 
-    /// @dev when setLaunchpadFees raises the buy fee, then it reverts (decrease-only)
-    function test_setLaunchpadFees_buyIncrease_assertReverts() public initToken(150, 200, 4000) {
+    /// @dev when setLaunchpadFees raises the LP fee, then it reverts (decrease-only)
+    function test_setLaunchpadFees_lpIncrease_reverts() public initToken(150, 200, 4000, 30, 40) {
         vm.prank(admin);
         vm.expectRevert(LivoToken.LaunchpadFeesCanOnlyDecrease.selector);
-        token.setLaunchpadFees(151, 200);
-
-        assertEq(token.buyFeeBps(), 150, "untouched");
+        token.setLaunchpadFees(151, 200, 30, 40);
     }
 
-    /// @dev when setLaunchpadFees raises the sell fee, then it reverts (decrease-only)
-    function test_setLaunchpadFees_sellIncrease_assertReverts() public initToken(150, 200, 4000) {
+    /// @dev when setLaunchpadFees raises a tax, then it reverts (decrease-only)
+    function test_setLaunchpadFees_taxIncrease_reverts() public initToken(150, 200, 4000, 30, 40) {
         vm.prank(admin);
         vm.expectRevert(LivoToken.LaunchpadFeesCanOnlyDecrease.selector);
-        token.setLaunchpadFees(150, 201);
+        token.setLaunchpadFees(150, 200, 30, 41);
     }
 
-    /// @dev when setLaunchpadFees passes equal values, then it succeeds (no-op per side)
-    function test_setLaunchpadFees_equalValues_assertSucceeds() public initToken(150, 200, 4000) {
+    /// @dev when setLaunchpadFees passes equal values, then it succeeds (no-op)
+    function test_setLaunchpadFees_equal_ok() public initToken(150, 200, 4000, 30, 40) {
         vm.prank(admin);
-        token.setLaunchpadFees(150, 200);
-        assertEq(token.buyFeeBps(), 150);
-        assertEq(token.sellFeeBps(), 200);
+        token.setLaunchpadFees(150, 200, 30, 40);
+        assertEq(token.lpBuyFeeBps(), 150, "lpBuy");
     }
 
-    /// @dev when setLaunchpadFees lowers rates, then treasuryShareBps is left unchanged
-    function test_setLaunchpadFees_assertTreasuryShareUnchanged() public initToken(150, 200, 4000) {
+    /// @dev when setLaunchpadFees lowers rates, then treasuryShareBps is unchanged
+    function test_setLaunchpadFees_treasuryShareUnchanged() public initToken(150, 200, 4000, 30, 40) {
         vm.prank(admin);
-        token.setLaunchpadFees(10, 10);
-        assertEq(token.treasuryShareBps(), 4000, "treasuryShareBps unchanged");
+        token.setLaunchpadFees(10, 10, 0, 0);
+        assertEq(token.treasuryShareBps(), 4000, "treasuryShare unchanged");
     }
 }

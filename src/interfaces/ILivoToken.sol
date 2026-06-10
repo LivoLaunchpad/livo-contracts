@@ -12,12 +12,14 @@ interface ILivoToken is IERC20 {
     event OwnershipTransferred(address newOwner);
 
     /// @notice Emitted once during init with the pre-graduation fee config the token carries.
-    event LaunchpadFeesInitialized(uint16 buyFeeBps, uint16 sellFeeBps, uint16 treasuryShareBps);
+    event LaunchpadFeesInitialized(
+        uint16 lpBuyFeeBps, uint16 lpSellFeeBps, uint16 treasuryShareBps, uint16 taxBuyBps, uint16 taxSellBps
+    );
 
-    /// @notice Emitted when `setLaunchpadFees` lowers the buy/sell fee rates (decrease-only). Only
+    /// @notice Emitted when `setLaunchpadFees` lowers the LP fee and/or tax rates (decrease-only). Only
     ///         the new values are carried; old values resolve from the prior `LaunchpadFeesInitialized`
     ///         or the most recent prior `LaunchpadFeesUpdated`.
-    event LaunchpadFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
+    event LaunchpadFeesUpdated(uint16 lpBuyFeeBps, uint16 lpSellFeeBps, uint16 taxBuyBps, uint16 taxSellBps);
 
     /// @notice Shared initialization parameters for Livo token clones
     /// @dev `vaultAllocation` is the amount of supply that is minted to the factory (`msg.sender` of
@@ -31,9 +33,12 @@ interface ILivoToken is IERC20 {
         address launchpad;
         address feeHandler;
         uint256 vaultAllocation;
-        uint16 buyFeeBps; // pre-graduation buy fee in bps (read by the launchpad each trade)
-        uint16 sellFeeBps; // pre-graduation sell fee in bps (read by the launchpad each trade)
-        uint16 treasuryShareBps; // share of the pre-graduation fee routed to the treasury (bps)
+        // TODO condense the two below into a single lpFeeBps. No distinction between buy and sell, mirroring post-graduation hook
+        uint16 lpBuyFeeBps; // pre-graduation LP/trading fee on buys (bps), split treasury/creator
+        uint16 lpSellFeeBps; // pre-graduation LP/trading fee on sells (bps), split treasury/creator
+        uint16 treasuryShareBps; // share of the LP fee routed to the treasury (bps); remainder to creator
+        uint16 taxBuyBps; // pre-graduation creator tax on buys (bps), 100% to creator (0 if none)
+        uint16 taxSellBps; // pre-graduation creator tax on sells (bps), 100% to creator (0 if none)
     }
 
     /// @notice Tax configuration for a token
@@ -55,10 +60,14 @@ interface ILivoToken is IERC20 {
         uint256 releasedSupply; // circulating supply sold by the launchpad, pre-trade
     }
 
-    /// @notice Pre-graduation fee policy returned by the token for a given trade.
+    /// @notice Pre-graduation fee policy returned by the token for a given trade. The launchpad always
+    ///         charges the LP (trading) fee, splitting it between treasury and creator by
+    ///         `treasuryShareBps`; the optional tax (0 when not configured) goes entirely to the creator.
+    ///         Mirrors the post-graduation `LivoSwapHook` accounting (LP fee split + creator tax).
     struct LaunchpadFees {
-        uint16 feeBps; // fee for THIS trade, in bps of `ethAmount`
-        uint16 treasuryShareBps; // share of the fee routed to the treasury; remainder to the creator
+        uint16 lpFeeBps; // LP/trading fee for THIS trade, in bps of `ethAmount`; split treasury/creator
+        uint16 treasuryShareBps; // share of the LP fee routed to the treasury; remainder to the creator
+        uint16 taxBps; // creator tax for THIS trade (0 if none), in bps of `ethAmount`; 100% to creator
     }
 
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
@@ -81,9 +90,10 @@ interface ILivoToken is IERC20 {
     /// @notice Allows the current owner to permanently renounce ownership
     function renounceOwnership() external;
 
-    /// @notice Lowers the token's pre-graduation buy/sell fee rates (decrease-only).
+    /// @notice Lowers the token's pre-graduation LP-fee and tax rates (decrease-only).
     /// @dev Callable by the token owner or the launchpad owner. Increases revert.
-    function setLaunchpadFees(uint16 newBuyFeeBps, uint16 newSellFeeBps) external;
+    function setLaunchpadFees(uint16 newLpBuyFeeBps, uint16 newLpSellFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps)
+        external;
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 

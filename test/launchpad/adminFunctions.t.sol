@@ -17,47 +17,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.deal(nonOwner, INITIAL_ETH_BALANCE);
     }
 
-    function test_setTradingFees_FailsForNonOwner() public {
-        uint16 newBuyFee = 200;
-        uint16 newSellFee = 250;
-
-        vm.prank(nonOwner);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.setTradingFees(newBuyFee, newSellFee);
-    }
-
-    function test_setTradingFees_SucceedsForOwner() public {
-        uint16 newBuyFee = 200;
-        uint16 newSellFee = 250;
-
-        vm.expectEmit(true, true, true, true);
-        emit TradingFeesUpdated(newBuyFee, newSellFee);
-
-        vm.prank(admin);
-        launchpad.setTradingFees(newBuyFee, newSellFee);
-
-        assertEq(launchpad.baseBuyFeeBps(), newBuyFee);
-        assertEq(launchpad.baseSellFeeBps(), newSellFee);
-    }
-
-    function test_setTradingFees_FailsForInvalidBuyFee() public {
-        uint16 invalidBuyFee = 10001;
-        uint16 validSellFee = 250;
-
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", invalidBuyFee));
-        launchpad.setTradingFees(invalidBuyFee, validSellFee);
-    }
-
-    function test_setTradingFees_FailsForInvalidSellFee() public {
-        uint16 validBuyFee = 200;
-        uint16 invalidSellFee = 10001;
-
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", invalidSellFee));
-        launchpad.setTradingFees(validBuyFee, invalidSellFee);
-    }
-
     function test_whitelistFactory_FailsForNonOwner() public {
         address newFactory = makeAddr("newFactory");
 
@@ -191,7 +150,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(ILivoToken(testToken).owner(), bob);
     }
 
-    event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event FactoryWhitelisted(address indexed factory);
     event FactoryBlacklisted(address indexed factory);
     event TreasuryAddressUpdated(address newTreasury);

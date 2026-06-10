@@ -600,9 +600,11 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 launchpad: launchpad,
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
-                buyFeeBps: 100,
-                sellFeeBps: 100,
-                treasuryShareBps: 10_000
+                lpBuyFeeBps: 100,
+                lpSellFeeBps: 100,
+                treasuryShareBps: 10_000,
+                taxBuyBps: 0,
+                taxSellBps: 0
             }),
             _defaultCfg()
         );
@@ -630,9 +632,11 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     launchpad: launchpad,
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
-                    buyFeeBps: 100,
-                    sellFeeBps: 100,
-                    treasuryShareBps: 10_000
+                    lpBuyFeeBps: 100,
+                    lpSellFeeBps: 100,
+                    treasuryShareBps: 10_000,
+                    taxBuyBps: 0,
+                    taxSellBps: 0
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -668,9 +672,11 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 launchpad: launchpad,
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
-                buyFeeBps: 100,
-                sellFeeBps: 100,
-                treasuryShareBps: 10_000
+                lpBuyFeeBps: 100,
+                lpSellFeeBps: 100,
+                treasuryShareBps: 10_000,
+                taxBuyBps: 0,
+                taxSellBps: 0
             }),
             TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
@@ -699,9 +705,11 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     launchpad: launchpad,
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
-                    buyFeeBps: 100,
-                    sellFeeBps: 100,
-                    treasuryShareBps: 10_000
+                    lpBuyFeeBps: 100,
+                    lpSellFeeBps: 100,
+                    treasuryShareBps: 10_000,
+                    taxBuyBps: 0,
+                    taxSellBps: 0
                 }),
                 TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({

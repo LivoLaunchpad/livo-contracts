@@ -38,17 +38,25 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
-    /// @notice Pre-graduation buy fee in basis points, read by the launchpad on every buy.
-    /// @dev Set at init; the token owner or launchpad owner can only lower it via `setLaunchpadFees`.
-    uint16 public buyFeeBps;
+    /// @notice Pre-graduation LP/trading fee on buys (bps), read by the launchpad each buy and split
+    ///         between treasury and creator. Decrease-only via `setLaunchpadFees`.
+    uint16 public lpBuyFeeBps;
 
-    /// @notice Pre-graduation sell fee in basis points, read by the launchpad on every sell.
-    /// @dev Set at init; the token owner or launchpad owner can only lower it via `setLaunchpadFees`.
-    uint16 public sellFeeBps;
+    /// @notice Pre-graduation LP/trading fee on sells (bps), read by the launchpad each sell and split
+    ///         between treasury and creator. Decrease-only via `setLaunchpadFees`.
+    uint16 public lpSellFeeBps;
 
-    /// @notice Share of the pre-graduation fee routed to the treasury (bps); the remainder goes to
-    ///         the creator via `accrueFees`. Set at init and fixed (decrease-only setter touches rates only).
+    /// @notice Share of the LP fee routed to the treasury (bps); the remainder goes to the creator via
+    ///         `accrueFees`. Set at init and fixed (the decrease-only setter touches rates only).
     uint16 public treasuryShareBps;
+
+    /// @notice Pre-graduation creator tax on buys (bps), routed 100% to the creator (0 if none).
+    ///         Decrease-only via `setLaunchpadFees`.
+    uint16 public taxBuyBps;
+
+    /// @notice Pre-graduation creator tax on sells (bps), routed 100% to the creator (0 if none).
+    ///         Decrease-only via `setLaunchpadFees`.
+    uint16 public taxSellBps;
 
     /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
     /// @dev Lives in transient storage: the factory calls `initialize` and `registerFees` in the
@@ -143,11 +151,16 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
         // Pre-graduation fee policy carried by the token and read by the launchpad each trade.
         // Bounds are enforced upstream in the factory (and re-capped by the launchpad at read time).
-        // TODO make sure this is gas efficient. Storage packing? should we use a struct?
-        buyFeeBps = params.buyFeeBps;
-        sellFeeBps = params.sellFeeBps;
+        // The five uint16 fields pack into a single storage slot (shared with `feeHandler`), so the
+        // launchpad's per-trade `getLaunchpadFees` read is a single warm SLOAD.
+        lpBuyFeeBps = params.lpBuyFeeBps;
+        lpSellFeeBps = params.lpSellFeeBps;
         treasuryShareBps = params.treasuryShareBps;
-        emit LaunchpadFeesInitialized(params.buyFeeBps, params.sellFeeBps, params.treasuryShareBps);
+        taxBuyBps = params.taxBuyBps;
+        taxSellBps = params.taxSellBps;
+        emit LaunchpadFeesInitialized(
+            params.lpBuyFeeBps, params.lpSellFeeBps, params.treasuryShareBps, params.taxBuyBps, params.taxSellBps
+        );
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -192,20 +205,28 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit OwnershipTransferred(address(0));
     }
 
-    /// @notice Lowers the pre-graduation buy/sell fee rates. Decrease-only — raising either reverts
+    /// @notice Lowers the pre-graduation LP-fee and tax rates. Decrease-only — raising any reverts
     ///         with `LaunchpadFeesCanOnlyDecrease`. Equal values are accepted (no-op for that side).
     ///         `treasuryShareBps` is untouched.
     /// @dev Callable by the token owner OR the launchpad owner — same dual-auth pattern as the
     ///      taxable variant's `setTaxBps`. On factory-deployed ownerless tokens (`owner == address(0)`)
     ///      only the launchpad-owner branch is reachable, which is intentional.
-    function setLaunchpadFees(uint16 newBuyFeeBps, uint16 newSellFeeBps) external {
+    function setLaunchpadFees(uint16 newLpBuyFeeBps, uint16 newLpSellFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps)
+        external
+    {
         require(msg.sender == owner || msg.sender == launchpad.owner(), Unauthorized());
-        require(newBuyFeeBps <= buyFeeBps && newSellFeeBps <= sellFeeBps, LaunchpadFeesCanOnlyDecrease());
+        require(
+            newLpBuyFeeBps <= lpBuyFeeBps && newLpSellFeeBps <= lpSellFeeBps && newTaxBuyBps <= taxBuyBps
+                && newTaxSellBps <= taxSellBps,
+            LaunchpadFeesCanOnlyDecrease()
+        );
 
-        emit LaunchpadFeesUpdated(newBuyFeeBps, newSellFeeBps);
+        emit LaunchpadFeesUpdated(newLpBuyFeeBps, newLpSellFeeBps, newTaxBuyBps, newTaxSellBps);
 
-        buyFeeBps = newBuyFeeBps;
-        sellFeeBps = newSellFeeBps;
+        lpBuyFeeBps = newLpBuyFeeBps;
+        lpSellFeeBps = newLpSellFeeBps;
+        taxBuyBps = newTaxBuyBps;
+        taxSellBps = newTaxSellBps;
     }
 
     //////////////////////// fee accrual ////////////////////////
@@ -242,7 +263,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         returns (ILivoToken.LaunchpadFees memory)
     {
         return ILivoToken.LaunchpadFees({
-            feeBps: trade.isBuy ? buyFeeBps : sellFeeBps, treasuryShareBps: treasuryShareBps
+            lpFeeBps: trade.isBuy ? lpBuyFeeBps : lpSellFeeBps,
+            treasuryShareBps: treasuryShareBps,
+            taxBps: trade.isBuy ? taxBuyBps : taxSellBps
         });
     }
 

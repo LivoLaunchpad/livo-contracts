@@ -163,10 +163,23 @@ contract LivoQuoter is ILivoQuoter {
         if (ethAmount == 0) return q;
 
         // The user's `ethAmount` is the post-fee ETH they want to receive. The maximum post-fee
-        // ETH redeemable is `reservesEth * (BASIS - sellFeeBps) / BASIS`.
-        TokenConfig memory cfg = launchpad.getTokenConfig(token);
-        uint256 reservesEth = launchpad.getTokenState(token).ethCollected;
-        uint256 maxPostFeeEth = reservesEth * (10_000 - cfg.sellFeeBps) / 10_000;
+        // ETH redeemable is `reservesEth * (BASIS - totalSellFeeBps) / BASIS`. The sell fee (LP fee +
+        // tax) is read from the token itself (per-trade pre-graduation fee policy).
+        TokenState memory state = launchpad.getTokenState(token);
+        uint256 reservesEth = state.ethCollected;
+        ILivoToken.LaunchpadFees memory fees = ILivoToken(token)
+            .getLaunchpadFees(
+                ILivoToken.LaunchpadTrade({
+                    isBuy: false,
+                    trader: msg.sender,
+                    ethAmount: ethAmount,
+                    tokenAmount: 0,
+                    ethReserves: reservesEth,
+                    releasedSupply: state.releasedSupply
+                })
+            );
+        uint256 totalSellFeeBps = uint256(fees.lpFeeBps) + fees.taxBps;
+        uint256 maxPostFeeEth = reservesEth * (10_000 - totalSellFeeBps) / 10_000;
 
         uint256 effectiveEth;
         if (ethAmount <= maxPostFeeEth) {

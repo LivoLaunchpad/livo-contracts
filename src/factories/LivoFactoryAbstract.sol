@@ -180,6 +180,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
                 && totalLockedInVaultsBps % CREATOR_VAULT_BPS_STEP == 0,
             InvalidCreatorVault()
         );
+        // TODO this function needs to know the LPfees and taxes for correct quoting... this needs a fix
         return _quoteBuyOnDeploy(tokenAmount, _resolveBondingCurve(totalLockedInVaultsBps));
     }
 
@@ -191,8 +192,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     {
         (uint256 ethForReserves,) = curve.buyExactTokens(0, tokenAmount);
 
-        uint16 buyFeeBps = LAUNCHPAD.baseBuyFeeBps();
-        uint256 denom = BASIS_POINTS - buyFeeBps;
+        // TODO(launchpad-fees step): use the createToken-provided buy fee. For now this matches the
+        // V1-equivalent default the factory configures on every token in `_cloneAndCreateToken` (100 bps).
+        uint256 denom = BASIS_POINTS - 100;
         totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
     }
 
@@ -490,10 +492,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             feeHandler: address(MASTER_FEE_HANDLER),
             vaultAllocation: vaultAllocation,
             // TODO(launchpad-fees step): thread per-token fee config from createToken. Defaults below
-            // reproduce the legacy global launchpad behavior (1% buy/sell, 100% to treasury).
-            buyFeeBps: 100,
-            sellFeeBps: 100,
-            treasuryShareBps: 10_000
+            // reproduce the legacy global launchpad behavior (1% LP fee buy/sell, 100% to treasury, no tax).
+            // TODO this doesn't read the token configs . needs a fix
+            lpBuyFeeBps: 100,
+            lpSellFeeBps: 100,
+            treasuryShareBps: 10_000,
+            taxBuyBps: 0,
+            taxSellBps: 0
         });
     }
 
