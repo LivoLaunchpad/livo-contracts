@@ -129,8 +129,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         require(tokenState.notGraduated(), AlreadyGraduated());
 
         // pre-graduation fee policy is read from the token itself and capped by the launchpad
-        // TODO why are we passing here 0 token amount? will the fees be calculated correctly? I guess the reason is that we don't know the tokens until we get the quote, but we can get the quote without knowing the fees... so we are trapped in this circular dependency. Perhaps the only way out is that we don't pass ethAmount / tokenAmount at all. That is better than passing wrong values that the tokens missinterpret 
-        (uint16 totalFeeBps, uint16 lpFeeBps, uint16 treasuryShareBps) = _readLaunchpadFees(token, true, msg.value, 0);
+        (uint16 totalFeeBps, uint16 lpFeeBps, uint16 treasuryShareBps) = _readLaunchpadFees(token, true);
 
         // this call to bonding curve reverts if exceeds graduation margins
         // The internal function also reverts with NotEnoughSupply if exceeding this contract token balance
@@ -183,9 +182,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         require(tokenState.notGraduated(), AlreadyGraduated());
 
         // pre-graduation fee policy is read from the token itself and capped by the launchpad
-        // TODO why are we passing here 0 eth value? will the fees be calculated correctly?
-        (uint16 totalFeeBps, uint16 lpFeeBps, uint16 treasuryShareBps) =
-            _readLaunchpadFees(token, false, 0, tokenAmount);
+        (uint16 totalFeeBps, uint16 lpFeeBps, uint16 treasuryShareBps) = _readLaunchpadFees(token, false);
 
         // reverts with InsufficientEthReserves if seller would receive more than eth reserves allocated to the token
         // that scenario should never happen, it is an extra cautious measure
@@ -207,7 +204,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
 
         // split the fee: LP fee between treasury (push) and creator (accrueFees); tax (the remainder) fully to creator
         uint256 lpFee = (ethPulledFromReserves * lpFeeBps) / BASIS_POINTS;
-        // tax = ethFee - lpFee, 
+        // tax = ethFee - lpFee,
         _settleFee(token, lpFee, ethFee - lpFee, treasuryShareBps);
         _transferEth(msg.sender, ethForSeller, true);
 
@@ -229,7 +226,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
 
-        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true, ethValue, 0);
+        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true);
         // this reverts with NotEnoughSupply if attempting to purchase more than this contract's balance
         (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyTokensWithExactEth(token, ethValue, totalFeeBps);
     }
@@ -247,7 +244,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
 
-        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, false, 0, tokenAmount);
+        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, false);
         // reverts with InsufficientEthReserves if seller would receive more than eth reserves allocated to the token
         // that scenario should never happen, it is an extra cautious measure
         (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount, totalFeeBps);
@@ -265,7 +262,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
-        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true, 0, tokenAmount);
+        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true);
         (totalEthNeeded, ethFee, ethForReserves,) = _quoteBuyExactTokens(token, tokenAmount, totalFeeBps);
     }
 
@@ -281,7 +278,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 tokensRequired)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
-        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, false, ethAmount, 0);
+        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, false);
         (ethPulledFromReserves, ethFee, tokensRequired) = _quoteSellTokensForExactEth(token, ethAmount, totalFeeBps);
     }
 
@@ -408,7 +405,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
     /// @return totalFeeBps Sum of the LP fee and the tax — the amount deducted from the trade.
     /// @return lpFeeBps The LP-fee component, split treasury/creator by `treasuryShareBps`.
     /// @return treasuryShareBps Share of the LP fee routed to the treasury.
-    function _readLaunchpadFees(address token, bool isBuy, uint256 ethAmount, uint256 tokenAmount)
+    function _readLaunchpadFees(address token, bool isBuy)
         internal
         view
         returns (uint16 totalFeeBps, uint16 lpFeeBps, uint16 treasuryShareBps)
@@ -418,8 +415,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
                 ILivoToken.LaunchpadTrade({
                     isBuy: isBuy,
                     trader: msg.sender,
-                    ethAmount: ethAmount,
-                    tokenAmount: tokenAmount,
                     ethReserves: tokenStates[token].ethCollected,
                     releasedSupply: tokenStates[token].releasedSupply
                 })
@@ -432,7 +427,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
 
     /// @notice Returns the maximum ETH a user can spend on a token without exceeding graduation limits
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
-        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true, 0, 0);
+        (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true);
         uint256 remainingReserves = tokenConfigs[token].bondingCurve.maxEthReserves() - tokenStates[token].ethCollected;
 
         // apply inverse fees

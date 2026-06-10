@@ -49,9 +49,7 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function _fees(bool isBuy) internal view returns (ILivoToken.LaunchpadFees memory) {
         return token.getLaunchpadFees(
-            ILivoToken.LaunchpadTrade({
-                isBuy: isBuy, trader: address(0), ethAmount: 1 ether, tokenAmount: 0, ethReserves: 0, releasedSupply: 0
-            })
+            ILivoToken.LaunchpadTrade({isBuy: isBuy, trader: address(0), ethReserves: 0, releasedSupply: 0})
         );
     }
 
