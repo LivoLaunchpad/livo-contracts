@@ -492,10 +492,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             feeHandler: address(MASTER_FEE_HANDLER),
             vaultAllocation: vaultAllocation,
             // TODO(launchpad-fees step): thread per-token fee config from createToken. Defaults below
-            // reproduce the legacy global launchpad behavior (1% LP fee buy/sell, 100% to treasury, no tax).
+            // reproduce the legacy global launchpad behavior (1% LP fee, 100% to treasury, no tax).
             // TODO this doesn't read the token configs . needs a fix
-            lpBuyFeeBps: 100,
-            lpSellFeeBps: 100,
+            lpFeeBps: 100,
             treasuryShareBps: 10_000,
             taxBuyBps: 0,
             taxSellBps: 0

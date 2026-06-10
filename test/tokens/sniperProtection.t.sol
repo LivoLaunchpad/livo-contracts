@@ -600,8 +600,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 launchpad: launchpad,
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
-                lpBuyFeeBps: 100,
-                lpSellFeeBps: 100,
+                lpFeeBps: 100,
                 treasuryShareBps: 10_000,
                 taxBuyBps: 0,
                 taxSellBps: 0
@@ -632,8 +631,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     launchpad: launchpad,
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
-                    lpBuyFeeBps: 100,
-                    lpSellFeeBps: 100,
+                    lpFeeBps: 100,
                     treasuryShareBps: 10_000,
                     taxBuyBps: 0,
                     taxSellBps: 0
@@ -672,8 +670,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 launchpad: launchpad,
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
-                lpBuyFeeBps: 100,
-                lpSellFeeBps: 100,
+                lpFeeBps: 100,
                 treasuryShareBps: 10_000,
                 taxBuyBps: 0,
                 taxSellBps: 0
@@ -705,8 +702,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     launchpad: launchpad,
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
-                    lpBuyFeeBps: 100,
-                    lpSellFeeBps: 100,
+                    lpFeeBps: 100,
                     treasuryShareBps: 10_000,
                     taxBuyBps: 0,
                     taxSellBps: 0

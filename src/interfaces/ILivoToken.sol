@@ -12,14 +12,12 @@ interface ILivoToken is IERC20 {
     event OwnershipTransferred(address newOwner);
 
     /// @notice Emitted once during init with the pre-graduation fee config the token carries.
-    event LaunchpadFeesInitialized(
-        uint16 lpBuyFeeBps, uint16 lpSellFeeBps, uint16 treasuryShareBps, uint16 taxBuyBps, uint16 taxSellBps
-    );
+    event LaunchpadFeesInitialized(uint16 lpFeeBps, uint16 treasuryShareBps, uint16 taxBuyBps, uint16 taxSellBps);
 
     /// @notice Emitted when `setLaunchpadFees` lowers the LP fee and/or tax rates (decrease-only). Only
     ///         the new values are carried; old values resolve from the prior `LaunchpadFeesInitialized`
     ///         or the most recent prior `LaunchpadFeesUpdated`.
-    event LaunchpadFeesUpdated(uint16 lpBuyFeeBps, uint16 lpSellFeeBps, uint16 taxBuyBps, uint16 taxSellBps);
+    event LaunchpadFeesUpdated(uint16 lpFeeBps, uint16 taxBuyBps, uint16 taxSellBps);
 
     /// @notice Shared initialization parameters for Livo token clones
     /// @dev `vaultAllocation` is the amount of supply that is minted to the factory (`msg.sender` of
@@ -33,9 +31,7 @@ interface ILivoToken is IERC20 {
         address launchpad;
         address feeHandler;
         uint256 vaultAllocation;
-        // TODO condense the two below into a single lpFeeBps. No distinction between buy and sell, mirroring post-graduation hook
-        uint16 lpBuyFeeBps; // pre-graduation LP/trading fee on buys (bps), split treasury/creator
-        uint16 lpSellFeeBps; // pre-graduation LP/trading fee on sells (bps), split treasury/creator
+        uint16 lpFeeBps; // pre-graduation LP/trading fee on buys and sells (bps), split treasury/creator
         uint16 treasuryShareBps; // share of the LP fee routed to the treasury (bps); remainder to creator
         uint16 taxBuyBps; // pre-graduation creator tax on buys (bps), 100% to creator (0 if none)
         uint16 taxSellBps; // pre-graduation creator tax on sells (bps), 100% to creator (0 if none)
@@ -94,8 +90,7 @@ interface ILivoToken is IERC20 {
 
     /// @notice Lowers the token's pre-graduation LP-fee and tax rates (decrease-only).
     /// @dev Callable by the token owner or the launchpad owner. Increases revert.
-    function setLaunchpadFees(uint16 newLpBuyFeeBps, uint16 newLpSellFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps)
-        external;
+    function setLaunchpadFees(uint16 newLpFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps) external;
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 

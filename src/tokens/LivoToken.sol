@@ -38,13 +38,10 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
-    /// @notice Pre-graduation LP/trading fee on buys (bps), read by the launchpad each buy and split
-    ///         between treasury and creator. Decrease-only via `setLaunchpadFees`.
-    uint16 public lpBuyFeeBps;
-
-    /// @notice Pre-graduation LP/trading fee on sells (bps), read by the launchpad each sell and split
-    ///         between treasury and creator. Decrease-only via `setLaunchpadFees`.
-    uint16 public lpSellFeeBps;
+    /// @notice Pre-graduation LP/trading fee on buys and sells (bps), read by the launchpad each trade
+    ///         and split between treasury and creator. Single rate for both directions, mirroring the
+    ///         post-graduation `LivoSwapHook`. Decrease-only via `setLaunchpadFees`.
+    uint16 public lpFeeBps;
 
     /// @notice Share of the LP fee routed to the treasury (bps); the remainder goes to the creator via
     ///         `accrueFees`. Set at init and fixed (the decrease-only setter touches rates only).
@@ -151,16 +148,13 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
         // Pre-graduation fee policy carried by the token and read by the launchpad each trade.
         // Bounds are enforced upstream in the factory (and re-capped by the launchpad at read time).
-        // The five uint16 fields pack into a single storage slot (shared with `feeHandler`), so the
+        // The four uint16 fields pack into a single storage slot (shared with `feeHandler`), so the
         // launchpad's per-trade `getLaunchpadFees` read is a single warm SLOAD.
-        lpBuyFeeBps = params.lpBuyFeeBps;
-        lpSellFeeBps = params.lpSellFeeBps;
+        lpFeeBps = params.lpFeeBps;
         treasuryShareBps = params.treasuryShareBps;
         taxBuyBps = params.taxBuyBps;
         taxSellBps = params.taxSellBps;
-        emit LaunchpadFeesInitialized(
-            params.lpBuyFeeBps, params.lpSellFeeBps, params.treasuryShareBps, params.taxBuyBps, params.taxSellBps
-        );
+        emit LaunchpadFeesInitialized(params.lpFeeBps, params.treasuryShareBps, params.taxBuyBps, params.taxSellBps);
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -211,20 +205,16 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @dev Callable by the token owner OR the launchpad owner — same dual-auth pattern as the
     ///      taxable variant's `setTaxBps`. On factory-deployed ownerless tokens (`owner == address(0)`)
     ///      only the launchpad-owner branch is reachable, which is intentional.
-    function setLaunchpadFees(uint16 newLpBuyFeeBps, uint16 newLpSellFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps)
-        external
-    {
+    function setLaunchpadFees(uint16 newLpFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), Unauthorized());
         require(
-            newLpBuyFeeBps <= lpBuyFeeBps && newLpSellFeeBps <= lpSellFeeBps && newTaxBuyBps <= taxBuyBps
-                && newTaxSellBps <= taxSellBps,
+            newLpFeeBps <= lpFeeBps && newTaxBuyBps <= taxBuyBps && newTaxSellBps <= taxSellBps,
             LaunchpadFeesCanOnlyDecrease()
         );
 
-        emit LaunchpadFeesUpdated(newLpBuyFeeBps, newLpSellFeeBps, newTaxBuyBps, newTaxSellBps);
+        emit LaunchpadFeesUpdated(newLpFeeBps, newTaxBuyBps, newTaxSellBps);
 
-        lpBuyFeeBps = newLpBuyFeeBps;
-        lpSellFeeBps = newLpSellFeeBps;
+        lpFeeBps = newLpFeeBps;
         taxBuyBps = newTaxBuyBps;
         taxSellBps = newTaxSellBps;
     }
@@ -263,9 +253,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         returns (ILivoToken.LaunchpadFees memory)
     {
         return ILivoToken.LaunchpadFees({
-            lpFeeBps: trade.isBuy ? lpBuyFeeBps : lpSellFeeBps,
-            treasuryShareBps: treasuryShareBps,
-            taxBps: trade.isBuy ? taxBuyBps : taxSellBps
+            lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: trade.isBuy ? taxBuyBps : taxSellBps
         });
     }
 

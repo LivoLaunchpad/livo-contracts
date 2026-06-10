@@ -70,7 +70,7 @@ For both unified factories, the common Livo event order is:
    - V2: **`LivoGraduator.PairInitialized`** (`token, pair`) — pair address is predicted; pair deployment can happen later at graduation.
    - V4: **`LivoGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`LivoGraduatorUniswapV4.PoolIdRegistered`** (`token, poolId`).
 3. Implementation initializer events (emitted during the token's `initialize`, after the initial mint(s)):
-   - Always: **`LivoToken.LaunchpadFeesInitialized`** (`lpBuyFeeBps, lpSellFeeBps, treasuryShareBps, taxBuyBps, taxSellBps`) — the per-token pre-graduation fee config the launchpad reads each trade. Emitted before the tax/sniper events below.
+   - Always: **`LivoToken.LaunchpadFeesInitialized`** (`lpFeeBps, treasuryShareBps, taxBuyBps, taxSellBps`) — the per-token pre-graduation fee config the launchpad reads each trade. A single LP fee applies to both buys and sells (mirroring the post-graduation hook); only the tax is buy/sell-asymmetric. Emitted before the tax/sniper events below.
    - Tax token: **`LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds`).
    - Sniper-protected token: **`SniperProtectionInitialized`** (`maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist`).
 4. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold, maxExcessOverThreshold`). For a creator-vault token the registered bonding curve is the allocation-specific one, but the graduation threshold/excess are identical to the base curve.
