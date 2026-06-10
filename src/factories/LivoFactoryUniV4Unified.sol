@@ -99,30 +99,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         emit LpFeeBpsSet(token, 100);
     }
 
-    /// @notice Struct-based overload without creator vaults. `univ4Configs.lpFeeBps` selects which
-    ///         graduator/hook pair to use (100 or 50).
-    /// @dev DEPRECATED: kept for backwards compatibility. New integrations should use the
-    ///      struct-based overload that takes `creatorVaults`. Always deploys with no creator vaults.
-    function createToken(
-        TokenSetup calldata tokenSetup,
-        TaxConfigInit calldata taxConfigs,
-        UniV4Configs calldata univ4Configs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs
-    ) external payable returns (address token) {
-        _validateUniv4Configs(univ4Configs);
-        _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
-        address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
-        token = _createToken(
-            tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, new CreatorVault[](0)
-        );
-        emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
-    }
-
-    /// @notice Struct-based overload. Equivalent to the deprecated struct-based overload above, plus
-    ///         the `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects which
-    ///         graduator/hook pair to use (100 or 50). This is the current recommended overload.
+    /// @notice Struct-based overload taking a `creatorVaults` array (pass empty for none).
+    ///         `univ4Configs.lpFeeBps` selects which graduator/hook pair to use (100 or 50).
+    ///         This is the current recommended overload.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,

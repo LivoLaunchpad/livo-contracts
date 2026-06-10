@@ -88,31 +88,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         );
     }
 
-    /// @notice Struct-based overload without creator vaults. Keeps the ABI extensible without
-    ///         hitting stack-too-deep when new features add inputs.
-    /// @dev DEPRECATED: kept for backwards compatibility. New integrations should use the
-    ///      struct-based overload that takes `creatorVaults`. Always deploys with no creator vaults.
-    function createToken(
-        TokenSetup calldata tokenSetup,
-        TaxConfigInit calldata taxConfigs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs
-    ) external payable returns (address token) {
-        // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
-        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
-        token = _createToken(
-            tokenSetup,
-            address(0),
-            address(GRADUATOR),
-            buyOnDeployShares,
-            taxConfigs,
-            antiSniperConfigs,
-            new CreatorVault[](0)
-        );
-    }
-
-    /// @notice Struct-based overload. Equivalent to the deprecated struct-based overload above, plus
-    ///         the `creatorVaults` array (pass empty for none). This is the current recommended overload.
+    /// @notice Struct-based overload taking a `creatorVaults` array (pass empty for none).
+    ///         This is the current recommended overload.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,
