@@ -19,9 +19,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
     /// @notice Authorized factories
     mapping(address factory => bool authorized) public whitelistedFactories;
 
-    /// @notice Max allowed trading fees in basis points
-    // TODO update this one to be 25% instead
-    uint256 internal constant MAX_TRADING_FEE_BPS = 500; // 5%
+    /// @notice Defensive per-trade cap on the pre-graduation fee (LP fee + tax)
+    uint256 internal constant MAX_TRADING_FEE_BPS = 2_500; // 25%
 
     /// @notice 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000;

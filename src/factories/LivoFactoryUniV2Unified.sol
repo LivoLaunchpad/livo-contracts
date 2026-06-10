@@ -13,15 +13,23 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 ///         covers the new tax variants (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2SniperProtected`).
 ///
 ///         Ownership rule: all V2-family tokens are deployed with `tokenOwner = address(0)`.
-///         Tax cap: V2 has no post-graduation LP fee, but the launchpad charges a fixed
-///         `V2_LAUNCHPAD_LP_FEE_BPS` pre-graduation, so the per-direction tax is capped at
-///         `MAX_TOTAL_FEE_BPS - V2_LAUNCHPAD_LP_FEE_BPS` (vs V4, where the venue LP fee eats 50–100 bps).
+///         Tax cap: V2 has no post-graduation LP fee, so the per-direction tax can reach the full
+///         `MAX_TOTAL_FEE_BPS` (5%). Pre-graduation the launchpad additionally charges
+///         `V2_LAUNCHPAD_LP_FEE_BPS`, so a trader transiently pays up to 6% on the bonding curve —
+///         bounded by the launchpad's own (looser) per-trade cap, not by `_validateTotalFee`.
 contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
-    /// @notice Pre-graduation launchpad LP fee for V2 tokens (bps). V2 has no post-graduation LP fee,
-    ///         but the launchpad charges this on bonding-curve trades before graduation. Combined with
-    ///         a per-direction tax it must stay within `MAX_TOTAL_FEE_BPS`, so the V2 tax is effectively
-    ///         capped at `MAX_TOTAL_FEE_BPS - V2_LAUNCHPAD_LP_FEE_BPS` (validated via `_validateTotalFee`).
+    /// @notice Pre-graduation launchpad LP fee for V2 tokens (bps), charged on every bonding-curve
+    ///         trade and split treasury/creator by `V2_LAUNCHPAD_TREASURY_SHARE_BPS`. It exists only
+    ///         pre-graduation (V2 has no post-graduation LP fee) and does NOT count against the tax cap
+    ///         (see `V2_POST_GRADUATION_LP_FEE_BPS`); the launchpad's own looser per-trade cap absorbs
+    ///         it on top of the tax.
     uint16 internal constant V2_LAUNCHPAD_LP_FEE_BPS = 100;
+
+    /// @notice Post-graduation LP fee for V2 tokens (bps): none. V2 graduates to Uniswap V2, which
+    ///         carries no Livo LP fee, so the post-graduation fee a trader pays is the tax alone. This
+    ///         is the LP fee `_validateTotalFee` caps against, letting the V2 tax reach the full
+    ///         `MAX_TOTAL_FEE_BPS` (5%) regardless of the pre-graduation launchpad fee.
+    uint16 internal constant V2_POST_GRADUATION_LP_FEE_BPS = 0;
 
     /// @notice Treasury share of the V2 pre-graduation LP fee (bps): 50/50 treasury/creator.
     uint16 internal constant V2_LAUNCHPAD_TREASURY_SHARE_BPS = 5_000;
@@ -73,7 +81,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // V2-family tokens are always deployed ownerless. Routes through the shared `_createToken`
         // umbrella so this overload and the struct-based overload below share the same internal flow.
         // `LpFeeBpsSet` is emitted only by the V4 factory — V2 has no LP-fee concept.
-        _validateTotalFee(V2_LAUNCHPAD_LP_FEE_BPS, taxCfg);
+        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxCfg);
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         token = _createToken(
             tokenSetup, address(0), address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0)
@@ -91,7 +99,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperConfigs
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
-        _validateTotalFee(V2_LAUNCHPAD_LP_FEE_BPS, taxConfigs);
+        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
         token = _createToken(
             tokenSetup,
             address(0),
@@ -113,7 +121,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         CreatorVault[] calldata creatorVaults
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
-        _validateTotalFee(V2_LAUNCHPAD_LP_FEE_BPS, taxConfigs);
+        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
         token = _createToken(
             tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
         );
@@ -133,7 +141,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external view returns (address) {
         _validateAntiSniperConfig(antiSniperCfg);
         _validateTaxConfig(taxCfg);
-        _validateTotalFee(V2_LAUNCHPAD_LP_FEE_BPS, taxCfg);
+        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxCfg);
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 

@@ -140,10 +140,11 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(treasury.balance - t1, value * 100 / 10_000, "second trade 1% after lowering");
     }
 
-    /// @dev when the total fee (LP + tax) exceeds the launchpad cap, then the trade reverts
+    /// @dev when the total fee (LP + tax) exceeds the launchpad's per-trade backstop, the trade reverts
     function test_buy_totalFeeAboveCap_reverts() public {
-        // buy total = 300 + 300 = 600 > MAX_TRADING_FEE_BPS (500)
-        feeToken = _wireToken(300, 10_000, 300, 0);
+        // buy total = 2000 + 600 = 2600 > MAX_TRADING_FEE_BPS (2500). This config is only reachable by
+        // wiring the token directly; the factory caps real tokens far below this backstop.
+        feeToken = _wireToken(2000, 10_000, 600, 0);
         vm.deal(buyer, 1 ether);
         vm.prank(buyer);
         vm.expectRevert(LivoLaunchpad.InvalidLaunchpadFee.selector);

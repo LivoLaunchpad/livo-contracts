@@ -93,9 +93,10 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
     }
 
     function test_preview_acceptsBpsAtMax() public view {
-        // 400 bps is the V2 tax cap: MAX_TOTAL_FEE_BPS (500) minus the 100 bps pre-graduation launchpad
-        // LP fee V2 tokens now carry. The boundary value must be accepted.
-        TaxConfigInit memory cfg = _taxCfg(400, 400, uint32(7 days));
+        // 500 bps is the V2 tax cap: V2 has no post-graduation LP fee, so the tax can use the full
+        // MAX_TOTAL_FEE_BPS. The pre-graduation launchpad LP fee does not count against it. Boundary
+        // value must be accepted.
+        TaxConfigInit memory cfg = _taxCfg(500, 500, uint32(7 days));
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 

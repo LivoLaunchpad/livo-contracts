@@ -530,11 +530,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         }
     }
 
-    /// @dev Caps the aggregate fee a swapper pays (LP fee + tax) at `MAX_TOTAL_FEE_BPS` (5%). Applied
-    ///      to buy and sell tax independently since a swap only ever pays one direction. `lpFeeBps`
-    ///      is the venue's LP fee — 0 for V2 (no LP fee, so tax can reach the full 5%), 50 or 100 for
-    ///      V4 (leaving 450/400 bps for tax). `taxCfg` bps are unbounded here, so the sum is widened
-    ///      to `uint256` to avoid a spurious overflow revert before this check fires.
+    /// @dev Caps the POST-graduation total fee a swapper pays (LP fee + tax) at `MAX_TOTAL_FEE_BPS`
+    ///      (5%). Applied to buy and sell tax independently since a swap only ever pays one direction.
+    ///      `lpFeeBps` is the venue's post-graduation LP fee — 0 for V2 (no LP fee, so tax can reach the
+    ///      full 5%), 50 or 100 for V4 (leaving 450/400 bps for tax). Pre-graduation the launchpad
+    ///      additionally charges its own LP fee on top of the tax; that transient total is bounded by
+    ///      the launchpad's (looser) `MAX_TRADING_FEE_BPS`, not here. `taxCfg` bps are unbounded here, so
+    ///      the sum is widened to `uint256` to avoid a spurious overflow revert before this check fires.
     function _validateTotalFee(uint256 lpFeeBps, TaxConfigInit calldata taxCfg) internal pure {
         require(
             lpFeeBps + taxCfg.buyTaxBps <= MAX_TOTAL_FEE_BPS && lpFeeBps + taxCfg.sellTaxBps <= MAX_TOTAL_FEE_BPS,
