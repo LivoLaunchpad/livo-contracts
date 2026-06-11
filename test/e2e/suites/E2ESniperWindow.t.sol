@@ -23,7 +23,9 @@ abstract contract E2ESniperWindow is LivoE2EBase {
 
         // Confirm we're inside the window
         SniperProtection sp = SniperProtection(token);
-        assertGt(uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp);
+        assertGt(
+            uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
+        );
 
         vm.deal(buyer, OVERSIZED_BUY);
         vm.prank(buyer);
@@ -59,13 +61,17 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         // (which moves ~21% of supply, far above the 3% cap) bypasses the sniper check.
         // Use many small buys to graduate without hitting the per-tx cap on any single buy.
         SniperProtection sp = SniperProtection(token);
-        assertGt(uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp);
+        assertGt(
+            uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
+        );
 
         _graduateInSmallBuys(token);
 
         assertTrue(launchpad.getTokenState(token).graduated);
         // Confirm we're still inside the window when graduation completes
-        assertLt(block.timestamp, uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()));
+        assertLt(
+            block.timestamp, uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds())
+        );
     }
 
     /// @dev Off-chain pattern for buying as close to the sniper cap as possible without reverting.
@@ -78,7 +84,9 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         address token = _createTestToken(salt);
 
         SniperProtection sp = SniperProtection(token);
-        assertGt(uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp);
+        assertGt(
+            uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
+        );
 
         uint256 maxTokens = ILivoToken(token).maxTokenPurchase(buyer);
         assertGt(maxTokens, 0);

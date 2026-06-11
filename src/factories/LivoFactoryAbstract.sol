@@ -456,8 +456,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
-        uint256 vaultAllocation,
-        TaxConfigInit calldata taxCfg
+        uint256 vaultAllocation
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, salt);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -473,15 +472,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER),
             vaultAllocation: vaultAllocation,
-            // Pre-graduation fee policy carried by the token and read by the launchpad each trade. The
+            // Pre-graduation LP-fee policy carried by the token and read by the launchpad each trade. The
             // LP fee equals the token's post-graduation LP fee (V4: the selected hook fee; V2: a fixed
             // pre-graduation rate, as V2 has no post-graduation LP fee). The treasury/creator split is
-            // venue-specific protocol policy. The creator tax mirrors the configured `TaxConfigInit` so
-            // it applies identically pre- and post-graduation (0 for non-tax tokens, where taxCfg is empty).
+            // venue-specific protocol policy. The creator tax is NOT stored here — taxable variants store
+            // it from `TaxConfigInit` in `_initializeTaxConfig`, and it applies identically pre- and
+            // post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
             lpFeeBps: _launchpadLpFeeBps(graduator),
-            treasuryShareBps: _launchpadTreasuryShareBps(),
-            taxBuyBps: taxCfg.buyTaxBps,
-            taxSellBps: taxCfg.sellTaxBps
+            treasuryShareBps: _launchpadTreasuryShareBps()
         });
     }
 
@@ -560,18 +558,18 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
 
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, taxCfg);
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
 
         bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            // taxCfg is non-empty; the token's pre-graduation tax fields are set from it in `_cloneAndCreateToken`.
+            // taxCfg is non-empty; the token stores its tax rate from it in `_initializeTaxConfig`.
             if (hasAntiSniper) {
                 ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
             } else {
                 ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
             }
         } else {
-            // non-tax path: taxCfg is empty (validated), so the pre-graduation tax fields resolve to 0.
+            // non-tax path: taxCfg is empty (validated); base `getLaunchpadFees` returns 0 tax.
             if (hasAntiSniper) {
                 LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
             } else {

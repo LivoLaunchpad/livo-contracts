@@ -101,7 +101,7 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_launchTimestampRecorded() public view {
-        uint40 ts = SniperProtection(address(_token())).launchTimestamp();
+        uint40 ts = ILivoToken(address(_token())).launchTimestamp();
         assertGt(ts, 0);
         assertEq(ts, uint40(block.timestamp));
     }
@@ -155,7 +155,7 @@ abstract contract SniperProtectionBaseTest is Test {
     /// curve buys. A transfer that keeps the recipient under both caps is allowed.
     function test_walletToWallet_underCap_succeeds_withinWindow() public {
         _curveBuy(buyer, MAX_BUY_PER_TX);
-        assertLt(block.timestamp, SniperProtection(address(_token())).launchTimestamp() + DEFAULT_WINDOW);
+        assertLt(block.timestamp, ILivoToken(address(_token())).launchTimestamp() + DEFAULT_WINDOW);
 
         vm.prank(buyer);
         _token().transfer(buyer2, MAX_BUY_PER_TX);
@@ -226,7 +226,7 @@ abstract contract SniperProtectionBaseTest is Test {
         _curveBuy(buyer, MAX_WALLET);
         _curveBuy(buyer2, MAX_WALLET);
 
-        uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
+        uint40 launchTs = ILivoToken(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW + 1);
 
         vm.prank(buyer);
@@ -248,7 +248,7 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_windowExpiry_capsLift() public {
-        uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
+        uint40 launchTs = ILivoToken(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW + 1);
 
         _curveBuy(buyer, MAX_BUY_PER_TX + 1);
@@ -537,7 +537,7 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_maxTokenPurchase_afterWindowReturnsMax() public {
-        uint40 launchTs = SniperProtection(address(_token())).launchTimestamp();
+        uint40 launchTs = ILivoToken(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW);
         assertEq(_maxBuy(buyer), type(uint256).max);
     }
@@ -601,9 +601,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
                 lpFeeBps: 100,
-                treasuryShareBps: 10_000,
-                taxBuyBps: 0,
-                taxSellBps: 0
+                treasuryShareBps: 10_000
             }),
             _defaultCfg()
         );
@@ -632,9 +630,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
                     lpFeeBps: 100,
-                    treasuryShareBps: 10_000,
-                    taxBuyBps: 0,
-                    taxSellBps: 0
+                    treasuryShareBps: 10_000
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -671,9 +667,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
                 lpFeeBps: 100,
-                treasuryShareBps: 10_000,
-                taxBuyBps: 0,
-                taxSellBps: 0
+                treasuryShareBps: 10_000
             }),
             TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
             _defaultCfg()
@@ -703,9 +697,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
                     lpFeeBps: 100,
-                    treasuryShareBps: 10_000,
-                    taxBuyBps: 0,
-                    taxSellBps: 0
+                    treasuryShareBps: 10_000
                 }),
                 TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
                 AntiSniperConfigs({

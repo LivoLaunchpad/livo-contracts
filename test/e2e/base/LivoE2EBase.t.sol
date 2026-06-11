@@ -5,6 +5,7 @@ import {LaunchpadBaseTests} from "test/launchpad/base.t.sol";
 import {V4SwapHelpers} from "test/e2e/base/V4SwapHelpers.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {SniperProtection} from "src/tokens/SniperProtection.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -97,7 +98,7 @@ abstract contract LivoE2EBase is V4SwapHelpers, V2SwapHelpers {
     /// @dev Warps past the sniper protection window using the token's stored launchTimestamp.
     function _warpPastSniperWindow(address token) internal {
         SniperProtection sp = SniperProtection(token);
-        uint256 windowEnd = uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds());
+        uint256 windowEnd = uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds());
         vm.warp(windowEnd + 1);
     }
 

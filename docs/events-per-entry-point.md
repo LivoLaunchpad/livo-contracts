@@ -13,12 +13,15 @@ This document describes the active source tree after the legacy implementations 
 All new tokens use the singleton `LivoMasterFeeHandler`.
 
 Pre-graduation trading fees are no longer global launchpad state. Each token carries its own LP
-(trading) fee — split treasury/creator by `treasuryShareBps` — plus an optional creator tax (100% to
-the creator), read per-trade by the launchpad via `ILivoToken.getLaunchpadFees` and reported through
-`LivoLaunchpad.LpFeesAccrued` / `LivoLaunchpad.CreatorTaxesAccrued` (mirroring the post-graduation
-`LivoSwapHook` for accounting parity). The launchpad's global `setTradingFees` / `TradingFeesUpdated`
-are removed; the per-token config surfaces as `LivoToken.LaunchpadFeesInitialized` (at creation) and
-`LivoToken.LaunchpadFeesUpdated` (decrease-only owner update).
+(trading) fee — split treasury/creator by `treasuryShareBps` — plus, on taxable variants, a creator
+tax (100% to the creator), read per-trade by the launchpad via `ILivoToken.getLaunchpadFees` and
+reported through `LivoLaunchpad.LpFeesAccrued` / `LivoLaunchpad.CreatorTaxesAccrued` (mirroring the
+post-graduation `LivoSwapHook` for accounting parity). The launchpad's global `setTradingFees` /
+`TradingFeesUpdated` are removed; the per-token LP-fee config surfaces as
+`LivoToken.LaunchpadFeesInitialized` (at creation). The LP fee is immutable after launch (no setter).
+The creator tax is configured on taxable variants and surfaces via `LivoTaxableTokenInitialized` /
+`TaxBpsUpdated`; its window is creation-anchored (`[launchTimestamp, launchTimestamp + taxDurationSeconds]`)
+and applies identically pre- and post-graduation.
 
 Unified factories register fee config automatically during token creation:
 
@@ -69,7 +72,7 @@ For both unified factories, the common Livo event order is:
    - V2: **`LivoGraduator.PairInitialized`** (`token, pair`) — pair address is predicted; pair deployment can happen later at graduation.
    - V4: **`LivoGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`LivoGraduatorUniswapV4.PoolIdRegistered`** (`token, poolId`).
 3. Implementation initializer events (emitted during the token's `initialize`, after the initial mint(s)):
-   - Always: **`LivoToken.LaunchpadFeesInitialized`** (`lpFeeBps, treasuryShareBps, taxBuyBps, taxSellBps`) — the per-token pre-graduation fee config the launchpad reads each trade. A single LP fee applies to both buys and sells (mirroring the post-graduation hook); only the tax is buy/sell-asymmetric. Emitted before the tax/sniper events below.
+   - Always: **`LivoToken.LaunchpadFeesInitialized`** (`lpFeeBps, treasuryShareBps`) — the per-token pre-graduation LP-fee config the launchpad reads each trade. A single LP fee applies to both buys and sells (mirroring the post-graduation hook). The creator tax (if any) is reported separately by `LivoTaxableTokenInitialized` below. Emitted before the tax/sniper events below.
    - Tax token: **`LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds`).
    - Sniper-protected token: **`SniperProtectionInitialized`** (`maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist`).
 4. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold, maxExcessOverThreshold`). For a creator-vault token the registered bonding curve is the allocation-specific one, but the graduation threshold/excess are identical to the base curve.

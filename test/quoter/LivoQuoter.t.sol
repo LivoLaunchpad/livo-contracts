@@ -116,7 +116,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_consistency_buyExactEth_NONE_windowExpired() public {
         SniperProtection sp = SniperProtection(sniperToken);
-        vm.warp(uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()) + 1);
+        vm.warp(uint256(LivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()) + 1);
         _quoteAndBuyExactEth(sniperToken, buyer, 0.5 ether, LimitReason.NONE);
     }
 
@@ -223,7 +223,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_consistency_getMaxEthToSpend_windowExpired() public {
         SniperProtection sp = SniperProtection(sniperToken);
-        vm.warp(uint256(sp.launchTimestamp()) + uint256(sp.protectionWindowSeconds()) + 1);
+        vm.warp(uint256(LivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()) + 1);
         (uint256 maxEth, LimitReason reason) = quoter.getMaxEthToSpend(sniperToken, buyer);
         assertEq(uint256(reason), uint256(LimitReason.GRADUATION_EXCESS));
         _quoteAndBuyExactEth(sniperToken, buyer, maxEth, LimitReason.NONE);

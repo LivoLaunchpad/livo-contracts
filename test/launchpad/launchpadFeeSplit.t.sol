@@ -4,7 +4,9 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
+import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
@@ -18,29 +20,40 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     LivoToken internal feeToken;
 
-    /// @dev Creates a fully-wired, tradeable token with a custom fee config: clone + initialize +
-    ///      registerFees(creator) + launchToken (pranked as a whitelisted factory). Bypasses the
-    ///      factory's currently-hardcoded default so arbitrary fee/tax configs can be exercised.
+    /// @dev A tax window long enough to stay active for the duration of every trade in a test.
+    uint32 internal constant LONG_TAX_WINDOW = uint32(3650 days);
+
+    /// @dev Creates a fully-wired, tradeable taxable-V2 token with a custom fee config and a long tax
+    ///      window: clone + initialize + registerFees(creator) + launchToken (pranked as a whitelisted
+    ///      factory). A taxable token is used so the launchpad's tax routing (creation-anchored) can be
+    ///      exercised; the tax rate flows through `TaxConfigInit`, the LP fee through `InitializeParams`.
     function _wireToken(uint16 lpFee, uint16 treasuryShare, uint16 taxBuy, uint16 taxSell)
         internal
         returns (LivoToken t)
     {
-        t = LivoToken(Clones.clone(address(livoToken)));
-        t.initialize(
-            ILivoToken.InitializeParams({
-                name: "SplitToken",
-                symbol: "SPLIT",
-                tokenOwner: creator,
-                graduator: address(graduatorV2),
-                launchpad: address(launchpad),
-                feeHandler: address(feeHandler),
-                vaultAllocation: 0,
-                lpFeeBps: lpFee,
-                treasuryShareBps: treasuryShare,
-                taxBuyBps: taxBuy,
-                taxSellBps: taxSell
-            })
-        );
+        return _wireTokenWindow(lpFee, treasuryShare, taxBuy, taxSell, LONG_TAX_WINDOW);
+    }
+
+    function _wireTokenWindow(uint16 lpFee, uint16 treasuryShare, uint16 taxBuy, uint16 taxSell, uint32 window)
+        internal
+        returns (LivoToken t)
+    {
+        t = LivoToken(payable(Clones.clone(address(livoTaxTokenV2))));
+        LivoTaxableTokenUniV2(payable(address(t)))
+            .initialize(
+                ILivoToken.InitializeParams({
+                    name: "SplitToken",
+                    symbol: "SPLIT",
+                    tokenOwner: creator,
+                    graduator: address(graduatorV2),
+                    launchpad: address(launchpad),
+                    feeHandler: address(feeHandler),
+                    vaultAllocation: 0,
+                    lpFeeBps: lpFee,
+                    treasuryShareBps: treasuryShare
+                }),
+                TaxConfigInit({buyTaxBps: taxBuy, sellTaxBps: taxSell, taxDurationSeconds: window})
+            );
         // Register the creator as the sole (claimable) fee receiver so creator-share routing works.
         t.registerFees(_fs(creator));
 
@@ -123,21 +136,26 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(_creatorClaimable(feeToken), creatorShare + tax, "creator gets lp creator share + tax");
     }
 
-    /// @dev when the LP fee rate is lowered between trades, then the launchpad charges the new rate
-    function test_buy_perTradeRead() public {
-        feeToken = _wireToken(300, 10_000, 0, 0); // 3%
+    /// @dev when the creation-anchored tax window expires between trades, then the launchpad stops
+    ///      charging the tax — the per-trade `getLaunchpadFees` read reflects the window dynamically
+    function test_buy_taxExpiresBetweenTrades() public {
+        // 1% LP (100% treasury) + 2% creator tax, with a 1-hour window
+        feeToken = _wireTokenWindow(100, 10_000, 200, 200, uint32(1 hours));
         uint256 value = 1 ether;
+        uint256 tax = value * 200 / 10_000;
 
-        uint256 t0 = treasury.balance;
+        // within the window: tax routed to the creator
         _buy(feeToken, value);
-        assertEq(treasury.balance - t0, value * 300 / 10_000, "first trade 3%");
+        assertEq(_creatorClaimable(feeToken), tax, "tax charged within window");
 
-        vm.prank(admin); // launchpad owner lowers the LP fee to 1%
-        feeToken.setLaunchpadFees(100, 0, 0);
+        // warp past the creation-anchored window
+        vm.warp(block.timestamp + 1 hours + 1);
 
+        uint256 creatorBefore = _creatorClaimable(feeToken);
         uint256 t1 = treasury.balance;
         _buy(feeToken, value);
-        assertEq(treasury.balance - t1, value * 100 / 10_000, "second trade 1% after lowering");
+        assertEq(_creatorClaimable(feeToken), creatorBefore, "no tax after window expiry");
+        assertEq(treasury.balance - t1, value * 100 / 10_000, "LP fee still charged after expiry");
     }
 
     /// @dev when the total fee (LP + tax) exceeds the launchpad's per-trade backstop, the trade reverts

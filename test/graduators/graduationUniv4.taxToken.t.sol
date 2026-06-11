@@ -370,6 +370,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @notice Test exact boundary conditions for sell tax period
     /// @dev Only sell tax is collected, buy tax is always 0
     /// @dev Hook uses `>` comparison: tax collected when timestamp <= graduation + duration
+    /// @notice The tax window is creation-anchored and INCLUSIVE: [launchTimestamp, launchTimestamp + duration].
+    ///         Here graduation happens at ~creation time, so launchTimestamp == graduationTimestamp.
     function test_taxPeriodBoundaries() public createDefaultTaxToken {
         // First buy tokens through launchpad
         vm.deal(buyer, 5 ether);
@@ -378,20 +380,20 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         _graduateToken();
 
-        uint40 graduationTimestamp = ILivoTaxableToken(testToken).graduationTimestamp();
+        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
         uint256 creatorTaxBalance;
         uint256 buyerTokenBalance;
 
-        // Test at t = 0 (graduation) - sell tax should be collected
+        // Test right after graduation (still within the window) - sell tax should be collected
         creatorTaxBalance = _pendingTaxes(testToken, creator);
         buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 10, 0, true);
         assertGt(
-            _pendingTaxes(testToken, creator), creatorTaxBalance, "Sell tax should be collected at graduation (t=0)"
+            _pendingTaxes(testToken, creator), creatorTaxBalance, "Sell tax should be collected just after graduation"
         );
 
         // Test at t = duration - 1 second (last second of period) - tax should still be collected
-        vm.warp(graduationTimestamp + DEFAULT_TAX_DURATION - 1 seconds);
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION - 1 seconds);
         creatorTaxBalance = _pendingTaxes(testToken, creator);
         buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 10, 0, true);
@@ -401,9 +403,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "Sell tax should be collected at last second of period"
         );
 
-        // Test at t = duration exactly - tax IS still collected (hook uses > not >=)
-        // Tax period is [graduation, graduation + duration] INCLUSIVE
-        vm.warp(graduationTimestamp + DEFAULT_TAX_DURATION);
+        // Test at t = duration exactly - tax IS still collected (window check uses <= not <)
+        // Tax period is [launchTimestamp, launchTimestamp + duration] INCLUSIVE
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION);
         creatorTaxBalance = _pendingTaxes(testToken, creator);
         buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 10, 0, true);
@@ -414,7 +416,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
 
         // Test at t = duration + 1 second - NO sell tax should be collected, but LP creator share still accrues
-        vm.warp(graduationTimestamp + DEFAULT_TAX_DURATION + 1 seconds);
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION + 1 seconds);
         creatorTaxBalance = _pendingTaxes(testToken, creator);
         buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 10, 0, true);
@@ -423,6 +425,64 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             creatorTaxBalance,
             "LP creator share should still accrue after tax expiry"
         );
+    }
+
+    /// @notice getTaxConfig() is dynamic and creation-anchored: it returns the configured rates up to and
+    ///         including `launchTimestamp + duration`, then a fully-zeroed tax (rates AND duration) afterwards.
+    ///         This is what drives the (unchanged) graduation-anchored hook to stop taxing on time.
+    function test_getTaxConfig_dynamicallyZeroesAtCreationAnchoredExpiry() public createDefaultTaxToken {
+        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
+
+        // within the window: real config
+        ILivoToken.TaxConfig memory active = ILivoToken(testToken).getTaxConfig();
+        assertEq(active.sellTaxBps, DEFAULT_SELL_TAX_BPS, "sell tax active within window");
+        assertEq(active.taxDurationSeconds, DEFAULT_TAX_DURATION, "duration reported within window");
+
+        // exactly at expiry: still active (inclusive)
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION);
+        assertEq(ILivoToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active at inclusive expiry");
+
+        // one second past: fully zeroed
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION + 1);
+        ILivoToken.TaxConfig memory expired = ILivoToken(testToken).getTaxConfig();
+        assertEq(expired.buyTaxBps, 0, "buy tax zeroed after window");
+        assertEq(expired.sellTaxBps, 0, "sell tax zeroed after window");
+        assertEq(expired.taxDurationSeconds, 0, "duration zeroed after window");
+    }
+
+    /// @notice The tax window spans graduation and is anchored at creation, NOT graduation. Advancing the
+    ///         clock partway through the window BEFORE graduating makes launchTimestamp != graduationTimestamp,
+    ///         and proves the tax ends at launchTimestamp + duration even though that is strictly before the
+    ///         (old) graduation-anchored expiry.
+    function test_taxWindowSpansGraduation_anchoredAtCreation() public createDefaultTaxToken {
+        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
+
+        // advance halfway through the window BEFORE graduating, so launch != graduation
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION / 2);
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        uint40 graduationTimestamp = ILivoTaxableToken(testToken).graduationTimestamp();
+        assertGt(graduationTimestamp, launchTs, "graduation strictly after creation");
+
+        // still inside the creation-anchored window, now post-graduation: tax active
+        assertEq(
+            ILivoToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active post-grad, within window"
+        );
+
+        // past the creation-anchored expiry, but BEFORE the graduation-anchored expiry: tax is OVER.
+        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION + 1);
+        assertLt(
+            block.timestamp,
+            uint256(graduationTimestamp) + DEFAULT_TAX_DURATION,
+            "still inside the OLD graduation-anchored window"
+        );
+        ILivoToken.TaxConfig memory cfg = ILivoToken(testToken).getTaxConfig();
+        assertEq(cfg.sellTaxBps, 0, "tax ends at creation-anchored expiry, not graduation-anchored");
+        assertEq(cfg.taxDurationSeconds, 0, "duration zeroed at creation-anchored expiry");
     }
 
     /////////////////////////////////// CATEGORY 5: EDGE CASES & SECURITY ///////////////////////////////////

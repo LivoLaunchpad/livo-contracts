@@ -32,12 +32,20 @@ contract LivoTaxableTokenUniV2SniperProtected is
 
     function _update(address from, address to, uint256 amount) internal override {
         _checkSniperProtection(
-            from, to, amount, address(launchpad), tokenFactory, address(graduator), graduated, balanceOf(to)
+            from,
+            to,
+            amount,
+            address(launchpad),
+            tokenFactory,
+            address(graduator),
+            graduated,
+            balanceOf(to),
+            launchTimestamp
         );
         super._update(from, to, amount);
     }
 
     function maxTokenPurchase(address buyer) external view override(LivoToken, ILivoToken) returns (uint256) {
-        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated);
+        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated, launchTimestamp);
     }
 }

@@ -47,11 +47,8 @@ abstract contract SniperProtection {
     /// @notice Max wallet balance during the protection window, in bps of TOTAL_SUPPLY.
     uint16 public maxWalletBps;
 
-    /// @notice Duration the protection remains active after `launchTimestamp`.
+    /// @notice Duration the protection remains active after the host token's `launchTimestamp`.
     uint40 public protectionWindowSeconds;
-
-    /// @notice Anchor for the protection window. Set once by `_initializeSniperProtection`.
-    uint40 public launchTimestamp;
 
     /// @notice Dev-supplied addresses that bypass the caps during the protection window.
     mapping(address account => bool isWhitelisted) public sniperBypass;
@@ -71,7 +68,9 @@ abstract contract SniperProtection {
         uint16 maxBuyPerTxBps, uint16 maxWalletBps, uint40 protectionWindowSeconds, address[] whitelist
     );
 
-    /// @dev Validates configs, anchors the window to `block.timestamp`, records the whitelist.
+    /// @dev Validates configs and records the whitelist. The window anchor (`launchTimestamp`) is the
+    ///      host token's creation timestamp, set by `LivoToken._initializeLivoToken` and passed into
+    ///      the check functions below.
     function _initializeSniperProtection(AntiSniperConfigs memory cfg) internal {
         require(cfg.maxBuyPerTxBps >= ANTI_SNIPER_MIN_BPS, MaxBuyPerTxBpsTooLow());
         require(cfg.maxBuyPerTxBps <= ANTI_SNIPER_MAX_BPS, MaxBuyPerTxBpsTooHigh());
@@ -85,7 +84,6 @@ abstract contract SniperProtection {
         maxBuyPerTxBps = cfg.maxBuyPerTxBps;
         maxWalletBps = cfg.maxWalletBps;
         protectionWindowSeconds = cfg.protectionWindowSeconds;
-        launchTimestamp = uint40(block.timestamp);
 
         uint256 n = cfg.whitelist.length;
         for (uint256 i; i < n; ++i) {
@@ -111,9 +109,11 @@ abstract contract SniperProtection {
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     ///      `from == graduatorAddr` is intentionally NOT exempt: graduator outgoing transfers
     ///      happen post-`markGraduated()`, hitting the `graduated` early-return.
-    /// @dev Mints (`from == 0`) only happen before `_initializeSniperProtection` runs, when
-    ///      `launchTimestamp == 0`; the window early-return covers them. Burns (`to == 0`) are
-    ///      rejected by OZ ERC20 v5 before `_update`. Launchpad fees are ignored in the cap math.
+    /// @param launchTimestamp Host token's creation timestamp (`LivoToken.launchTimestamp`), the window anchor.
+    /// @dev Mints (`from == 0`) only happen during `_initializeLivoToken`, while the host's
+    ///      `launchTimestamp` (passed in here) and `protectionWindowSeconds` are still 0; the window
+    ///      early-return covers them. Burns (`to == 0`) are rejected by OZ ERC20 v5 before `_update`.
+    ///      Launchpad fees are ignored in the cap math.
     function _checkSniperProtection(
         address from,
         address to,
@@ -122,7 +122,8 @@ abstract contract SniperProtection {
         address factoryAddr,
         address graduatorAddr,
         bool graduated,
-        uint256 toBalance
+        uint256 toBalance,
+        uint40 launchTimestamp
     ) internal view {
         if (graduated) return;
         if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return;
@@ -155,7 +156,11 @@ abstract contract SniperProtection {
     ///      `LivoLaunchpad.getMaxEthToSpend` converted via the bonding curve.
     /// @dev Factory/graduator/launchpad bypasses from `_checkSniperProtection` are NOT mirrored
     ///      here: none of those addresses ever buys via `buyTokensWithExactEth`.
-    function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
+    function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated, uint40 launchTimestamp)
+        internal
+        view
+        returns (uint256)
+    {
         if (graduated) return type(uint256).max;
         if (sniperBypass[buyer]) return type(uint256).max;
         if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return type(uint256).max;

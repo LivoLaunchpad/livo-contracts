@@ -11,13 +11,10 @@ interface ILivoToken is IERC20 {
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
-    /// @notice Emitted once during init with the pre-graduation fee config the token carries.
-    event LaunchpadFeesInitialized(uint16 lpFeeBps, uint16 treasuryShareBps, uint16 taxBuyBps, uint16 taxSellBps);
-
-    /// @notice Emitted when `setLaunchpadFees` lowers the LP fee and/or tax rates (decrease-only). Only
-    ///         the new values are carried; old values resolve from the prior `LaunchpadFeesInitialized`
-    ///         or the most recent prior `LaunchpadFeesUpdated`.
-    event LaunchpadFeesUpdated(uint16 lpFeeBps, uint16 taxBuyBps, uint16 taxSellBps);
+    /// @notice Emitted once during init with the pre-graduation LP-fee config the token carries.
+    ///         The creator tax (taxable variants only) is reported separately by
+    ///         `LivoTaxableTokenInitialized`.
+    event LaunchpadFeesInitialized(uint16 lpFeeBps, uint16 treasuryShareBps);
 
     /// @notice Shared initialization parameters for Livo token clones
     /// @dev `vaultAllocation` is the amount of supply that is minted to the factory (`msg.sender` of
@@ -33,15 +30,13 @@ interface ILivoToken is IERC20 {
         uint256 vaultAllocation;
         uint16 lpFeeBps; // pre-graduation LP/trading fee on buys and sells (bps), split treasury/creator
         uint16 treasuryShareBps; // share of the LP fee routed to the treasury (bps); remainder to creator
-        uint16 taxBuyBps; // pre-graduation creator tax on buys (bps), 100% to creator (0 if none)
-        uint16 taxSellBps; // pre-graduation creator tax on sells (bps), 100% to creator (0 if none)
     }
 
     /// @notice Tax configuration for a token
     struct TaxConfig {
         uint16 buyTaxBps; // Buy tax in basis points (max 500 = 5%)
         uint16 sellTaxBps; // Sell tax in basis points (max 500 = 5%)
-        uint40 taxDurationSeconds; // Duration after graduation during which taxes apply
+        uint40 taxDurationSeconds; // Duration of the tax window from token creation (0 once the window has closed)
         uint40 graduationTimestamp; // Timestamp when token graduated (0 if not graduated)
     }
 
@@ -87,10 +82,6 @@ interface ILivoToken is IERC20 {
     /// @notice Allows the current owner to permanently renounce ownership
     function renounceOwnership() external;
 
-    /// @notice Lowers the token's pre-graduation LP-fee and tax rates (decrease-only).
-    /// @dev Callable by the token owner or the launchpad owner. Increases revert.
-    function setLaunchpadFees(uint16 newLpFeeBps, uint16 newTaxBuyBps, uint16 newTaxSellBps) external;
-
     ////////////////// VIEW FUNCTIONS ////////////////////
 
     /// @notice Returns the tax configuration for this token
@@ -112,6 +103,10 @@ interface ILivoToken is IERC20 {
 
     /// @notice Returns true if already graduated
     function graduated() external view returns (bool);
+
+    /// @notice Timestamp when this token was created (the `initialize` call). Anchors the
+    ///         sniper-protection window and, on taxable variants, the creation-anchored tax window.
+    function launchTimestamp() external view returns (uint40);
 
     /// @notice Address where liquidity is deployed after graduation
     function pair() external view returns (address);

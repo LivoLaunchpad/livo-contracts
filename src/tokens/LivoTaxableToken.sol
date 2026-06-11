@@ -30,7 +30,8 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///         via `setTaxBps` (decrease-only — increases revert).
     uint16 public sellTaxBps;
 
-    /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
+    /// @notice Duration in seconds of the tax window, measured from token creation (`launchTimestamp`),
+    ///         not from graduation. Set during initialization, cannot be changed.
     uint40 public taxDurationSeconds;
 
     /////////////////////////// pure storage ///////////////////////
@@ -62,7 +63,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     /// @notice Marks the token as graduated and records the timestamp.
     /// @dev Can only be called by the pre-set graduator contract. Overrides `LivoToken` to add
-    ///      timestamp tracking — the tax window is `[graduationTimestamp, graduationTimestamp + taxDurationSeconds]`.
+    ///      timestamp tracking. Graduation is irrelevant to the tax window, which is creation-anchored
+    ///      (`[launchTimestamp, launchTimestamp + taxDurationSeconds]`); `graduationTimestamp` is kept
+    ///      only as the V4 hook's "has graduated?" guard via `getTaxConfig`.
     function markGraduated() external override(ILivoToken, LivoToken) {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
@@ -124,8 +127,35 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// VIEW FUNCTIONS //////////////////////
 
-    /// @notice Returns the tax configuration for this taxable token
+    /// @notice Pre-graduation fee policy. Same LP fee as the base, plus the creation-anchored tax
+    ///         (0 once the window closes), so the launchpad charges the exact tax rate the V4 hook /
+    ///         V2 `_update` apply post-graduation — identical pre- and post-graduation.
+    function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata trade)
+        external
+        view
+        override(ILivoToken, LivoToken)
+        returns (ILivoToken.LaunchpadFees memory)
+    {
+        uint16 taxBps = _taxWindowActive() ? (trade.isBuy ? buyTaxBps : sellTaxBps) : 0;
+        return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: taxBps});
+    }
+
+    /// @notice Returns the effective tax configuration. The tax window is creation-anchored
+    ///         (`[launchTimestamp, launchTimestamp + taxDurationSeconds]`) and independent of graduation.
+    /// @dev Once the window closes this returns a fully-zeroed tax (both rates AND `taxDurationSeconds`),
+    ///      so the graduation-anchored `LivoSwapHook` — which still computes
+    ///      `block.timestamp > graduationTimestamp + taxDurationSeconds` and reads the rates — correctly
+    ///      stops taxing (the zeroed rates also cover the edge where the window expires before graduation
+    ///      and a swap lands in the graduation block). Within the window it returns the stored rates and
+    ///      duration; that is consistent because `graduationTimestamp >= launchTimestamp`.
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
+        if (!_taxWindowActive()) {
+            // window closed: report no active tax. `graduationTimestamp` is still surfaced for reference.
+            return
+                TaxConfig({
+                    buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, graduationTimestamp: graduationTimestamp
+                });
+        }
         config = TaxConfig({
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
@@ -158,5 +188,12 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         buyTaxBps = cfg.buyTaxBps;
         sellTaxBps = cfg.sellTaxBps;
         taxDurationSeconds = uint40(cfg.taxDurationSeconds);
+    }
+
+    /// @dev True while the creation-anchored tax window is open:
+    ///      `block.timestamp <= launchTimestamp + taxDurationSeconds`. Independent of graduation.
+    ///      `launchTimestamp` is the base `LivoToken` creation timestamp.
+    function _taxWindowActive() internal view returns (bool) {
+        return block.timestamp <= uint256(launchTimestamp) + taxDurationSeconds;
     }
 }
