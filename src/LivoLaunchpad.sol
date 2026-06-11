@@ -141,6 +141,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
 
+        // WARNING: fee-on-transfer / rebasing tokens are NOT supported and must never be launched here. The
+        // launchpad assumes the buyer receives exactly `tokensToReceive`. A token that skims on transfer would
+        // silently under-deliver (defeating the minTokenAmount slippage check above) and drift inventory.
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
         // split the fee: LP fee between treasury (push) and creator (accrueFees); tax (the remainder) fully to creator
         uint256 lpFee = (msg.value * lpFeeBps) / BASIS_POINTS;
@@ -199,6 +202,10 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         tokenState.releasedSupply -= tokenAmount;
 
         // funds transfers
+        // WARNING: fee-on-transfer / rebasing tokens are NOT supported and must never be launched here. The
+        // launchpad pays ETH for the full `tokenAmount` but assumes it receives exactly that many tokens back.
+        // A token that skims on transfer would silently leak launchpad inventory (eventually bricking buys and
+        // graduation, where the launchpad's token balance no longer matches its ETH-side accounting).
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
 
         // split the fee: LP fee between treasury (push) and creator (accrueFees); tax (the remainder) fully to creator
