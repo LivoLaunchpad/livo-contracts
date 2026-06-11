@@ -669,7 +669,9 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 lpFeeBps: 100,
                 treasuryShareBps: 10_000
             }),
-            TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
+            TaxConfigInit({
+                buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days), startTaxFromLaunch: true
+            }),
             _defaultCfg()
         );
     }
@@ -699,7 +701,9 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     lpFeeBps: 100,
                     treasuryShareBps: 10_000
                 }),
-                TaxConfigInit({buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days)}),
+                TaxConfigInit({
+                    buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days), startTaxFromLaunch: true
+                }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
                     maxWalletBps: maxWalletBps,

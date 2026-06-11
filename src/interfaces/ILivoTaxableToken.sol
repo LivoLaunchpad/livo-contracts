@@ -10,6 +10,10 @@ struct TaxConfigInit {
     uint16 buyTaxBps;
     uint16 sellTaxBps;
     uint32 taxDurationSeconds;
+    /// @dev Anchor for the tax window. `true`: window runs `[launchTimestamp, launchTimestamp + duration]`
+    ///      (starts at token creation, spans graduation). `false`: window runs
+    ///      `[graduationTimestamp, graduationTimestamp + duration]` (no tax before graduation).
+    bool startTaxFromLaunch;
 }
 
 /// @title ILivoTaxableToken
@@ -22,6 +26,10 @@ struct TaxConfigInit {
 interface ILivoTaxableToken is ILivoToken {
     /// @notice Returns the graduation timestamp for this token (0 before graduation).
     function graduationTimestamp() external view returns (uint40);
+
+    /// @notice Tax-window anchor for this token: `true` if the window starts at token creation
+    ///         (`launchTimestamp`), `false` if it starts at graduation (`graduationTimestamp`).
+    function startTaxFromLaunch() external view returns (bool);
 
     /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2
     ///         or V4 concrete tax-token implementations through a single shared type.

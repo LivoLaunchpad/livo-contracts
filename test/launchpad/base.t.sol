@@ -168,18 +168,33 @@ contract LaunchpadBaseTests is Test {
         arr[0] = ILivoFactory.SupplyShare({account: account, shares: 10_000});
     }
 
-    /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`.
+    /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`. Defaults to
+    ///      `startTaxFromLaunch: true` (creation-anchored), preserving every existing test's behavior.
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
         returns (TaxConfigInit memory)
     {
-        return TaxConfigInit({buyTaxBps: buyTaxBps, sellTaxBps: sellTaxBps, taxDurationSeconds: taxDurationSeconds});
+        return _taxCfg(buyTaxBps, sellTaxBps, taxDurationSeconds, true);
+    }
+
+    /// @dev `_taxCfg` overload that picks the tax-window anchor explicitly.
+    function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds, bool startTaxFromLaunch)
+        internal
+        pure
+        returns (TaxConfigInit memory)
+    {
+        return TaxConfigInit({
+            buyTaxBps: buyTaxBps,
+            sellTaxBps: sellTaxBps,
+            taxDurationSeconds: taxDurationSeconds,
+            startTaxFromLaunch: startTaxFromLaunch
+        });
     }
 
     /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 disables dispatch).
     function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
     }
 
     /// @dev Empty `AntiSniperConfigs` — sentinel for "no sniper protection" (protectionWindowSeconds == 0).
