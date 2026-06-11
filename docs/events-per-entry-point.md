@@ -171,15 +171,18 @@ When a token is not graduated yet, sells happen against launchpad reserves. As w
 policy is read per-trade from the token: the LP fee is split treasury/creator, the tax goes 100% to
 the creator. The treasury share is pushed and the creator total is routed through `accrueFees`.
 
+The event order matches buys (§2) and the post-graduation `LivoSwapHook` (§6): the fee events come
+first and the trade event closes the sequence.
+
 Livo event order:
 
-1. **`LivoLaunchpad.LivoTokenSell`** (`token, seller, tokenAmount, ethAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
-2. ERC20 transfer from seller to launchpad.
-3. **`LivoLaunchpad.LpFeesAccrued`** (`token, creatorShare, treasuryShare`) — emitted whenever a fee is taken.
-4. **`LivoLaunchpad.CreatorTaxesAccrued`** (`token, taxAmount`) — only when the tax is non-zero.
-5. Creator total, when non-zero, via `LivoToken.accrueFees` → `LivoMasterFeeHandler.depositFees(token)`:
+1. ERC20 transfer from seller to launchpad.
+2. **`LivoLaunchpad.LpFeesAccrued`** (`token, creatorShare, treasuryShare`) — emitted whenever a fee is taken.
+3. **`LivoLaunchpad.CreatorTaxesAccrued`** (`token, taxAmount`) — only when the tax is non-zero.
+4. Creator total, when non-zero, via `LivoToken.accrueFees` → `LivoMasterFeeHandler.depositFees(token)`:
    - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
    - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) on a successful direct forward.
+5. **`LivoLaunchpad.LivoTokenSell`** (`token, seller, tokenAmount, ethAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
 6. Treasury share sent via native ETH call (no Livo event for the ETH transfer).
 7. Seller receives ETH via native ETH call (no Livo event for the ETH transfer).
 

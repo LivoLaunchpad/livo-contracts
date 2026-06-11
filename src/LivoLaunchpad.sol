@@ -198,15 +198,19 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
         tokenState.ethCollected -= ethPulledFromReserves;
         tokenState.releasedSupply -= tokenAmount;
 
-        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
-
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
 
         // split the fee: LP fee between treasury (push) and creator (accrueFees); tax (the remainder) fully to creator
         uint256 lpFee = (ethPulledFromReserves * lpFeeBps) / BASIS_POINTS;
-        // tax = ethFee - lpFee,
+        // tax = ethFee - lpFee
         _settleFee(token, lpFee, ethFee - lpFee, treasuryShareBps);
+
+        // Emitted after the fee events (LpFeesAccrued/CreatorTaxesAccrued in _settleFee) so the
+        // pre-graduation event order matches buys and the post-graduation LivoSwapHook: fee events
+        // first, trade event last. Fee breakdown is intentionally NOT included here (see buy).
+        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+
         _transferEth(msg.sender, ethForSeller, true);
 
         return ethForSeller;
