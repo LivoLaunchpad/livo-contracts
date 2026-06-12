@@ -206,7 +206,7 @@ In order, for a successful call (Livo-owned events only — ERC20 `Transfer`, OZ
 
 1. `LivoFactory.TokenCreated(token, name, symbol, tokenOwner, launchpad, graduator, feeHandler)`
 2. Graduator init events (`PairInitialized`, plus `PoolIdRegistered` on V4)
-3. `LivoTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds)` — only if `taxCfg` is configured
+3. `LivoTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration)` — only if `taxCfg` is configured. The three `*Decay*` fields are reserved for a future linear tax-decay feature and are always 0 today.
 4. `SniperProtectionInitialized(maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist)` — only if `antiSniperCfg` is configured
 5. `LivoLaunchpad.TokenLaunched(token, graduationThreshold, maxExcessOverThreshold)`
 6. `LivoMasterFeeHandler.DirectReceiverRegistered(token, receiver)` — zero or one (max one direct receiver)

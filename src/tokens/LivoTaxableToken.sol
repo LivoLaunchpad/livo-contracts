@@ -49,8 +49,18 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// Events //////////////////////
 
-    /// @notice Emitted once during init with the dev-supplied tax config.
-    event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
+    /// @notice Emitted once during init with the dev-supplied tax config. `startTaxFromLaunch` selects
+    ///         the tax-window anchor (creation vs graduation). The three `*Decay*` fields are reserved
+    ///         for the upcoming linear tax-decay feature and are always emitted as 0 until it ships.
+    event LivoTaxableTokenInitialized(
+        uint16 buyTaxBps,
+        uint16 sellTaxBps,
+        uint40 taxDurationSeconds,
+        bool startTaxFromLaunch,
+        uint16 buyTaxDecayStartBps,
+        uint16 sellTaxDecayStartBps,
+        uint40 taxDecayDuration
+    );
 
     /// @notice Emitted whenever `setTaxBps` successfully updates the buy/sell tax rates. Only the
     ///         new values are carried; indexers can resolve old values from the prior
@@ -191,11 +201,20 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     }
 
     /// @notice Internal helper to store tax configuration.
-    /// @dev Tax-bps and duration bounds are enforced upstream in the factory. `startTaxFromLaunch` is
-    ///      not surfaced in `LivoTaxableTokenInitialized` (whose signature must stay stable for the
-    ///      indexer); it is exposed via the auto-generated public getter instead.
+    /// @dev Tax-bps and duration bounds are enforced upstream in the factory. The
+    ///      `LivoTaxableTokenInitialized` event carries `startTaxFromLaunch` plus three placeholder
+    ///      `*Decay*` fields (emitted as 0) reserved for the upcoming linear tax-decay feature, so the
+    ///      indexer schema is forward-compatible and won't need another signature change when it ships.
     function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
-        emit LivoTaxableTokenInitialized(cfg.buyTaxBps, cfg.sellTaxBps, uint40(cfg.taxDurationSeconds));
+        emit LivoTaxableTokenInitialized(
+            cfg.buyTaxBps,
+            cfg.sellTaxBps,
+            uint40(cfg.taxDurationSeconds),
+            cfg.startTaxFromLaunch,
+            0, // buyTaxDecayStartBps: reserved for the upcoming linear tax-decay feature
+            0, // sellTaxDecayStartBps: reserved (see above)
+            0 // taxDecayDuration: reserved (see above)
+        );
 
         buyTaxBps = cfg.buyTaxBps;
         sellTaxBps = cfg.sellTaxBps;

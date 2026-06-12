@@ -308,7 +308,7 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
 contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_LivoTaxableTokenInitialized_emittedOnCreation() public {
         vm.expectEmit(true, true, true, true);
-        emit LivoTaxableToken.LivoTaxableTokenInitialized(0, 400, 14 days);
+        emit LivoTaxableToken.LivoTaxableTokenInitialized(0, 400, 14 days, true, 0, 0, 0);
 
         vm.prank(creator);
         address deployedToken = factoryTax.createToken(
@@ -345,7 +345,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         assertTrue(logs.length > 0);
 
         bytes32 tokenCreatedSig = keccak256("TokenCreated(address,address,string,string,address,address,address)");
-        bytes32 taxInitSig = keccak256("LivoTaxableTokenInitialized(uint16,uint16,uint40)");
+        bytes32 taxInitSig = keccak256("LivoTaxableTokenInitialized(uint16,uint16,uint40,bool,uint16,uint16,uint40)");
 
         uint256 tokenCreatedIndex = type(uint256).max;
         uint256 taxInitIndex = type(uint256).max;
