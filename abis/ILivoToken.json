@@ -113,6 +113,64 @@
   },
   {
     "type": "function",
+    "name": "getLaunchpadFees",
+    "inputs": [
+      {
+        "name": "trade",
+        "type": "tuple",
+        "internalType": "struct ILivoToken.LaunchpadTrade",
+        "components": [
+          {
+            "name": "isBuy",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "trader",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "ethReserves",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "releasedSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct ILivoToken.LaunchpadFees",
+        "components": [
+          {
+            "name": "lpFeeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "treasuryShareBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getTaxConfig",
     "inputs": [],
     "outputs": [
@@ -168,6 +226,19 @@
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launchTimestamp",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint40",
+        "internalType": "uint40"
       }
     ],
     "stateMutability": "view"
@@ -382,6 +453,25 @@
     "type": "event",
     "name": "Graduated",
     "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LaunchpadFeesInitialized",
+    "inputs": [
+      {
+        "name": "lpFeeBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "treasuryShareBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
     "anonymous": false
   },
   {
