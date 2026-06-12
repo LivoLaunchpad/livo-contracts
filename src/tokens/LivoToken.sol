@@ -68,13 +68,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     ///          `ERC20InvalidReceiver` before reaching `_update`, so the `to == factoryAddr`
     ///          branch is unreachable with `factoryAddr == 0`.
     ///        - `from == 0`: the only mint is `_initializeLivoToken`'s initial mint to the
-    ///          launchpad, which runs while `launchTimestamp == 0` (this initializer sets it only
-    ///          AFTER the mint) and `protectionWindowSeconds == 0` (`_initializeSniperProtection`
-    ///          runs later). At that moment the window-active check returns early on its own, so the
+    ///          launchpad, which runs before `_initializeSniperProtection` caches
+    ///          `protectionWindowEnd` (so it reads 0 during the mint, and `launchTimestamp` itself
+    ///          is also set only at the END of this initializer). At that moment the window-active
+    ///          check (`block.timestamp >= protectionWindowEnd`) returns early on its own, so the
     ///          `from == factoryAddr` branch is unreachable with `factoryAddr == 0`.
     /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `to == address(0)`
-    ///      OR with `from == address(0)` AFTER `launchTimestamp` is set would silently bypass
-    ///      the sniper caps. Concrete cases to watch out for:
+    ///      OR with `from == address(0)` while the protection window is open (`protectionWindowEnd`
+    ///      set, not yet elapsed) would silently bypass the sniper caps. Concrete cases to watch out for:
     ///        - a custom transfer override (or alternate ERC20 base) that drops the
     ///          zero-recipient guard, enabling burns through `_update`;
     ///        - any new `_mint` call site that runs after init (e.g. a rebase or inflation
@@ -128,9 +129,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
         // reads it sees the real value. The mint itself is not gated by the sniper-protection check:
-        // `launchTimestamp` is set at the END of this initializer (after the mint) and
-        // `protectionWindowSeconds` later by `_initializeSniperProtection`, so both read 0 during the
-        // mint and the check's window-active early-return covers it.
+        // `protectionWindowEnd` is cached only later by `_initializeSniperProtection`, so it reads 0
+        // during the mint and the check's window-active early-return (`block.timestamp >= 0`) covers it.
         launchpad = LivoLaunchpad(params.launchpad);
 
         // Creator-vault tokens lock `vaultAllocation` of the supply: only `TOTAL_SUPPLY - vaultAllocation`

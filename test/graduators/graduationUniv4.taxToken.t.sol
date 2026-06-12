@@ -1206,15 +1206,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // getLaunchpadFees(): LP fee still applies, but tax is 0 on both sides.
         ILivoToken.LaunchpadFees memory buyFees = ILivoToken(testToken)
-            .getLaunchpadFees(
-                ILivoToken.LaunchpadTrade({isBuy: true, trader: address(0), ethReserves: 0, releasedSupply: 0})
-            );
+            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}));
         assertGt(buyFees.lpFeeBps, 0, "LP fee still charged pre-graduation");
         assertEq(buyFees.taxBps, 0, "no buy tax pre-graduation for graduation-anchored token");
         ILivoToken.LaunchpadFees memory sellFees = ILivoToken(testToken)
-            .getLaunchpadFees(
-                ILivoToken.LaunchpadTrade({isBuy: false, trader: address(0), ethReserves: 0, releasedSupply: 0})
-            );
+            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: false, ethReserves: 0, releasedSupply: 0}));
         assertEq(sellFees.taxBps, 0, "no sell tax pre-graduation for graduation-anchored token");
     }
 

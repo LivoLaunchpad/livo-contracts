@@ -41,13 +41,16 @@ interface ILivoToken is IERC20 {
     }
 
     /// @notice Pre-trade context the launchpad passes to `getLaunchpadFees` during pre-graduation trades.
-    /// @dev Deliberately carries only state known BEFORE the trade. The trade's own gross size
-    ///      (ETH in / tokens out) is not provided: the launchpad treats the fee as a constant bps
-    ///      and inverts it for exact-output quotes, so a fee that depended on this trade's own size
-    ///      would make the forward and inverse quotes inconsistent.
+    /// @dev Deliberately carries only objective pre-trade pool state. Two omissions are load-bearing:
+    ///      - The trade's own gross size (ETH in / tokens out) is not provided: the launchpad treats
+    ///        the fee as a constant bps and inverts it for exact-output quotes, so a fee that depended
+    ///        on this trade's own size would make the forward and inverse quotes inconsistent.
+    ///      - The trader identity is not provided: quotes are served from views (`LivoQuoter`, the
+    ///        launchpad `quoteX` functions) whose `msg.sender` is the quoter caller, not the eventual
+    ///        trader, so a trader-dependent fee could not be quoted consistently with execution.
+    ///      The fee MUST therefore be a pure function of `(isBuy, ethReserves, releasedSupply, time)`.
     struct LaunchpadTrade {
         bool isBuy; // true for buys, false for sells
-        address trader; // original caller of the launchpad trade
         uint256 ethReserves; // launchpad ETH reserves for this token, pre-trade
         uint256 releasedSupply; // circulating supply sold, pre-trade
     }
@@ -91,10 +94,11 @@ interface ILivoToken is IERC20 {
     /// @notice Returns the pre-graduation fee policy for a given trade.
     /// @dev Read by the launchpad on every pre-graduation buy/sell. `virtual` implementations may
     ///      derive the rate dynamically from the pre-trade context in `trade` (reserves, released
-    ///      supply, trader, timestamp); the base implementation returns the statically configured
-    ///      rates. The trade's own gross size is deliberately NOT provided — the fee must be a pure
-    ///      function of pre-trade state, otherwise the launchpad's forward/inverse quotes (which
-    ///      treat the fee as a constant bps) become inconsistent.
+    ///      supply, timestamp); the base implementation returns the statically configured rates.
+    ///      The trade's own gross size and the trader identity are deliberately NOT provided (see
+    ///      `LaunchpadTrade`) — the fee must be a pure function of pre-trade pool state, otherwise
+    ///      the launchpad's forward/inverse quotes (which treat the fee as a constant bps) and the
+    ///      view-served quotes (whose `msg.sender` is not the trader) become inconsistent.
     function getLaunchpadFees(LaunchpadTrade calldata trade) external view returns (LaunchpadFees memory);
 
     /// @notice Contract in charge of handling the graduation process

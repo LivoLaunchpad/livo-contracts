@@ -170,7 +170,7 @@ contract LivoQuoter is ILivoQuoter {
         ILivoToken.LaunchpadFees memory fees = ILivoToken(token)
             .getLaunchpadFees(
                 ILivoToken.LaunchpadTrade({
-                    isBuy: false, trader: msg.sender, ethReserves: reservesEth, releasedSupply: state.releasedSupply
+                    isBuy: false, ethReserves: reservesEth, releasedSupply: state.releasedSupply
                 })
             );
         uint256 totalSellFeeBps = uint256(fees.lpFeeBps) + fees.taxBps;

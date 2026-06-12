@@ -387,10 +387,7 @@ contract LaunchpadBaseTests is Test {
         ILivoToken.LaunchpadFees memory f = ILivoToken(token)
             .getLaunchpadFees(
                 ILivoToken.LaunchpadTrade({
-                    isBuy: true,
-                    trader: address(0),
-                    ethReserves: state.ethCollected,
-                    releasedSupply: state.releasedSupply
+                    isBuy: true, ethReserves: state.ethCollected, releasedSupply: state.releasedSupply
                 })
             );
         return uint256(f.lpFeeBps) + f.taxBps;

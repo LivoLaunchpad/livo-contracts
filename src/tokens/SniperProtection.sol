@@ -17,8 +17,8 @@ struct AntiSniperConfigs {
 /// @notice Anti-sniper mixin active for a window post-launch and disabled on graduation.
 ///         Per-wallet cap fires on every incoming transfer (blocks sybil → consolidate);
 ///         per-tx cap fires only on curve buys.
-/// @dev Inheriting tokens call `_initializeSniperProtection(cfg)` in their initializer and
-///      `_checkSniperProtection(...)` at the top of `_update`.
+/// @dev Inheriting tokens call `_initializeSniperProtection(cfg, launchTimestamp)` in their
+///      initializer and `_checkSniperProtection(...)` at the top of `_update`.
 abstract contract SniperProtection {
     /// @notice Min allowed value for max-per-tx and max-wallet caps, in bps.
     uint16 public constant ANTI_SNIPER_MIN_BPS = 10; // 0.1%
@@ -50,6 +50,13 @@ abstract contract SniperProtection {
     /// @notice Duration the protection remains active after the host token's `launchTimestamp`.
     uint40 public protectionWindowSeconds;
 
+    /// @notice Absolute timestamp at which the protection window closes: the host token's
+    ///         `launchTimestamp + protectionWindowSeconds`, cached at init so the hot-path window
+    ///         check is a single SLOAD from this slot (no read of the base `launchTimestamp` slot).
+    ///         Reads 0 until `_initializeSniperProtection` runs (after the initial mint), so the
+    ///         mint observes a closed window and stays uncapped. Packs into this slot.
+    uint40 public protectionWindowEnd;
+
     /// @notice Dev-supplied addresses that bypass the caps during the protection window.
     mapping(address account => bool isWhitelisted) public sniperBypass;
 
@@ -68,10 +75,11 @@ abstract contract SniperProtection {
         uint16 maxBuyPerTxBps, uint16 maxWalletBps, uint40 protectionWindowSeconds, address[] whitelist
     );
 
-    /// @dev Validates configs and records the whitelist. The window anchor (`launchTimestamp`) is the
-    ///      host token's creation timestamp, set by `LivoToken._initializeLivoToken` and passed into
-    ///      the check functions below.
-    function _initializeSniperProtection(AntiSniperConfigs memory cfg) internal {
+    /// @dev Validates configs and records the whitelist. `launchTimestamp` is the host token's
+    ///      creation timestamp (set by `LivoToken._initializeLivoToken`, which runs first); it is
+    ///      cached here as the absolute `protectionWindowEnd` so the check functions below read a
+    ///      single slot instead of also touching the base `launchTimestamp` slot.
+    function _initializeSniperProtection(AntiSniperConfigs memory cfg, uint40 launchTimestamp) internal {
         require(cfg.maxBuyPerTxBps >= ANTI_SNIPER_MIN_BPS, MaxBuyPerTxBpsTooLow());
         require(cfg.maxBuyPerTxBps <= ANTI_SNIPER_MAX_BPS, MaxBuyPerTxBpsTooHigh());
         require(cfg.maxWalletBps >= ANTI_SNIPER_MIN_BPS, MaxWalletBpsTooLow());
@@ -84,6 +92,7 @@ abstract contract SniperProtection {
         maxBuyPerTxBps = cfg.maxBuyPerTxBps;
         maxWalletBps = cfg.maxWalletBps;
         protectionWindowSeconds = cfg.protectionWindowSeconds;
+        protectionWindowEnd = launchTimestamp + cfg.protectionWindowSeconds;
 
         uint256 n = cfg.whitelist.length;
         for (uint256 i; i < n; ++i) {
@@ -109,9 +118,8 @@ abstract contract SniperProtection {
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     ///      `from == graduatorAddr` is intentionally NOT exempt: graduator outgoing transfers
     ///      happen post-`markGraduated()`, hitting the `graduated` early-return.
-    /// @param launchTimestamp Host token's creation timestamp (`LivoToken.launchTimestamp`), the window anchor.
-    /// @dev Mints (`from == 0`) only happen during `_initializeLivoToken`, while the host's
-    ///      `launchTimestamp` (passed in here) and `protectionWindowSeconds` are still 0; the window
+    /// @dev Mints (`from == 0`) only happen during `_initializeLivoToken`, before
+    ///      `_initializeSniperProtection` runs, so `protectionWindowEnd == 0` and the window
     ///      early-return covers them. Burns (`to == 0`) are rejected by OZ ERC20 v5 before `_update`.
     ///      Launchpad fees are ignored in the cap math.
     function _checkSniperProtection(
@@ -122,11 +130,10 @@ abstract contract SniperProtection {
         address factoryAddr,
         address graduatorAddr,
         bool graduated,
-        uint256 toBalance,
-        uint40 launchTimestamp
+        uint256 toBalance
     ) internal view {
         if (graduated) return;
-        if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return;
+        if (block.timestamp >= protectionWindowEnd) return;
 
         // sells back to the curve
         if (to == launchpadAddr) return;
@@ -156,14 +163,10 @@ abstract contract SniperProtection {
     ///      `LivoLaunchpad.getMaxEthToSpend` converted via the bonding curve.
     /// @dev Factory/graduator/launchpad bypasses from `_checkSniperProtection` are NOT mirrored
     ///      here: none of those addresses ever buys via `buyTokensWithExactEth`.
-    function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated, uint40 launchTimestamp)
-        internal
-        view
-        returns (uint256)
-    {
+    function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
         if (graduated) return type(uint256).max;
         if (sniperBypass[buyer]) return type(uint256).max;
-        if (block.timestamp >= launchTimestamp + protectionWindowSeconds) return type(uint256).max;
+        if (block.timestamp >= protectionWindowEnd) return type(uint256).max;
 
         uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
         uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;

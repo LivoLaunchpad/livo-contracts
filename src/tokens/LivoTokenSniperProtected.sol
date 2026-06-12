@@ -16,25 +16,17 @@ contract LivoTokenSniperProtected is LivoToken, SniperProtection {
         initializer
     {
         _initializeLivoToken(params);
-        _initializeSniperProtection(antiSniperCfg);
+        _initializeSniperProtection(antiSniperCfg, launchTimestamp);
     }
 
     function _update(address from, address to, uint256 amount) internal override {
         _checkSniperProtection(
-            from,
-            to,
-            amount,
-            address(launchpad),
-            tokenFactory,
-            address(graduator),
-            graduated,
-            balanceOf(to),
-            launchTimestamp
+            from, to, amount, address(launchpad), tokenFactory, address(graduator), graduated, balanceOf(to)
         );
         super._update(from, to, amount);
     }
 
     function maxTokenPurchase(address buyer) external view override(LivoToken) returns (uint256) {
-        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated, launchTimestamp);
+        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated);
     }
 }

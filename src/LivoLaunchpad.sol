@@ -425,7 +425,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
             .getLaunchpadFees(
                 ILivoToken.LaunchpadTrade({
                     isBuy: isBuy,
-                    trader: msg.sender,
                     ethReserves: tokenStates[token].ethCollected,
                     releasedSupply: tokenStates[token].releasedSupply
                 })

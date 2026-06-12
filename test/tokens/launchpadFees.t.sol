@@ -39,9 +39,7 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function _fees(bool isBuy) internal view returns (ILivoToken.LaunchpadFees memory) {
-        return token.getLaunchpadFees(
-            ILivoToken.LaunchpadTrade({isBuy: isBuy, trader: address(0), ethReserves: 0, releasedSupply: 0})
-        );
+        return token.getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: isBuy, ethReserves: 0, releasedSupply: 0}));
     }
 
     /// @dev when a token is initialized, then the LP-fee fields are stored and launchTimestamp is set
