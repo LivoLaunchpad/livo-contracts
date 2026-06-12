@@ -126,11 +126,6 @@
             "internalType": "bool"
           },
           {
-            "name": "trader",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "ethReserves",
             "type": "uint256",
             "internalType": "uint256"
