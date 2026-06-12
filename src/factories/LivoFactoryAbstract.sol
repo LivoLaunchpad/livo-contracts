@@ -515,6 +515,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         return t.taxDurationSeconds != 0;
     }
 
+    /// @dev Buy tax (bps) the launchpad will charge on the deploy buy inside `createToken`. Only a
+    ///      creation-anchored window (`startTaxFromLaunch`) is open at creation; a graduation-anchored
+    ///      one charges no tax pre-graduation, so the deploy buy pays the LP fee alone. Used by the
+    ///      concrete factories' `quoteBuyOnDeploy` so the quote matches the fee actually charged.
+    function _deployBuyTaxBps(TaxConfigInit calldata taxCfg) internal pure returns (uint256) {
+        return (_isTaxConfigured(taxCfg) && taxCfg.startTaxFromLaunch) ? taxCfg.buyTaxBps : 0;
+    }
+
     function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {
         return a.protectionWindowSeconds != 0;
     }

@@ -128,7 +128,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     /// @param tokenAmount Amount of tokens to receive
     /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults (0 for none); selects
     ///        the same curve `createToken` uses. See `_quoteBuyOnDeploy`.
-    /// @param taxCfg The tax config the token will be created with; only `buyTaxBps` affects the buy.
+    /// @param taxCfg The tax config the token will be created with; only `buyTaxBps` affects the buy,
+    ///        and only when the window is creation-anchored (`startTaxFromLaunch`) — a graduation-anchored
+    ///        tax is not charged on the deploy buy (see `_deployBuyTaxBps`).
     /// @return totalEthNeeded The msg.value to pass to createToken
     function quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalLockedInVaultsBps, TaxConfigInit calldata taxCfg)
         external
@@ -136,7 +138,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         returns (uint256 totalEthNeeded)
     {
         return
-            _quoteBuyOnDeploy(tokenAmount, totalLockedInVaultsBps, uint256(taxCfg.buyTaxBps) + V2_LAUNCHPAD_LP_FEE_BPS);
+            _quoteBuyOnDeploy(tokenAmount, totalLockedInVaultsBps, _deployBuyTaxBps(taxCfg) + V2_LAUNCHPAD_LP_FEE_BPS);
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
