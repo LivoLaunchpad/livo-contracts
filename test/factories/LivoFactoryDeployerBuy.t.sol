@@ -255,7 +255,9 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
-        assertGe(LivoToken(token).balanceOf(creator), tokenAmount);
+        uint256 creatorBalance = LivoToken(token).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
@@ -394,7 +396,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
             _emptyAntiSniperCfg()
         );
 
-        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), tokenAmount);
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
     /// @dev With a non-zero BUY tax the deploy-buy fee is LP + buy tax, so the quote must be told that
@@ -420,7 +424,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
             _emptyAntiSniperCfg()
         );
 
-        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), tokenAmount);
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
