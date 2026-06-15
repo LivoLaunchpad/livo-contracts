@@ -112,7 +112,10 @@ contract DeployLaunchpadV2Stack is Script {
     /// @dev Starting point for the salt search. The v2 initcode differs from v1's, so there is no
     ///      collision risk with the old launchpad's salt — any offset works, but it must be the
     ///      SAME on every chain so both runs mine the same salt.
-    uint256 internal constant VANITY_SALT_OFFSET = 0x11123422;
+    ///      Rotated past the original window (0x11123422) for the launchpad-v2 redeploy, so the mined
+    ///      vanity address is guaranteed different from the first v2 deployment at
+    ///      0x3A19184B0F00FdFE11A3a82a7b03CCA727211110 regardless of any initcode change.
+    uint256 internal constant VANITY_SALT_OFFSET = 0x22123422;
 
     // ========================= Per-chain dependencies =========================
 
