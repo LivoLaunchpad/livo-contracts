@@ -16,6 +16,9 @@ contract LivoLaunchpad is ILivoLaunchpad2, Ownable2Step, ReentrancyGuardTransien
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
 
+    /// @notice Version of the Livo stack this contract belongs to
+    string public constant VERSION = "2.0";
+
     /// @notice Authorized factories
     mapping(address factory => bool authorized) public whitelistedFactories;
 

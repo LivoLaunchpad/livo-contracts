@@ -11,6 +11,9 @@ import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
+    /// @notice Version of the Livo stack this token belongs to
+    string public constant override VERSION = "2.0";
+
     /// @notice all Livo tokens have same supply
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
 

@@ -18,6 +18,9 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 /// @dev Stateless and view-only. The launchpad address is immutable; deploy a new quoter per
 ///      launchpad.
 contract LivoQuoter is ILivoQuoter2 {
+    /// @notice Version of the Livo stack this contract belongs to
+    string public constant VERSION = "2.0";
+
     /// @notice The launchpad this quoter reads from.
     ILivoLaunchpad2 public immutable launchpad;
 

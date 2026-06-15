@@ -87,6 +87,9 @@ interface ILivoToken is IERC20 {
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 
+    /// @notice Version of the Livo stack this token belongs to
+    function VERSION() external view returns (string memory);
+
     /// @notice Returns the tax configuration for this token
     /// @return config The complete tax configuration
     function getTaxConfig() external view returns (TaxConfig memory config);
