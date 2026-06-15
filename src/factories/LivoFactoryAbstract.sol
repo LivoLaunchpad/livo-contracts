@@ -519,6 +519,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      creation-anchored window (`startTaxFromLaunch`) is open at creation; a graduation-anchored
     ///      one charges no tax pre-graduation, so the deploy buy pays the LP fee alone. Used by the
     ///      concrete factories' `quoteBuyOnDeploy` so the quote matches the fee actually charged.
+    /// @dev Design decision: the deployer's own deploy buy is intentionally taxed (no buyer-identity
+    ///      exemption) — tax stays a pure function of (window, direction), keeping quotes caller-independent.
+    //       If deployer==tax receiver, there is no extra cost, as all taxes go to the deployer anyway.
     function _deployBuyTaxBps(TaxConfigInit calldata taxCfg) internal pure returns (uint256) {
         return (_isTaxConfigured(taxCfg) && taxCfg.startTaxFromLaunch) ? taxCfg.buyTaxBps : 0;
     }
