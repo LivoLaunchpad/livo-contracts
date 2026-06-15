@@ -30,6 +30,19 @@
   },
   {
     "type": "function",
+    "name": "VERSION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "acceptOwnership",
     "inputs": [],
     "outputs": [],
@@ -250,6 +263,11 @@
         "name": "totalEthNeeded",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "canGraduate",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -284,6 +302,11 @@
         "name": "tokensToReceive",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "canGraduate",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
