@@ -12,6 +12,7 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 ///         the legacy 3-tuple via `ILivoLaunchpad` keeps decoding correctly; the appended
 ///         `canGraduate` is simply ignored by it.
 interface ILivoLaunchpad2 {
+    function VERSION() external view returns (string memory);
     function treasury() external view returns (address);
     function whitelistedFactories(address factory) external view returns (bool);
     function launchToken(address token, ILivoBondingCurve curve) external;
@@ -19,6 +20,10 @@ interface ILivoLaunchpad2 {
         external
         payable
         returns (uint256 receivedTokens);
+
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline)
+        external
+        returns (uint256 receivedEth);
 
     function quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         external
