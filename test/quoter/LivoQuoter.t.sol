@@ -3,7 +3,8 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {LivoQuoter} from "src/LivoQuoter.sol";
-import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
+import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
+import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -71,7 +72,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_reason_INVALID_TOKEN() public {
         address fake = makeAddr("fake");
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(fake, buyer, 1 ether);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(fake, buyer, 1 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.INVALID_TOKEN));
         assertEq(q.ethSpent, 0);
 
@@ -82,7 +83,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_reason_GRADUATED() public {
         _graduateBaseToken();
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 1 ether);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 1 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.GRADUATED));
         assertEq(q.ethSpent, 0);
 
@@ -92,14 +93,14 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function test_reason_SNIPER_CAP_oversizedBuy_reasonOnly() public view {
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(sniperToken, buyer, 0.2 ether);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(sniperToken, buyer, 0.2 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.SNIPER_CAP));
         assertLt(q.ethSpent, 0.2 ether);
     }
 
     function test_reason_GRADUATION_EXCESS_baseToken_reasonOnly() public {
         _launchpadBuy(baseToken, _increaseWithFees(GRADUATION_THRESHOLD - 0.01 ether));
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 0.5 ether);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 0.5 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.GRADUATION_EXCESS));
         assertEq(q.ethSpent, launchpad.getMaxEthToSpend(baseToken));
     }
@@ -281,7 +282,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         LimitReason expectedReason,
         bool checkReason
     ) internal {
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer_, ethInput);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer_, ethInput);
 
         if (checkReason) assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.ethSpent == 0) return;
@@ -307,6 +308,9 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(buyerEthBefore + q.ethSpent - buyer_.balance, q.ethSpent, "buyer ETH delta");
         _assertTreasuryFeeDelta(token, treasuryEthBefore, q.ethFee);
 
+        // The quote's graduation flag must match what actually happened on-chain.
+        assertEq(launchpad.getTokenState(token).graduated, q.canGraduate, "canGraduate mismatch (exact-eth)");
+
         if (q.reason == LimitReason.SNIPER_CAP) assertLe(actualTokens, sniperCapBefore, "sniper cap exceeded");
     }
 
@@ -328,7 +332,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         LimitReason expectedReason,
         bool checkReason
     ) internal {
-        ILivoQuoter.BuyExactTokensQuote memory q = quoter.quoteBuyExactTokens(token, buyer_, tokenInput);
+        ILivoQuoter2.BuyExactTokensQuote memory q = quoter.quoteBuyExactTokens(token, buyer_, tokenInput);
 
         if (checkReason) assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.totalEthNeeded == 0) {
@@ -353,6 +357,9 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(buyerEthBefore + q.totalEthNeeded - buyer_.balance, q.totalEthNeeded, "buyer ETH delta");
         _assertTreasuryFeeDelta(token, treasuryEthBefore, q.ethFee);
 
+        // The quote's graduation flag must match what actually happened on-chain.
+        assertEq(launchpad.getTokenState(token).graduated, q.canGraduate, "canGraduate mismatch (exact-tokens)");
+
         if (q.reason == LimitReason.SNIPER_CAP) assertLe(actualTokens, sniperCapBefore, "sniper cap exceeded");
     }
 
@@ -374,7 +381,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         LimitReason expectedReason,
         bool checkReason
     ) internal {
-        ILivoQuoter.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, tokenAmount);
+        ILivoQuoter2.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, tokenAmount);
 
         if (checkReason) assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.tokensSold == 0) return;
@@ -397,7 +404,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
     function _quoteAndSellForExactEth(address token, address buyer_, uint256 ethTarget, LimitReason expectedReason)
         internal
     {
-        ILivoQuoter.SellForExactEthQuote memory q = quoter.quoteSellTokensForExactEth(token, ethTarget);
+        ILivoQuoter2.SellForExactEthQuote memory q = quoter.quoteSellTokensForExactEth(token, ethTarget);
 
         assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.tokensRequired == 0) {

@@ -8,10 +8,10 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {ILivoLaunchpad2} from "src/interfaces/ILivoLaunchpad2.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient {
+contract LivoLaunchpad is ILivoLaunchpad2, Ownable2Step, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
@@ -231,16 +231,18 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
     /// @return ethForPurchase Amount of ETH used effectively for purchase (after fees)
     /// @return ethFee Fee amount in ETH
     /// @return tokensToReceive Amount of tokens that would be received
+    /// @return canGraduate True if this purchase would trigger graduation
     function quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         external
         view
-        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
+        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive, bool canGraduate)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
 
         (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true);
         // this reverts with NotEnoughSupply if attempting to purchase more than this contract's balance
-        (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyTokensWithExactEth(token, ethValue, totalFeeBps);
+        (ethForPurchase, ethFee, tokensToReceive, canGraduate) =
+            _quoteBuyTokensWithExactEth(token, ethValue, totalFeeBps);
     }
 
     /// @notice Quotes the result of selling exact amount of tokens
@@ -268,14 +270,15 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, ReentrancyGuardTransient
     /// @return ethFee Fee amount in ETH
     /// @return ethForReserves ETH that goes into the reserves
     /// @return totalEthNeeded Total ETH to send (including fee)
+    /// @return canGraduate True if this purchase would trigger graduation
     function quoteBuyExactTokens(address token, uint256 tokenAmount)
         external
         view
-        returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded)
+        returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded, bool canGraduate)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
         (uint16 totalFeeBps,,) = _readLaunchpadFees(token, true);
-        (totalEthNeeded, ethFee, ethForReserves,) = _quoteBuyExactTokens(token, tokenAmount, totalFeeBps);
+        (totalEthNeeded, ethFee, ethForReserves, canGraduate) = _quoteBuyExactTokens(token, tokenAmount, totalFeeBps);
     }
 
     /// @notice Quotes how many tokens must be sold to receive an exact amount of ETH

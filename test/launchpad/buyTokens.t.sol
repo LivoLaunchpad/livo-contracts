@@ -22,7 +22,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
         uint256 launchpadEthBalanceBefore = address(launchpad).balance;
 
-        (uint256 expectedEthForPurchase, uint256 expectedEthFee, uint256 expectedTokensToReceive) =
+        (uint256 expectedEthForPurchase, uint256 expectedEthFee, uint256 expectedTokensToReceive,) =
             launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         vm.prank(buyer);
@@ -92,7 +92,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
     function test_quoteInitialPrice() public createTestToken {
         // how many tokens do you get with the first wei?
-        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, 1);
+        (,, uint256 expectedTokens,) = launchpad.quoteBuyTokensWithExactEth(testToken, 1);
         // initial price in the curve is 0.00000000225 ETH/token, so with 1 wei you should get 444,444,444
         assertApproxEqAbs(expectedTokens, 444444444, 1);
     }
@@ -100,7 +100,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
         uint256 ethAmount = 1 ether;
 
-        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
+        (,, uint256 expectedTokens,) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         // Should succeed with exact min amount
         vm.prank(buyer);
@@ -112,7 +112,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_slippageProtection() public createTestToken {
         uint256 ethAmount = 1 ether;
 
-        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
+        (,, uint256 expectedTokens,) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
         // Set min higher than expected to trigger slippage protection
         uint256 minTokenAmount = expectedTokens + 1;
 
@@ -210,7 +210,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 expectedFee = 0.01 ether;
         uint256 expectedEthForPurchase = ethAmount - expectedFee;
 
-        (uint256 actualEthForPurchase, uint256 actualFee,) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
+        (uint256 actualEthForPurchase, uint256 actualFee,,) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         assertEq(actualFee, expectedFee);
         assertEq(actualEthForPurchase, expectedEthForPurchase);
@@ -229,7 +229,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_quotingAccuracy() public createTestToken {
         uint256 ethAmount = 2 ether;
 
-        (uint256 quotedEthForPurchase, uint256 quotedEthFee, uint256 quotedTokens) =
+        (uint256 quotedEthForPurchase, uint256 quotedEthFee, uint256 quotedTokens,) =
             launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         uint256 treasuryBefore = treasury.balance;
@@ -407,11 +407,32 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // however, one wei less should be fine
         uint256 maxValueJustBelow = maxValue - 1;
-        (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive) =
+        (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive,) =
             launchpad.quoteBuyTokensWithExactEth(testToken, maxValueJustBelow);
 
         assertGt(tokensToReceive, 0, "No tokens received");
         assertEq(ethForPurchase + ethFee, maxValueJustBelow, "Amounts don't add up");
+    }
+
+    function test_quoteExposesCanGraduate() public createTestToken {
+        // A small buy is nowhere near graduation: both buy quotes report canGraduate == false.
+        (,, uint256 smallTokens, bool canGradSmallEth) = launchpad.quoteBuyTokensWithExactEth(testToken, 0.1 ether);
+        assertFalse(canGradSmallEth, "small exact-eth buy should not graduate");
+        (,,, bool canGradSmallTokens) = launchpad.quoteBuyExactTokens(testToken, smallTokens);
+        assertFalse(canGradSmallTokens, "small exact-tokens buy should not graduate");
+
+        // A buy that tops the curve above the graduation threshold flips the flag on both quotes.
+        // Target threshold + half the allowed excess so inverse-quote rounding can't drift it below.
+        uint256 graduatingEth = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
+        (,, uint256 graduatingTokens, bool canGradEth) = launchpad.quoteBuyTokensWithExactEth(testToken, graduatingEth);
+        assertTrue(canGradEth, "graduating exact-eth buy should report canGraduate");
+        (,,, bool canGradTokens) = launchpad.quoteBuyExactTokens(testToken, graduatingTokens);
+        assertTrue(canGradTokens, "graduating exact-tokens buy should report canGraduate");
+
+        // The flag is truthful: broadcasting the quoted buy actually graduates the token.
+        assertFalse(launchpad.getTokenState(testToken).graduated, "should not be graduated before the buy");
+        _launchpadBuy(testToken, graduatingEth);
+        assertTrue(launchpad.getTokenState(testToken).graduated, "a buy quoted canGraduate must graduate");
     }
 
     function test_fuzzBuyMaxEth(uint256 firstEthBuy) public createTestToken {

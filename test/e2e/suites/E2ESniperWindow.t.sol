@@ -97,10 +97,10 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         // if the cap is so small that `maxTokens / 100_000` rounds to zero.
         uint256 targetTokens = maxTokens - (maxTokens / 100_000) - 1;
 
-        (,, uint256 totalEthNeeded) = launchpad.quoteBuyExactTokens(token, targetTokens);
+        (,, uint256 totalEthNeeded,) = launchpad.quoteBuyExactTokens(token, targetTokens);
 
         // Forward-quote the same ETH back to confirm the actual delivery stays under the cap.
-        (,, uint256 tokensThatWillArrive) = launchpad.quoteBuyTokensWithExactEth(token, totalEthNeeded);
+        (,, uint256 tokensThatWillArrive,) = launchpad.quoteBuyTokensWithExactEth(token, totalEthNeeded);
         assertLe(tokensThatWillArrive, maxTokens, "forward quote must respect sniper cap");
 
         vm.deal(buyer, totalEthNeeded);

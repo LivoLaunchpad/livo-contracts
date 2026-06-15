@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {ILivoLaunchpad2} from "src/interfaces/ILivoLaunchpad2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
+import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
+import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
 /// @title LivoQuoter
@@ -16,9 +17,9 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 ///         revert.
 /// @dev Stateless and view-only. The launchpad address is immutable; deploy a new quoter per
 ///      launchpad.
-contract LivoQuoter is ILivoQuoter {
+contract LivoQuoter is ILivoQuoter2 {
     /// @notice The launchpad this quoter reads from.
-    ILivoLaunchpad public immutable launchpad;
+    ILivoLaunchpad2 public immutable launchpad;
 
     /// @dev Upper bound on the forward-decrement loop used to neutralize the bonding curve's
     ///      non-symmetric invertibility (`forward(inverse(T)) > T`). In practice the loop
@@ -29,10 +30,10 @@ contract LivoQuoter is ILivoQuoter {
 
     constructor(address _launchpad) {
         require(_launchpad != address(0), InvalidLaunchpad());
-        launchpad = ILivoLaunchpad(_launchpad);
+        launchpad = ILivoLaunchpad2(_launchpad);
     }
 
-    /// @inheritdoc ILivoQuoter
+    /// @inheritdoc ILivoQuoter2
     function quoteBuyTokensWithExactEth(address token, address buyer, uint256 ethValue)
         external
         view
@@ -55,11 +56,11 @@ contract LivoQuoter is ILivoQuoter {
         }
 
         if (q.ethSpent > 0) {
-            (, q.ethFee, q.tokensToReceive) = launchpad.quoteBuyTokensWithExactEth(token, q.ethSpent);
+            (, q.ethFee, q.tokensToReceive, q.canGraduate) = launchpad.quoteBuyTokensWithExactEth(token, q.ethSpent);
         }
     }
 
-    /// @inheritdoc ILivoQuoter
+    /// @inheritdoc ILivoQuoter2
     function quoteBuyExactTokens(address token, address buyer, uint256 tokenAmount)
         external
         view
@@ -100,17 +101,18 @@ contract LivoQuoter is ILivoQuoter {
             // Honor path: inverse-quote the requested amount, defensively clamp to `maxEth` in
             // case ceiling rounding pushes the inverse 1-2 wei above the cap, then forward
             // through the launchpad to get the *actual* delivery numbers below.
-            (,, q.totalEthNeeded) = launchpad.quoteBuyExactTokens(token, tokenAmount);
+            (,, q.totalEthNeeded,) = launchpad.quoteBuyExactTokens(token, tokenAmount);
             if (q.totalEthNeeded > maxEth) q.totalEthNeeded = maxEth;
             q.reason = LimitReason.NONE;
         }
 
         // Source of truth: forward-quote the chosen `totalEthNeeded` so every other field matches
         // exactly what the launchpad will compute on the eventual `buyTokensWithExactEth` call.
-        (q.ethForReserves, q.ethFee, q.tokensReceived) = launchpad.quoteBuyTokensWithExactEth(token, q.totalEthNeeded);
+        (q.ethForReserves, q.ethFee, q.tokensReceived, q.canGraduate) =
+            launchpad.quoteBuyTokensWithExactEth(token, q.totalEthNeeded);
     }
 
-    /// @inheritdoc ILivoQuoter
+    /// @inheritdoc ILivoQuoter2
     function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
         view
@@ -148,7 +150,7 @@ contract LivoQuoter is ILivoQuoter {
         }
     }
 
-    /// @inheritdoc ILivoQuoter
+    /// @inheritdoc ILivoQuoter2
     function quoteSellTokensForExactEth(address token, uint256 ethAmount)
         external
         view
@@ -192,7 +194,7 @@ contract LivoQuoter is ILivoQuoter {
         q.ethReceived = q.ethPulledFromReserves - q.ethFee;
     }
 
-    /// @inheritdoc ILivoQuoter
+    /// @inheritdoc ILivoQuoter2
     function getMaxEthToSpend(address token, address buyer) external view returns (uint256 maxEth, LimitReason reason) {
         LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) return (0, validity);
@@ -245,7 +247,7 @@ contract LivoQuoter is ILivoQuoter {
 
     /// @dev Forward-quote tokens for a given ETH input, ignoring fee and ethForPurchase fields.
     function _forwardTokens(address token, uint256 ethValue) internal view returns (uint256 tokensOut) {
-        (,, tokensOut) = launchpad.quoteBuyTokensWithExactEth(token, ethValue);
+        (,, tokensOut,) = launchpad.quoteBuyTokensWithExactEth(token, ethValue);
     }
 
     /// @dev Returns the largest `totalEthNeeded` such that broadcasting
@@ -263,7 +265,7 @@ contract LivoQuoter is ILivoQuoter {
     {
         if (tokenCap == 0) return (0, 0);
 
-        (,, uint256 totalEth) = launchpad.quoteBuyExactTokens(token, tokenCap);
+        (,, uint256 totalEth,) = launchpad.quoteBuyExactTokens(token, tokenCap);
 
         for (uint256 i = 0; i < _SAFETY_LOOP_CAP; ++i) {
             if (totalEth == 0) return (0, 0);
