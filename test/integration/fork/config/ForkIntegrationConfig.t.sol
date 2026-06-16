@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegrationCaseLib.t.sol";
 import {DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @notice Chain-specific address config for chain-neutral fork integration suites.
 /// @dev Sepolia deployed unified factory / master handler addresses can be supplied by env while

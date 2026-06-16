@@ -116,7 +116,7 @@ deploy-mainnet-factories:
     forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
 # Mines a valid hook salt and deploys LivoSwapHook (50 bps LP fee build).
-# After broadcast, paste the deployed address into src/config/deployments.{sepolia,mainnet}.sol
+# After broadcast, paste the deployed address into src/config/manifest.{sepolia,mainnet}.sol
 # and run `just export-deployments`.
 deploy-swap-hook-sepolia:
     forge script DeployLivoSwapHook --rpc-url sepolia --verify --account livo.dev --slow --broadcast

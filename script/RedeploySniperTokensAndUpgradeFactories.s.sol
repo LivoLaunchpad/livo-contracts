@@ -15,8 +15,8 @@ import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Redeploy all sniper-protected token implementations and upgrade both unified factory proxies
 /// @notice Single-broadcast deploy that:
@@ -42,7 +42,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run
 ///         `just taxtokenaddresses` before deploying to Sepolia).
 ///
-///         Post-broadcast: update these five address constants in `src/config/deployments.<chain>.sol`,
+///         Post-broadcast: update these five address constants in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`:
 ///         - `TOKEN_SNIPER_PROTECTED_IMPL`
 ///         - `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`

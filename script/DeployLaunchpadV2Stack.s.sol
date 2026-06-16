@@ -20,8 +20,8 @@ import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Launchpad-v2 rollout, phase 1: deploy everything that bakes the launchpad address in
 /// @notice First of a TWO-PHASE rollout for the launchpad-v2 release (per-token, creator-splittable
@@ -47,7 +47,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///             Harmless ahead of time: the proxies don't talk to the new launchpad until phase 2.
 ///
 ///         ## Phase 2 — factory upgrade (separate run, after updating the manifest)
-///         Update `src/config/deployments.<chain>.sol` with the addresses printed by this script,
+///         Update `src/config/manifest.<chain>.sol` with the addresses printed by this script,
 ///         then run the existing `UpgradeUnifiedFactories` script as-is: it deploys both factory
 ///         implementations wired entirely from the manifest (new launchpad, new graduators, new
 ///         token impls) and `upgradeToAndCall`s the proxies. That run is the atomic switch of token
@@ -81,7 +81,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         pre-broadcast against the manifest launchpad; any future treasury change must be applied
 ///         on BOTH launchpads.
 ///
-///         Post-broadcast: update these constants in `src/config/deployments.<chain>.sol`, then run
+///         Post-broadcast: update these constants in `src/config/manifest.<chain>.sol`, then run
 ///         `just export-deployments` (and mirror the new addresses in the envio-indexer configs):
 ///         - `LAUNCHPAD`, `QUOTER`
 ///         - `GRADUATOR_UNIV2`, `GRADUATOR_UNIV4`, `GRADUATOR_UNIV4_0P5`
@@ -120,7 +120,7 @@ contract DeployLaunchpadV2Stack is Script {
     // ========================= Per-chain dependencies =========================
 
     /// @dev Everything reused (not redeployed) by this rollout, resolved per chain. Livo contracts
-    ///      come from `src/config/deployments.<chain>.sol`, external infra from
+    ///      come from `src/config/manifest.<chain>.sol`, external infra from
     ///      `src/config/DeploymentAddresses.sol`.
     struct Deps {
         // reused Livo contracts

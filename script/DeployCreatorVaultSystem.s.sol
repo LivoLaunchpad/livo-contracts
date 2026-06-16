@@ -8,8 +8,8 @@ import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/Constan
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
@@ -19,7 +19,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         3. The `LivoCreatorVaultFactory` implementation + its `ERC1967Proxy`.
 ///
 ///         After running, update the `CREATOR_VAULT_*` and `VAULT_CURVE_*` addresses in
-///         `src/config/deployments.{mainnet,sepolia}.sol`, run `just export-deployments`, and only
+///         `src/config/manifest.{mainnet,sepolia}.sol`, run `just export-deployments`, and only
 ///         THEN (re)deploy/upgrade the unified factories so they pick up the new addresses.
 ///
 /// @dev    Run with:
@@ -68,7 +68,7 @@ contract DeployCreatorVaultSystem is Script {
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("Next steps:");
-        console.log("1. In src/config/deployments.{mainnet,sepolia}.sol set:");
+        console.log("1. In src/config/manifest.{mainnet,sepolia}.sol set:");
         console.log("   CREATOR_VAULT_IMPL, CREATOR_VAULT_FACTORY (proxy), CREATOR_VAULT_FACTORY_IMPL,");
         console.log("   and VAULT_CURVE_5 .. VAULT_CURVE_30 to the addresses above.");
         console.log("2. Run `just export-deployments` and commit the refreshed manifests.");

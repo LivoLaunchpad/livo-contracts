@@ -16,8 +16,8 @@ import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Redeploy all tax-token implementations and upgrade BOTH unified factory proxies
 /// @notice Wraps up the rollout for the `setTaxBps` feature added to `LivoTaxableToken`.
@@ -48,7 +48,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///
 ///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`,
 ///         `TAXABLE_TOKEN_IMPL`, `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL`, `FACTORY_UNIV2_UNIFIED_IMPL`,
-///         and `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/deployments.<chain>.sol`, then run
+///         and `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/manifest.<chain>.sol`, then run
 ///         `just export-deployments`.
 ///
 /// @dev    Run with:
@@ -56,7 +56,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///             --verify --account livo.dev --slow --broadcast
 contract RedeployTaxTokensAndUpgradeFactories is Script {
     /// @dev Per-chain addresses needed to wire the new factory implementations and target the proxy
-    ///      upgrades. Pulled from `src/config/deployments.<chain>.sol`.
+    ///      upgrades. Pulled from `src/config/manifest.<chain>.sol`.
     struct Deps {
         // Proxies to upgrade
         address factoryV2Proxy;

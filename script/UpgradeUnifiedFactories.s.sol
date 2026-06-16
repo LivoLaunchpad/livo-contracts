@@ -11,13 +11,13 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Upgrade the implementations behind the unified factory UUPS proxies
 /// @notice For each of `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified`:
 ///         1. deploys a fresh implementation contract wired to the addresses in the per-chain
-///            manifest (`src/config/deployments.{mainnet,sepolia}.sol`)
+///            manifest (`src/config/manifest.{mainnet,sepolia}.sol`)
 ///         2. calls `upgradeToAndCall(newImpl, "")` on the existing factory proxy
 ///
 ///         The proxy addresses (and therefore the launchpad's `whitelistedFactories` mapping) do
