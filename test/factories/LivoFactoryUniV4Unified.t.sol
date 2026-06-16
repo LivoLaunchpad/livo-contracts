@@ -10,6 +10,7 @@ import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenU
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @notice Dispatch + field-readback tests for `LivoFactoryUniV4Unified`. The unified factory
@@ -270,6 +271,30 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             _emptyAntiSniperCfg(),
             new ILivoFactory.CreatorVault[](0)
         );
+    }
+
+    function test_createToken_pregradLpFee_isOnePercent_regardlessOfHookFee() public {
+        // A token that selects the 0.5% post-graduation hook still pays 1% LP on the bonding curve:
+        // the pre-graduation launchpad LP fee is a fixed launchpad policy, decoupled from the hook fee.
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: salt, feeShares: _fs(creator)});
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
+
+        // The post-graduation marker still reflects the chosen 0.5% hook fee.
+        vm.expectEmit(false, false, false, true);
+        emit ILivoFactory.LpFeeBpsSet(address(0), 50);
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            setup, _emptyTaxCfg(), cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+        );
+
+        // The pre-graduation LP fee the launchpad reads each trade is 1%, not the 0.5% hook fee.
+        ILivoToken.LaunchpadFees memory buyFees = LivoToken(token)
+            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}));
+        assertEq(buyFees.lpFeeBps, 100, "pre-grad LP fee fixed at 1%");
+        assertEq(uint256(LivoToken(token).lpFeeBps()), 100, "token stores 1% pre-grad LP fee");
     }
 
     function test_createToken_struct_halfPercentLp_revertsAboveFourPointFivePercentTax() public {

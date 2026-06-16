@@ -27,6 +27,13 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         in the abstract base as `GRADUATOR`.
     address public immutable GRADUATOR_0P5;
 
+    /// @notice Pre-graduation launchpad LP fee for V4 tokens (bps), charged on every bonding-curve trade
+    ///         and split treasury/creator by `V4_LAUNCHPAD_TREASURY_SHARE_BPS`. Fixed at 1% for every V4
+    ///         token regardless of the post-graduation hook fee it selects (`UniV4Configs.lpFeeBps`, 50 or
+    ///         100): the pre-graduation rate is a constant launchpad policy, decoupled from the LP fee the
+    ///         hook charges after graduation.
+    uint16 internal constant V4_LAUNCHPAD_LP_FEE_BPS = 100;
+
     /// @notice Treasury share of the V4 pre-graduation LP fee (bps): 60 treasury / 40 creator.
     uint16 internal constant V4_LAUNCHPAD_TREASURY_SHARE_BPS = 6_000;
 
@@ -137,11 +144,18 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         return lpFeeBps == 100 ? address(GRADUATOR) : GRADUATOR_0P5;
     }
 
-    /// @dev Pre-graduation launchpad LP fee = the token's post-graduation hook fee. Inverse of
-    ///      `_resolveGraduator`: the 100-bps graduator (`GRADUATOR`) → 100 bps, the 50-bps graduator
-    ///      (`GRADUATOR_0P5`) → 50 bps. Keep in sync if a new graduator/hook fee variant is added.
-    function _launchpadLpFeeBps(address graduator) internal view override returns (uint16) {
-        return graduator == address(GRADUATOR) ? uint16(100) : uint16(50);
+    /// @dev Pre-graduation launchpad LP fee, fixed at `V4_LAUNCHPAD_LP_FEE_BPS` (1%) for every V4 token
+    ///      regardless of the post-graduation hook fee it selected. The pre-graduation rate is a constant
+    ///      launchpad policy, decoupled from the post-graduation LP fee, so `graduator` is ignored.
+    function _launchpadLpFeeBps(
+        address /* graduator */
+    )
+        internal
+        pure
+        override
+        returns (uint16)
+    {
+        return V4_LAUNCHPAD_LP_FEE_BPS;
     }
 
     /// @inheritdoc LivoFactoryAbstract
@@ -169,16 +183,18 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
     /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer buy.
     ///         Pass the same `taxCfg` and `univ4Configs` you'll pass to `createToken`; the buy fee is
-    ///         derived from them (the chosen hook LP fee plus the buy tax) so the frontend doesn't
-    ///         recompute it.
+    ///         derived from them (the fixed pre-graduation launchpad LP fee plus the buy tax) so the
+    ///         frontend doesn't recompute it.
     /// @param tokenAmount Amount of tokens to receive
     /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults (0 for none); selects
     ///        the same curve `createToken` uses. See `_quoteBuyOnDeploy`.
     /// @param taxCfg The tax config the token will be created with; only `buyTaxBps` affects the buy,
     ///        and only when the window is creation-anchored (`startTaxFromLaunch`) — a graduation-anchored
     ///        tax is not charged on the deploy buy (see `_deployBuyTaxBps`).
-    /// @param univ4Configs The V4 config the token will be created with; `lpFeeBps` is the pre- and
-    ///        post-graduation LP fee. Validated here so the fee is one of the supported hook variants.
+    /// @param univ4Configs The V4 config the token will be created with; `lpFeeBps` selects the
+    ///        post-graduation hook fee. Validated here so the fee is one of the supported hook variants.
+    ///        The deploy buy is a pre-graduation trade, so it is quoted at the fixed
+    ///        `V4_LAUNCHPAD_LP_FEE_BPS`, not `lpFeeBps`.
     /// @return totalEthNeeded The msg.value to pass to createToken
     function quoteBuyOnDeploy(
         uint256 tokenAmount,
@@ -188,7 +204,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external view returns (uint256 totalEthNeeded) {
         _validateUniv4Configs(univ4Configs);
         return _quoteBuyOnDeploy(
-            tokenAmount, totalLockedInVaultsBps, uint256(univ4Configs.lpFeeBps) + _deployBuyTaxBps(taxCfg)
+            tokenAmount, totalLockedInVaultsBps, uint256(V4_LAUNCHPAD_LP_FEE_BPS) + _deployBuyTaxBps(taxCfg)
         );
     }
 }

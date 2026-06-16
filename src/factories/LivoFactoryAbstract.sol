@@ -433,11 +433,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     }
 
     /// @notice Pre-graduation LP/trading fee (bps) the launchpad charges on bonding-curve trades for a
-    ///         token whose post-graduation venue is `graduator`. For V4 this equals the selected hook's
-    ///         LP fee, so the rate is identical before and after graduation; V2 has no post-graduation
-    ///         LP fee and returns a fixed pre-graduation rate. Split between treasury and creator by
-    ///         `_launchpadTreasuryShareBps`.
-    /// @dev Inverse of the concrete factory's graduator selection — keep in sync with `_resolveGraduator`.
+    ///         token whose post-graduation venue is `graduator`. A fixed per-venue rate, decoupled from the
+    ///         post-graduation LP fee: V4 charges 1% regardless of the token's 50/100-bps post-graduation
+    ///         hook fee; V2 has no post-graduation LP fee and returns its own fixed pre-graduation rate.
+    ///         Split between treasury and creator by `_launchpadTreasuryShareBps`.
     function _launchpadLpFeeBps(address graduator) internal view virtual returns (uint16);
 
     /// @notice Share of the pre-graduation LP fee routed to the treasury (bps); the remainder goes to
@@ -472,12 +471,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER),
             vaultAllocation: vaultAllocation,
-            // Pre-graduation LP-fee policy carried by the token and read by the launchpad each trade. The
-            // LP fee equals the token's post-graduation LP fee (V4: the selected hook fee; V2: a fixed
-            // pre-graduation rate, as V2 has no post-graduation LP fee). The treasury/creator split is
-            // venue-specific protocol policy. The creator tax is NOT stored here — taxable variants store
-            // it from `TaxConfigInit` in `_initializeTaxConfig`, and it applies identically pre- and
-            // post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
+            // Pre-graduation LP-fee policy carried by the token and read by the launchpad each trade. A
+            // fixed per-venue rate, decoupled from the post-graduation LP fee (V4: 1% regardless of the
+            // token's 50/100-bps hook fee; V2: a fixed rate, as V2 has no post-graduation LP fee). The
+            // treasury/creator split is venue-specific protocol policy. The creator tax is NOT stored here —
+            // taxable variants store it from `TaxConfigInit` in `_initializeTaxConfig`, and it applies
+            // identically pre- and post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
             lpFeeBps: _launchpadLpFeeBps(graduator),
             treasuryShareBps: _launchpadTreasuryShareBps()
         });
