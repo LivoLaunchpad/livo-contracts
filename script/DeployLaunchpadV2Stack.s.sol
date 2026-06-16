@@ -15,6 +15,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -23,9 +24,9 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
-/// @title Launchpad-v2 rollout, phase 1: deploy everything that bakes the launchpad address in
+/// @title Launchpad-v2 rollout, phase 1: deploy the entire v2 stack (incl. factory implementations)
 /// @notice First of a TWO-PHASE rollout for the launchpad-v2 release (per-token, creator-splittable
-///         pre-graduation fees). Eleven deployments + two whitelistings — the factory proxies are
+///         pre-graduation fees). Thirteen deployments + two whitelistings — the factory PROXIES are
 ///         NOT upgraded here (phase 2, see below), so token creation keeps flowing to the OLD
 ///         launchpad until phase 2 lands:
 ///
@@ -43,15 +44,21 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///             `LivoToken`, `LivoTokenSniperProtected`, `LivoTaxableTokenUniV2`,
 ///             `LivoTaxableTokenUniV2SniperProtected`, `LivoTaxableTokenUniV4`,
 ///             `LivoTaxableTokenUniV4SniperProtected`.
-///         7.  `whitelistFactory` for both (unchanged) factory proxies on the NEW launchpad.
+///         7.  Both unified factory IMPLEMENTATIONS — `LivoFactoryUniV2Unified` and
+///             `LivoFactoryUniV4Unified` — wired to the launchpad / graduators / token impls deployed
+///             above (1–6) plus the reused bonding curve / master fee handler / creator-vault stack
+///             from the manifest. These are plain implementation contracts; the proxies are NOT
+///             pointed at them here (phase 2 does that), so nothing changes for token creators yet.
+///         8.  `whitelistFactory` for both (unchanged) factory proxies on the NEW launchpad.
 ///             Harmless ahead of time: the proxies don't talk to the new launchpad until phase 2.
 ///
-///         ## Phase 2 — factory upgrade (separate run, after updating the manifest)
-///         Update `src/config/manifest.<chain>.sol` with the addresses printed by this script,
-///         then run the existing `UpgradeUnifiedFactories` script as-is: it deploys both factory
-///         implementations wired entirely from the manifest (new launchpad, new graduators, new
-///         token impls) and `upgradeToAndCall`s the proxies. That run is the atomic switch of token
-///         creation to the v2 stack.
+///         ## Phase 2 — factory proxy flip (separate run, after updating the manifest)
+///         Update `src/config/manifest.<chain>.sol` with the addresses printed by this script —
+///         INCLUDING `FACTORY_UNIV2_UNIFIED_IMPL` / `FACTORY_UNIV4_UNIFIED_IMPL` — run
+///         `just export-deployments`, then run `UpgradeUnifiedFactories`. That script no longer
+///         deploys anything: it just `upgradeToAndCall`s the two proxies onto the implementations
+///         deployed here. That single, deployment-free run is the atomic switch of token creation
+///         to the v2 stack.
 ///
 ///         NOT redeployed: bonding curves (stateless, no launchpad reference), master fee handler,
 ///         swap hooks (reused, see above), the factory proxies, and the whole creator-vault stack.
@@ -88,7 +95,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         - `TOKEN_IMPL`, `TOKEN_SNIPER_PROTECTED_IMPL`
 ///         - `TAXABLE_TOKEN_IMPL`, `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL`
 ///         - `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`
-///         (`FACTORY_UNIV2_UNIFIED_IMPL` / `FACTORY_UNIV4_UNIFIED_IMPL` are updated after phase 2.)
+///         - `FACTORY_UNIV2_UNIFIED_IMPL`, `FACTORY_UNIV4_UNIFIED_IMPL` (phase 2 reads these to flip the proxies)
 ///
 /// @dev    Run with:
 ///         forge script DeployLaunchpadV2Stack --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
@@ -129,6 +136,9 @@ contract DeployLaunchpadV2Stack is Script {
         address factoryV4Proxy;
         address swapHook;
         address swapHook0p5;
+        // reused (not redeployed) deps the fresh factory impls are wired to
+        address bondingCurve;
+        address masterFeeHandler;
         // external infrastructure
         address univ2Router;
         bytes32 univ2PairInitCodeHash;
@@ -153,6 +163,8 @@ contract DeployLaunchpadV2Stack is Script {
         address taxTokenV2SniperImpl;
         address taxTokenV4Impl;
         address taxTokenV4SniperImpl;
+        address factoryV2Impl;
+        address factoryV4Impl;
     }
 
     function _getDeps() internal view returns (Deps memory d) {
@@ -163,6 +175,8 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsMainnet.SWAP_HOOK,
                 swapHook0p5: DeploymentsMainnet.SWAP_HOOK_0P5,
+                bondingCurve: DeploymentsMainnet.BONDING_CURVE,
+                masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesMainnet.UNIV2_ROUTER,
                 univ2PairInitCodeHash: DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH,
                 univ4PoolManager: DeploymentAddressesMainnet.UNIV4_POOL_MANAGER,
@@ -185,6 +199,8 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsSepolia.SWAP_HOOK,
                 swapHook0p5: DeploymentsSepolia.SWAP_HOOK_0P5,
+                bondingCurve: DeploymentsSepolia.BONDING_CURVE,
+                masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesSepolia.UNIV2_ROUTER,
                 univ2PairInitCodeHash: DeploymentAddressesSepolia.UNIV2_PAIR_INIT_CODE_HASH,
                 univ4PoolManager: DeploymentAddressesSepolia.UNIV4_POOL_MANAGER,
@@ -210,6 +226,8 @@ contract DeployLaunchpadV2Stack is Script {
         require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
         require(d.swapHook != address(0), "manifest: SWAP_HOOK missing");
         require(d.swapHook0p5 != address(0), "manifest: SWAP_HOOK_0P5 missing");
+        require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
+        require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
     }
 
     // ========================= Vanity Address Mining =========================
@@ -258,7 +276,7 @@ contract DeployLaunchpadV2Stack is Script {
         // Mine the vanity salt before broadcast (pure computation, no on-chain cost)
         (bytes32 launchpadSalt, address expectedLaunchpad) = _mineVanitySalt(LAUNCHPAD_TREASURY, LAUNCHPAD_OWNER);
 
-        console.log("=== Livo Launchpad-v2 Stack Rollout (phase 1: no factory upgrade) ===");
+        console.log("=== Livo Launchpad-v2 Stack Rollout (phase 1: deploy v2 stack incl. factory impls) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Old launchpad:           ", d.oldLaunchpad);
@@ -328,6 +346,42 @@ contract DeployLaunchpadV2Stack is Script {
         fresh.taxTokenV4SniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
         console.log("| LivoTaxableTokenUniV4SniperProtected (new)    |", fresh.taxTokenV4SniperImpl);
 
+        // --- Factory implementations (2), wired to the freshly-deployed v2 stack ---
+        // Bonding curve / master fee handler / creator-vault stack are reused from the manifest.
+        // The PROXIES are NOT pointed at these here; phase 2 (`UpgradeUnifiedFactories`) flips them.
+        fresh.factoryV2Impl = address(
+            new LivoFactoryUniV2Unified(
+                fresh.launchpad,
+                fresh.tokenImpl,
+                fresh.tokenSniperImpl,
+                fresh.taxTokenV2Impl,
+                fresh.taxTokenV2SniperImpl,
+                d.bondingCurve,
+                fresh.graduatorV2,
+                d.masterFeeHandler,
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
+            )
+        );
+        console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
+
+        fresh.factoryV4Impl = address(
+            new LivoFactoryUniV4Unified(
+                fresh.launchpad,
+                fresh.tokenImpl,
+                fresh.tokenSniperImpl,
+                fresh.taxTokenV4Impl,
+                fresh.taxTokenV4SniperImpl,
+                d.bondingCurve,
+                fresh.graduatorV4,
+                fresh.graduatorV4_0p5,
+                d.masterFeeHandler,
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
+            )
+        );
+        console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);
+
         // --- Whitelist the (unchanged, not-yet-upgraded) factory proxies on the NEW launchpad ---
         // Harmless ahead of phase 2: the proxies keep registering tokens on the old launchpad
         // until UpgradeUnifiedFactories swaps their implementations.
@@ -340,10 +394,10 @@ contract DeployLaunchpadV2Stack is Script {
         _sanityChecks(d, fresh);
 
         console.log("");
-        console.log("=== Phase 1 Complete (factories NOT upgraded) ===");
+        console.log("=== Phase 1 Complete (factory PROXIES not yet flipped) ===");
         console.log("The OLD launchpad keeps serving all tokens until phase 2.");
         console.log("Update the per-chain manifest with these addresses, run `just export-deployments`,");
-        console.log("then run `UpgradeUnifiedFactories` as-is for phase 2 (factory impls + proxy upgrades).");
+        console.log("then run `UpgradeUnifiedFactories` for phase 2 (flips both proxies onto the impls below).");
         console.log("Also mirror launchpad/quoter/graduators in the envio-indexer configs:");
         console.log("  LAUNCHPAD                               :", fresh.launchpad);
         console.log("  QUOTER                                  :", fresh.quoter);
@@ -356,6 +410,8 @@ contract DeployLaunchpadV2Stack is Script {
         console.log("  TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL    :", fresh.taxTokenV4SniperImpl);
         console.log("  TAXABLE_TOKEN_V2_IMPL                   :", fresh.taxTokenV2Impl);
         console.log("  TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL :", fresh.taxTokenV2SniperImpl);
+        console.log("  FACTORY_UNIV2_UNIFIED_IMPL              :", fresh.factoryV2Impl);
+        console.log("  FACTORY_UNIV4_UNIFIED_IMPL              :", fresh.factoryV4Impl);
     }
 
     /// @dev Post-broadcast wiring assertions, run against the simulated end state. Any mismatch
@@ -408,6 +464,29 @@ contract DeployLaunchpadV2Stack is Script {
         require(
             address(LivoFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.oldLaunchpad,
             "factoryV4: unexpectedly already migrated"
+        );
+
+        // freshly-deployed factory impls are wired to the NEW launchpad + new graduators, so phase 2
+        // can flip the proxies onto them and complete the v1->v2 switch.
+        require(
+            address(LivoFactoryUniV2Unified(fresh.factoryV2Impl).LAUNCHPAD()) == fresh.launchpad,
+            "factoryV2 impl: wrong launchpad"
+        );
+        require(
+            address(LivoFactoryUniV2Unified(fresh.factoryV2Impl).GRADUATOR()) == fresh.graduatorV2,
+            "factoryV2 impl: wrong graduator"
+        );
+        require(
+            address(LivoFactoryUniV4Unified(fresh.factoryV4Impl).LAUNCHPAD()) == fresh.launchpad,
+            "factoryV4 impl: wrong launchpad"
+        );
+        require(
+            address(LivoFactoryUniV4Unified(fresh.factoryV4Impl).GRADUATOR()) == fresh.graduatorV4,
+            "factoryV4 impl: wrong graduator"
+        );
+        require(
+            LivoFactoryUniV4Unified(fresh.factoryV4Impl).GRADUATOR_0P5() == fresh.graduatorV4_0p5,
+            "factoryV4 impl: wrong 0p5 graduator"
         );
     }
 }
