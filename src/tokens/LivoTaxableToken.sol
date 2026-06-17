@@ -14,10 +14,12 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 ///         + `getTaxConfig` overrides, the dev-supplied init plumbing and the owner-only
 ///         `rescueTokens` path. Variant-specific behavior (intrinsic V2 taxation, V4 pool-manager
 ///         pair check) lives in the concrete subclasses.
-/// @dev Storage layout: this contract introduces 5 packed fields (buyTaxBps, sellTaxBps,
-///      taxDurationSeconds, startTaxFromLaunch, graduationTimestamp) directly after `LivoToken`'s
-///      storage. Subclasses that add their own state must do so AFTER these fields to preserve
-///      clone-storage layout.
+/// @dev Storage layout: this contract introduces 8 packed fields (buyTaxBps, sellTaxBps,
+///      taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps,
+///      taxDecayDuration, graduationTimestamp) directly after `LivoToken`'s storage. They all pack
+///      into a single slot (alongside the V2 subclass's swap-back counters), so the per-trade tax read
+///      is a single warm SLOAD. Subclasses that add their own state must do so AFTER these fields to
+///      preserve clone-storage layout.
 abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     using SafeERC20 for IERC20;
 
@@ -188,30 +190,32 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///      zeroed tax (rates AND duration), so the hook stops taxing; the zeroed rates also cover the
     ///      edge where the window expires before graduation and a swap lands in the graduation block.
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        uint16 effBuy = _effectiveTaxBps(true);
-        uint16 effSell = _effectiveTaxBps(false);
+        uint40 graduationTs = graduationTimestamp;
+        (uint16 effBuy, uint16 effSell) = _effectiveTaxBps();
+
+        // No active tax — both windows closed, not yet anchored, or the decay floored to 0 at its tail.
+        // Report zeros so the deployed hook stops taxing; `graduationTimestamp` is surfaced for reference.
+        // Both directions share one decay schedule and one static window (see `_effectiveTaxBps`), so a
+        // single `effBuy == 0 && effSell == 0` check settles "is anything still owed" for the whole token.
         if (effBuy == 0 && effSell == 0) {
-            // both windows closed/inactive: report no active tax. `graduationTimestamp` surfaced for reference.
-            return
-                TaxConfig({
-                    buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, graduationTimestamp: graduationTimestamp
-                });
+            return TaxConfig({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, graduationTimestamp: graduationTs});
         }
+
         // Active: report a duration that, added to `graduationTimestamp`, lands exactly on the latest
         // window end — so the deployed hook's `block.timestamp > graduationTimestamp + taxDurationSeconds`
         // expiry tracks the true window even for a decay-only token (whose static `taxDurationSeconds` is
         // 0). Before graduation the hook is never invoked (swaps revert), and `graduationTimestamp == 0`,
         // so the tax anchor stands in as the reference — a creation-anchored token then reports its
-        // configured duration (`windowEnd - launchTimestamp`), matching off-chain readers' expectations.
-        // `windowEnd >= referenceTime` in both cases (the early return above rules out a token graduated
-        // after its window closed), so the subtraction cannot underflow.
-        uint256 referenceTime = graduationTimestamp != 0 ? graduationTimestamp : _taxAnchor();
-        uint256 windowEnd = _taxAnchor() + _maxWindowDuration();
+        // configured duration (`windowEnd - launchTimestamp`). A non-zero effective rate implies the
+        // window is open, so `windowEnd >= block.timestamp >= referenceTime` and the subtraction cannot
+        // underflow.
+        uint256 anchor = _taxAnchor();
+        uint256 referenceTime = graduationTs != 0 ? graduationTs : anchor;
         config = TaxConfig({
             buyTaxBps: effBuy,
             sellTaxBps: effSell,
-            taxDurationSeconds: uint40(windowEnd - referenceTime),
-            graduationTimestamp: graduationTimestamp
+            taxDurationSeconds: uint40(anchor + _maxWindowDuration() - referenceTime),
+            graduationTimestamp: graduationTs
         });
     }
 
@@ -282,36 +286,48 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         return staticDuration > decayDuration ? staticDuration : decayDuration;
     }
 
-    /// @dev Linear decay rate for one direction at the current time: falls from the configured start
-    ///      rate at the anchor to 0 at `anchor + taxDecayDuration`. Returns 0 if no decay is configured,
-    ///      the token is not yet anchored, or the decay window has elapsed.
-    function _decayTaxBps(bool isBuy) internal view returns (uint16) {
-        uint256 duration = taxDecayDuration;
-        if (duration == 0) return 0;
+    /// @dev Current effective tax for BOTH directions: `max(decay, static)` each, where the decay rate
+    ///      falls linearly from its start value at the anchor to 0 at `anchor + taxDecayDuration`, and the
+    ///      static rate is the flat configured rate while within `[anchor, anchor + taxDurationSeconds]`.
+    ///      Single source of truth for `getLaunchpadFees` (pre-graduation launchpad), `getTaxConfig`
+    ///      (post-graduation V4 hook) and the V2 intrinsic `_update`.
+    /// @dev Both directions are computed together on purpose: the decay schedule (`taxDecayDuration`) and
+    ///      the static window (`taxDurationSeconds`) are SHARED across buy and sell — only the per-direction
+    ///      rate differs — so the anchor/elapsed/window math is done once and every storage slot is read
+    ///      once, instead of twice via a per-direction helper.
+    /// @dev ⚠️ ASSUMPTION baked into callers: because buy and sell share one decay schedule and one static
+    ///      window, both directions reach 0 at the SAME time. `getTaxConfig` relies on this — it derives a
+    ///      single window end and treats `buy == 0 && sell == 0` as "tax fully over". If a future change
+    ///      gives the two directions DIFFERENT durations, revisit `getTaxConfig` (per-direction window ends)
+    ///      and any "both zero ⇒ inactive" logic.
+    function _effectiveTaxBps() internal view returns (uint16 buyBps, uint16 sellBps) {
         uint256 anchor = _taxAnchor();
-        if (anchor == 0) return 0;
+        if (anchor == 0) return (0, 0); // graduation-anchored and not graduated yet ⇒ no tax
         uint256 elapsed = block.timestamp - anchor; // anchor is always in the past, so no underflow
-        if (elapsed >= duration) return 0;
-        uint256 startBps = isBuy ? buyTaxDecayStartBps : sellTaxDecayStartBps;
-        // startBps * (duration - elapsed) / duration — exact at the endpoints (startBps at the anchor, 0 at the end)
-        return uint16(startBps * (duration - elapsed) / duration);
+
+        // Decay component (shared schedule; only the start rate differs per direction).
+        uint256 decayDuration = taxDecayDuration;
+        if (decayDuration != 0 && elapsed < decayDuration) {
+            uint256 remaining = decayDuration - elapsed;
+            // startBps * remaining / duration — exact at the endpoints (startBps at the anchor, 0 at the end)
+            buyBps = uint16(uint256(buyTaxDecayStartBps) * remaining / decayDuration);
+            sellBps = uint16(uint256(sellTaxDecayStartBps) * remaining / decayDuration);
+        }
+
+        // Static component (shared window; only the rate differs per direction). Effective = max of the two.
+        if (elapsed <= taxDurationSeconds) {
+            uint16 buyStatic = buyTaxBps;
+            uint16 sellStatic = sellTaxBps;
+            if (buyStatic > buyBps) buyBps = buyStatic;
+            if (sellStatic > sellBps) sellBps = sellStatic;
+        }
     }
 
-    /// @dev Static tax rate for one direction: the flat configured rate while within
-    ///      `[anchor, anchor + taxDurationSeconds]`, else 0. A decay-only token has zero static rates.
-    function _staticTaxBps(bool isBuy) internal view returns (uint16) {
-        uint256 anchor = _taxAnchor();
-        if (anchor == 0) return 0;
-        if (block.timestamp > anchor + taxDurationSeconds) return 0;
-        return isBuy ? buyTaxBps : sellTaxBps;
-    }
-
-    /// @dev Effective tax rate for one direction: the larger of the decay and static rates. Single source
-    ///      of truth used by `getLaunchpadFees` (pre-graduation launchpad), `getTaxConfig` (post-graduation
-    ///      V4 hook) and the V2 intrinsic `_update`.
+    /// @dev Single-direction convenience over `_effectiveTaxBps()` for the launchpad / V2 `_update` paths.
+    ///      Computing the unused direction is effectively free — the storage reads (which dominate) are
+    ///      shared, leaving only a multiply/divide on already-loaded values.
     function _effectiveTaxBps(bool isBuy) internal view returns (uint16) {
-        uint16 decayBps = _decayTaxBps(isBuy);
-        uint16 staticBps = _staticTaxBps(isBuy);
-        return decayBps > staticBps ? decayBps : staticBps;
+        (uint16 buyBps, uint16 sellBps) = _effectiveTaxBps();
+        return isBuy ? buyBps : sellBps;
     }
 }
