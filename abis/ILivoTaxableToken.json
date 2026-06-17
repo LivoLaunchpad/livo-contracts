@@ -310,7 +310,7 @@
       {
         "name": "taxCfg",
         "type": "tuple",
-        "internalType": "struct TaxConfigInit",
+        "internalType": "struct TaxConfigs",
         "components": [
           {
             "name": "buyTaxBps",
