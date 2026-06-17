@@ -42,6 +42,21 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///         initialization, cannot be changed.
     bool public startTaxFromLaunch;
 
+    /// @notice Buy-tax rate at the anchor for the optional linear decay (bps). The buy decay rate falls
+    ///         linearly from this value to 0 over `taxDecayDuration`, from the same anchor
+    ///         `startTaxFromLaunch` selects. 0 disables buy decay. Set during init, cannot be changed.
+    uint16 public buyTaxDecayStartBps;
+
+    /// @notice Sell-tax rate at the anchor for the optional linear decay (bps). Mirror of
+    ///         `buyTaxDecayStartBps` for sells. 0 disables sell decay. Set during init, cannot be changed.
+    uint16 public sellTaxDecayStartBps;
+
+    /// @notice Duration in seconds over which the decay rates fall from their start values to 0,
+    ///         measured from the same anchor as the static window. 0 disables decay. The effective tax a
+    ///         trade pays is `max(decay, static)` per direction, so a token may set ONLY these decay
+    ///         fields (static bps + duration zero) for a pure decaying launch tax. Set during init.
+    uint40 public taxDecayDuration;
+
     /////////////////////////// pure storage ///////////////////////
 
     /// @notice Timestamp when token graduated (0 if not graduated)
@@ -50,8 +65,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     //////////////////////// Events //////////////////////
 
     /// @notice Emitted once during init with the dev-supplied tax config. `startTaxFromLaunch` selects
-    ///         the tax-window anchor (creation vs graduation). The three `*Decay*` fields are reserved
-    ///         for the upcoming linear tax-decay feature and are always emitted as 0 until it ships.
+    ///         the tax-window anchor (creation vs graduation). The three `*Decay*` fields configure the
+    ///         optional linear launch-tax decay (start rate + duration, anchored as `startTaxFromLaunch`
+    ///         selects); all 0 when no decay is configured.
     event LivoTaxableTokenInitialized(
         uint16 buyTaxBps,
         uint16 sellTaxBps,
@@ -145,41 +161,56 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// VIEW FUNCTIONS //////////////////////
 
-    /// @notice Pre-graduation fee policy. Same LP fee as the base, plus the tax for the active window
-    ///         (0 outside it). For `startTaxFromLaunch == true` tokens the launchpad charges the exact
-    ///         tax rate the V4 hook / V2 `_update` apply post-graduation; for graduation-anchored
-    ///         tokens the window has not started pre-graduation, so the tax here is 0.
+    /// @notice Pre-graduation fee policy. Same LP fee as the base, plus the effective tax for this
+    ///         direction — `max(decay, static)` — which is 0 outside both windows. For
+    ///         `startTaxFromLaunch == true` tokens the launchpad charges the exact rate the V4 hook /
+    ///         V2 `_update` apply post-graduation; for graduation-anchored tokens neither window has
+    ///         started pre-graduation, so the tax here is 0.
     function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata trade)
         external
         view
         override(ILivoToken, LivoToken)
         returns (ILivoToken.LaunchpadFees memory)
     {
-        uint16 taxBps = _taxWindowActive() ? (trade.isBuy ? buyTaxBps : sellTaxBps) : 0;
+        uint16 taxBps = _effectiveTaxBps(trade.isBuy);
         return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: taxBps});
     }
 
-    /// @notice Returns the effective tax configuration. The tax window is anchored per
-    ///         `startTaxFromLaunch`: at `launchTimestamp` (spans graduation) or at `graduationTimestamp`.
-    /// @dev Once the window closes (or before it opens, for graduation-anchored tokens) this returns a
-    ///      fully-zeroed tax (both rates AND `taxDurationSeconds`), so the `LivoSwapHook` — which
-    ///      computes `block.timestamp > graduationTimestamp + taxDurationSeconds` and reads the rates —
-    ///      correctly stops taxing. For creation-anchored tokens the zeroed `taxDurationSeconds` collapses
-    ///      the hook's graduation-anchored check onto the creation-anchored expiry, and the zeroed rates
-    ///      also cover the edge where the window expires before graduation and a swap lands in the
-    ///      graduation block. Within the window it returns the stored rates and duration.
+    /// @notice Returns the effective tax configuration for the deployed `LivoSwapHook` (and off-chain
+    ///         readers). Reports the CURRENT effective rates — `max(decay, static)` per direction, which
+    ///         change every second while the decay window is open — so the hook, which re-reads this on
+    ///         every swap, applies the right (possibly decaying) rate.
+    /// @dev The hook expires tax when `block.timestamp > graduationTimestamp + taxDurationSeconds`. Both
+    ///      windows are anchored per `startTaxFromLaunch` (at `launchTimestamp` or `graduationTimestamp`),
+    ///      so the returned `taxDurationSeconds` is SYNTHETIC: the seconds from `graduationTimestamp` to
+    ///      the latest window end (`anchor + max(static, decay) duration`), keeping the hook open for the
+    ///      whole effective window regardless of anchor. Once both windows close this returns a fully
+    ///      zeroed tax (rates AND duration), so the hook stops taxing; the zeroed rates also cover the
+    ///      edge where the window expires before graduation and a swap lands in the graduation block.
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        if (!_taxWindowActive()) {
-            // window closed: report no active tax. `graduationTimestamp` is still surfaced for reference.
+        uint16 effBuy = _effectiveTaxBps(true);
+        uint16 effSell = _effectiveTaxBps(false);
+        if (effBuy == 0 && effSell == 0) {
+            // both windows closed/inactive: report no active tax. `graduationTimestamp` surfaced for reference.
             return
                 TaxConfig({
                     buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, graduationTimestamp: graduationTimestamp
                 });
         }
+        // Active: report a duration that, added to `graduationTimestamp`, lands exactly on the latest
+        // window end — so the deployed hook's `block.timestamp > graduationTimestamp + taxDurationSeconds`
+        // expiry tracks the true window even for a decay-only token (whose static `taxDurationSeconds` is
+        // 0). Before graduation the hook is never invoked (swaps revert), and `graduationTimestamp == 0`,
+        // so the tax anchor stands in as the reference — a creation-anchored token then reports its
+        // configured duration (`windowEnd - launchTimestamp`), matching off-chain readers' expectations.
+        // `windowEnd >= referenceTime` in both cases (the early return above rules out a token graduated
+        // after its window closed), so the subtraction cannot underflow.
+        uint256 referenceTime = graduationTimestamp != 0 ? graduationTimestamp : _taxAnchor();
+        uint256 windowEnd = _taxAnchor() + _maxWindowDuration();
         config = TaxConfig({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: sellTaxBps,
-            taxDurationSeconds: taxDurationSeconds,
+            buyTaxBps: effBuy,
+            sellTaxBps: effSell,
+            taxDurationSeconds: uint40(windowEnd - referenceTime),
             graduationTimestamp: graduationTimestamp
         });
     }
@@ -200,37 +231,87 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         _initializeTaxConfig(taxCfg);
     }
 
-    /// @notice Internal helper to store tax configuration.
+    /// @notice Internal helper to store tax configuration (static rates + window, anchor, and the
+    ///         optional linear-decay rates + duration).
     /// @dev Tax-bps and duration bounds are enforced upstream in the factory. The
-    ///      `LivoTaxableTokenInitialized` event carries `startTaxFromLaunch` plus three placeholder
-    ///      `*Decay*` fields (emitted as 0) reserved for the upcoming linear tax-decay feature, so the
-    ///      indexer schema is forward-compatible and won't need another signature change when it ships.
+    ///      `LivoTaxableTokenInitialized` event carries `startTaxFromLaunch` plus the three `*Decay*`
+    ///      fields configuring the linear launch-tax decay.
     function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
         emit LivoTaxableTokenInitialized(
             cfg.buyTaxBps,
             cfg.sellTaxBps,
             uint40(cfg.taxDurationSeconds),
             cfg.startTaxFromLaunch,
-            0, // buyTaxDecayStartBps: reserved for the upcoming linear tax-decay feature
-            0, // sellTaxDecayStartBps: reserved (see above)
-            0 // taxDecayDuration: reserved (see above)
+            cfg.buyTaxDecayStartBps,
+            cfg.sellTaxDecayStartBps,
+            uint40(cfg.taxDecayDuration)
         );
 
         buyTaxBps = cfg.buyTaxBps;
         sellTaxBps = cfg.sellTaxBps;
         taxDurationSeconds = uint40(cfg.taxDurationSeconds);
         startTaxFromLaunch = cfg.startTaxFromLaunch;
+        buyTaxDecayStartBps = cfg.buyTaxDecayStartBps;
+        sellTaxDecayStartBps = cfg.sellTaxDecayStartBps;
+        taxDecayDuration = uint40(cfg.taxDecayDuration);
     }
 
-    /// @dev True while the tax window is open. The anchor is `startTaxFromLaunch`-dependent:
-    ///      - `true`: `[launchTimestamp, launchTimestamp + taxDurationSeconds]` (creation-anchored,
-    ///        spans graduation). `launchTimestamp` is non-zero after init, so the window is always live.
-    ///      - `false`: `[graduationTimestamp, graduationTimestamp + taxDurationSeconds]`
-    ///        (graduation-anchored). Before graduation `graduationTimestamp == 0`, so this returns
-    ///        false and no tax is charged pre-graduation.
+    /// @dev True while EITHER the static or the decay window is open. Used by the V2 `_update` swap-back
+    ///      drain to detect that no further tax can ever flow. The anchor is `startTaxFromLaunch`-dependent:
+    ///      - `true`: anchored at `launchTimestamp` (creation-anchored, spans graduation). Non-zero after
+    ///        init, so the window is live from launch.
+    ///      - `false`: anchored at `graduationTimestamp` (graduation-anchored). Before graduation
+    ///        `graduationTimestamp == 0`, so this returns false and no tax is charged pre-graduation.
+    ///      The window length is the longer of the static and decay durations.
     function _taxWindowActive() internal view returns (bool) {
-        uint256 anchor = startTaxFromLaunch ? launchTimestamp : graduationTimestamp;
+        uint256 anchor = _taxAnchor();
         if (anchor == 0) return false;
-        return block.timestamp <= anchor + taxDurationSeconds;
+        return block.timestamp <= anchor + _maxWindowDuration();
+    }
+
+    /// @dev Anchor timestamp shared by both the static and decay windows: `launchTimestamp` if
+    ///      `startTaxFromLaunch`, else `graduationTimestamp` (0 before graduation ⇒ no tax yet).
+    function _taxAnchor() internal view returns (uint256) {
+        return startTaxFromLaunch ? launchTimestamp : graduationTimestamp;
+    }
+
+    /// @dev The longer of the static and decay window durations (seconds).
+    function _maxWindowDuration() internal view returns (uint256) {
+        uint256 staticDuration = taxDurationSeconds;
+        uint256 decayDuration = taxDecayDuration;
+        return staticDuration > decayDuration ? staticDuration : decayDuration;
+    }
+
+    /// @dev Linear decay rate for one direction at the current time: falls from the configured start
+    ///      rate at the anchor to 0 at `anchor + taxDecayDuration`. Returns 0 if no decay is configured,
+    ///      the token is not yet anchored, or the decay window has elapsed.
+    function _decayTaxBps(bool isBuy) internal view returns (uint16) {
+        uint256 duration = taxDecayDuration;
+        if (duration == 0) return 0;
+        uint256 anchor = _taxAnchor();
+        if (anchor == 0) return 0;
+        uint256 elapsed = block.timestamp - anchor; // anchor is always in the past, so no underflow
+        if (elapsed >= duration) return 0;
+        uint256 startBps = isBuy ? buyTaxDecayStartBps : sellTaxDecayStartBps;
+        // startBps * (duration - elapsed) / duration — exact at the endpoints (startBps at the anchor, 0 at the end)
+        return uint16(startBps * (duration - elapsed) / duration);
+    }
+
+    /// @dev Static tax rate for one direction: the flat configured rate while within
+    ///      `[anchor, anchor + taxDurationSeconds]`, else 0. A decay-only token has zero static rates.
+    function _staticTaxBps(bool isBuy) internal view returns (uint16) {
+        uint256 anchor = _taxAnchor();
+        if (anchor == 0) return 0;
+        if (block.timestamp > anchor + taxDurationSeconds) return 0;
+        return isBuy ? buyTaxBps : sellTaxBps;
+    }
+
+    /// @dev Effective tax rate for one direction: the larger of the decay and static rates. Single source
+    ///      of truth used by `getLaunchpadFees` (pre-graduation launchpad), `getTaxConfig` (post-graduation
+    ///      V4 hook) and the V2 intrinsic `_update`.
+    function _effectiveTaxBps(bool isBuy) internal view returns (uint16) {
+        uint16 decayBps = _decayTaxBps(isBuy);
+        uint16 staticBps = _staticTaxBps(isBuy);
+        return decayBps > staticBps ? decayBps : staticBps;
     }
 }

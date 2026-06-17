@@ -171,9 +171,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         }
 
         // charging the tax: only if graduated, only on pair-touching transfers, only while the
-        // tax window is active (anchored at launch or graduation per `startTaxFromLaunch`).
+        // tax window is active (anchored at launch or graduation per `startTaxFromLaunch`). The rate is
+        // the EFFECTIVE rate `max(decay, static)`, so a decaying launch tax is charged here too (and a
+        // decay-only token, whose static bps are 0, still taxes during its decay window).
         if (_graduated && (isBuy || isSell) && _taxWindowActive() && from != graduator) {
-            uint16 bps = isBuy ? buyTaxBps : sellTaxBps;
+            uint16 bps = _effectiveTaxBps(isBuy);
             if (bps > 0) {
                 uint256 taxAmount = amount * bps / 10_000;
                 if (taxAmount > 0) {

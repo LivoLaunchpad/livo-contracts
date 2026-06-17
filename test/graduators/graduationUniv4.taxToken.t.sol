@@ -218,6 +218,35 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
+    /// @notice A decay-only token's V4 hook collects the CURRENT decayed rate on a post-graduation buy.
+    /// @dev End-to-end proof that the synthetic `getTaxConfig` drives the UNCHANGED deployed hook with a
+    ///      time-varying rate: at elapsed 600 of a 1200s/10% buy decay the rate is 5%, and the creator
+    ///      accrues that 5% (plus the 0.5% LP creator share) of the 1-ETH buy input.
+    function test_decayBuyTax_collectedAtDecayedRate_postGraduation() public {
+        uint40 t0 = uint40(block.timestamp);
+        testToken = _createDecayToken(1000, 1000, 20 minutes); // no static tax, 10% launch decay over 20min
+
+        // seed the curve and graduate (all at ~t0, so the decay is barely started)
+        vm.deal(buyer, 3 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        // elapsed 600 of 1200 ⇒ decayed buy rate = 500 bps
+        vm.warp(t0 + 600);
+        uint16 rate = ILivoToken(testToken).getTaxConfig().buyTaxBps;
+        assertEq(rate, 500, "hook sees the decayed buy rate at elapsed 600");
+
+        uint256 creatorBefore = _pendingTaxes(testToken, creator);
+        deal(buyer, 1 ether);
+        _swapBuy(buyer, 1 ether, 0, true);
+        uint256 collected = _pendingTaxes(testToken, creator) - creatorBefore;
+
+        // buy fees are taken on the exact 1-ETH input: creator gets LP creator share (50 bps) + decay tax (rate)
+        uint256 expected = (1 ether * (50 + uint256(rate))) / 10_000;
+        assertApproxEqRel(collected, expected, 0.001e18, "creator accrues the decayed buy tax + LP share");
+    }
+
     /// @notice Test that zero sell tax rate results in no sell-tax collection on the sell leg.
     /// @dev The factory rejects `(0, 0, duration)` configs, so we use a token with non-zero buy
     ///      tax + zero sell tax to exercise the "zero sell tax" path. The buy-side tax accrued by

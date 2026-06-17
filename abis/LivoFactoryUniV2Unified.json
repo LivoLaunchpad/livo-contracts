@@ -161,6 +161,32 @@
   },
   {
     "type": "function",
+    "name": "MAX_TAX_DECAY_DURATION_SECONDS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TAX_DECAY_START_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_TAX_DURATION_SECONDS",
     "inputs": [],
     "outputs": [
@@ -410,6 +436,21 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       },
@@ -522,6 +563,21 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       },
@@ -706,6 +762,21 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       },
@@ -797,6 +868,21 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       }

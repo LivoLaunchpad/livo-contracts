@@ -178,7 +178,7 @@ contract LaunchpadBaseTests is Test {
         return _taxCfg(buyTaxBps, sellTaxBps, taxDurationSeconds, true);
     }
 
-    /// @dev `_taxCfg` overload that picks the tax-window anchor explicitly.
+    /// @dev `_taxCfg` overload that picks the tax-window anchor explicitly. No decay configured.
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds, bool startTaxFromLaunch)
         internal
         pure
@@ -188,13 +188,57 @@ contract LaunchpadBaseTests is Test {
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: taxDurationSeconds,
-            startTaxFromLaunch: startTaxFromLaunch
+            startTaxFromLaunch: startTaxFromLaunch,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0
         });
     }
 
-    /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 disables dispatch).
+    /// @dev Full `_taxCfg` overload exposing the linear-decay fields too.
+    function _taxCfg(
+        uint16 buyTaxBps,
+        uint16 sellTaxBps,
+        uint32 taxDurationSeconds,
+        bool startTaxFromLaunch,
+        uint16 buyTaxDecayStartBps,
+        uint16 sellTaxDecayStartBps,
+        uint32 taxDecayDuration
+    ) internal pure returns (TaxConfigInit memory) {
+        return TaxConfigInit({
+            buyTaxBps: buyTaxBps,
+            sellTaxBps: sellTaxBps,
+            taxDurationSeconds: taxDurationSeconds,
+            startTaxFromLaunch: startTaxFromLaunch,
+            buyTaxDecayStartBps: buyTaxDecayStartBps,
+            sellTaxDecayStartBps: sellTaxDecayStartBps,
+            taxDecayDuration: taxDecayDuration
+        });
+    }
+
+    /// @dev Decay-only `TaxConfigInit`: no long-term static tax, just a linear launch-tax decay. Models
+    ///      a "non-taxable token that opts into tax decay".
+    function _decayCfg(
+        uint16 buyTaxDecayStartBps,
+        uint16 sellTaxDecayStartBps,
+        uint32 taxDecayDuration,
+        bool startTaxFromLaunch
+    ) internal pure returns (TaxConfigInit memory) {
+        return _taxCfg(0, 0, 0, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration);
+    }
+
+    /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 and
+    ///      taxDecayDuration == 0 disable dispatch to the taxable impl).
     function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
+        return TaxConfigInit({
+            buyTaxBps: 0,
+            sellTaxBps: 0,
+            taxDurationSeconds: 0,
+            startTaxFromLaunch: false,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0
+        });
     }
 
     /// @dev Empty `AntiSniperConfigs` — sentinel for "no sniper protection" (protectionWindowSeconds == 0).

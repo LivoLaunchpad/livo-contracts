@@ -36,6 +36,17 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///         ownership constraints are imposed beyond the standard validation.
     uint256 public constant MAX_TAX_DURATION_SECONDS = 120 * 365 days;
 
+    /// @notice Max start rate (bps) for the optional linear launch-tax decay, per direction. Fixed at
+    ///         10% — higher than the static `MAX_TOTAL_FEE_BPS` (5%) because the decay only applies
+    ///         transiently at launch and falls to 0 within `MAX_TAX_DECAY_DURATION_SECONDS`. The
+    ///         effective tax a trade pays is `max(decay, static)`, so this caps the worst-case rate at
+    ///         launch; the launchpad's own `MAX_TRADING_FEE_BPS` (25%) absorbs it on top of the LP fee.
+    uint256 public constant MAX_TAX_DECAY_START_BPS = 1_000;
+
+    /// @notice Max duration (seconds) of the linear launch-tax decay: 20 minutes. The decay rate falls
+    ///         from its start value to 0 over at most this window, from the same anchor the static tax uses.
+    uint256 public constant MAX_TAX_DECAY_DURATION_SECONDS = 20 minutes;
+
     /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
     /// @notice Graduator contract that handles token graduation to Uniswap
@@ -482,17 +493,35 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         });
     }
 
-    /// @dev Validates a tax config: enforces sentinel consistency (zero duration ⇒ zero bps) and
-    ///      caps `taxDurationSeconds` at `MAX_TAX_DURATION_SECONDS` (120 years — an overflow-prevention
-    ///      bound driven by `uint32` packing on `TaxConfigInit.taxDurationSeconds`). The tax-bps
-    ///      ceiling is venue-dependent and enforced separately by `_validateTotalFee`. No fee-receiver
-    ///      or ownership constraints are imposed at any duration.
+    /// @dev Validates a tax config. The static tax and the decay add-on are validated INDEPENDENTLY,
+    ///      each with its own sentinel consistency (zero duration ⇒ zero bps, and vice-versa) so a token
+    ///      may configure either, both, or neither — in particular a "decay-only" token sets just the
+    ///      decay fields with no long-term static tax.
+    ///      - Static: `taxDurationSeconds` capped at `MAX_TAX_DURATION_SECONDS` (120 years — an
+    ///        overflow-prevention bound from `uint32` packing); the static-bps ceiling is venue-dependent
+    ///        and enforced separately by `_validateTotalFee`.
+    ///      - Decay: start bps capped at `MAX_TAX_DECAY_START_BPS` (10%) and duration at
+    ///        `MAX_TAX_DECAY_DURATION_SECONDS` (20 min). The decay bps are NOT part of `_validateTotalFee`
+    ///        (the effective rate is `max(decay, static)`, not their sum); the launchpad's own per-trade
+    ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total.
+    ///      No fee-receiver or ownership constraints are imposed at any duration.
     function _validateTaxConfig(TaxConfigInit calldata t) internal pure {
-        if (_isTaxConfigured(t)) {
+        if (t.taxDurationSeconds != 0) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
         } else {
             require(t.buyTaxBps == 0 && t.sellTaxBps == 0, InvalidTaxConfig());
+        }
+
+        if (t.taxDecayDuration != 0) {
+            require(t.buyTaxDecayStartBps > 0 || t.sellTaxDecayStartBps > 0, InvalidTaxConfig());
+            require(t.taxDecayDuration <= MAX_TAX_DECAY_DURATION_SECONDS, InvalidTaxDuration());
+            require(
+                t.buyTaxDecayStartBps <= MAX_TAX_DECAY_START_BPS && t.sellTaxDecayStartBps <= MAX_TAX_DECAY_START_BPS,
+                InvalidTaxBps()
+            );
+        } else {
+            require(t.buyTaxDecayStartBps == 0 && t.sellTaxDecayStartBps == 0, InvalidTaxConfig());
         }
     }
 
@@ -510,19 +539,27 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         );
     }
 
+    /// @dev A token uses the taxable impl family if it configures a long-term static tax OR the launch
+    ///      decay add-on. Decay-only tokens (no static tax) still need the taxable impl: post-graduation
+    ///      tax collection (V2 intrinsic swap-back / V4 hook plumbing) lives only there.
     function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {
-        return t.taxDurationSeconds != 0;
+        return t.taxDurationSeconds != 0 || t.taxDecayDuration != 0;
     }
 
     /// @dev Buy tax (bps) the launchpad will charge on the deploy buy inside `createToken`. Only a
     ///      creation-anchored window (`startTaxFromLaunch`) is open at creation; a graduation-anchored
-    ///      one charges no tax pre-graduation, so the deploy buy pays the LP fee alone. Used by the
-    ///      concrete factories' `quoteBuyOnDeploy` so the quote matches the fee actually charged.
+    ///      one charges no tax pre-graduation, so the deploy buy pays the LP fee alone. The deploy buy
+    ///      lands at elapsed≈0, so the effective rate is `max(decay start, static)` — the same value the
+    ///      token's `getLaunchpadFees` returns at launch. Used by the concrete factories'
+    ///      `quoteBuyOnDeploy` so the quote matches the fee actually charged.
     /// @dev Design decision: the deployer's own deploy buy is intentionally taxed (no buyer-identity
     ///      exemption) — tax stays a pure function of (window, direction), keeping quotes caller-independent.
     //       If deployer==tax receiver, there is no extra cost, as all taxes go to the deployer anyway.
     function _deployBuyTaxBps(TaxConfigInit calldata taxCfg) internal pure returns (uint256) {
-        return (_isTaxConfigured(taxCfg) && taxCfg.startTaxFromLaunch) ? taxCfg.buyTaxBps : 0;
+        if (!taxCfg.startTaxFromLaunch) return 0;
+        uint256 staticBps = taxCfg.buyTaxBps;
+        uint256 decayBps = taxCfg.buyTaxDecayStartBps;
+        return decayBps > staticBps ? decayBps : staticBps;
     }
 
     function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {

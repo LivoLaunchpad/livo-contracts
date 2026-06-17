@@ -53,7 +53,13 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
                     treasuryShareBps: treasuryShare
                 }),
                 TaxConfigInit({
-                    buyTaxBps: taxBuy, sellTaxBps: taxSell, taxDurationSeconds: window, startTaxFromLaunch: true
+                    buyTaxBps: taxBuy,
+                    sellTaxBps: taxSell,
+                    taxDurationSeconds: window,
+                    startTaxFromLaunch: true,
+                    buyTaxDecayStartBps: 0,
+                    sellTaxDecayStartBps: 0,
+                    taxDecayDuration: 0
                 })
             );
         // Register the creator as the sole (claimable) fee receiver so creator-share routing works.

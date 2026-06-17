@@ -6,14 +6,24 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @notice Initialization-time tax configuration for taxable tokens.
 /// @dev Separate from `ILivoToken.TaxConfig` (which adds the post-init `graduationTimestamp`).
+/// @dev The three `*Decay*` fields configure the optional linearly-decaying launch tax. It runs from
+///      the SAME anchor `startTaxFromLaunch` selects, decaying each direction linearly from its start
+///      rate to 0 over `taxDecayDuration`. The effective rate a trade pays is `max(decay, static)` per
+///      direction, so a token may set ONLY the decay fields (static bps + duration all zero) to get a
+///      pure decaying launch tax with no long-term tax — a "non-taxable token with tax decay". Such a
+///      token is still deployed as a taxable-impl clone (the post-graduation collection machinery lives
+///      there); its dispatch is triggered by `taxDecayDuration != 0` alone.
 struct TaxConfigInit {
     uint16 buyTaxBps;
     uint16 sellTaxBps;
     uint32 taxDurationSeconds;
-    /// @dev Anchor for the tax window. `true`: window runs `[launchTimestamp, launchTimestamp + duration]`
-    ///      (starts at token creation, spans graduation). `false`: window runs
-    ///      `[graduationTimestamp, graduationTimestamp + duration]` (no tax before graduation).
+    /// @dev Anchor for BOTH the static and decay windows. `true`: windows run from `launchTimestamp`
+    ///      (start at token creation, span graduation). `false`: windows run from `graduationTimestamp`
+    ///      (no tax before graduation).
     bool startTaxFromLaunch;
+    uint16 buyTaxDecayStartBps; // buy decay rate at the anchor (decays to 0 over taxDecayDuration); 0 = no buy decay
+    uint16 sellTaxDecayStartBps; // sell decay rate at the anchor (decays to 0 over taxDecayDuration); 0 = no sell decay
+    uint32 taxDecayDuration; // seconds over which the decay rate falls from its start to 0; 0 = no decay
 }
 
 /// @title ILivoTaxableToken

@@ -429,6 +429,33 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
+    /// @dev A decay-only token's deploy buy lands at elapsed≈0, so it pays the FULL decay start rate
+    ///      (here 10%). The quote must include it (on top of the 1% V4 LP fee). A quote that ignores
+    ///      decay under-quotes and the exact-ETH-in deploy buy receives fewer than `tokenAmount`.
+    function test_quoteBuyOnDeploy_roundTrip_withDecayTax() public {
+        uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _decayCfg(1000, 0, 20 minutes, true), _univ4Cfg100());
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryTax.createToken{value: totalEthNeeded}(
+            "TestToken",
+            "TEST",
+            salt,
+            _fs(creator),
+            _ss(creator),
+            false,
+            _decayCfg(1000, 0, 20 minutes, true),
+            _emptyAntiSniperCfg()
+        );
+
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
+    }
+
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
     function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;

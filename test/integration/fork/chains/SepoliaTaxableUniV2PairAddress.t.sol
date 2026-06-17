@@ -29,7 +29,10 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
             buyTaxBps: TAX_BUY_BPS,
             sellTaxBps: TAX_SELL_BPS,
             taxDurationSeconds: TAX_DURATION_SECONDS,
-            startTaxFromLaunch: true
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0
         });
         AntiSniperConfigs memory noSniper = AntiSniperConfigs({
             maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)

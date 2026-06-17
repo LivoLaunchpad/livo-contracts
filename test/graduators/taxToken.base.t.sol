@@ -81,6 +81,28 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         );
     }
 
+    /// @notice Helper to create a DECAY-only token (no long-term static tax) with a linear launch-tax
+    ///         decay, creation-anchored. Exercises the V4 hook serving a decaying `getTaxConfig`.
+    /// @param buyDecayStartBps Buy decay rate at launch (decays to 0 over `decayDuration`)
+    /// @param sellDecayStartBps Sell decay rate at launch
+    /// @param decayDuration Decay window length in seconds (from launch)
+    function _createDecayToken(uint16 buyDecayStartBps, uint16 sellDecayStartBps, uint32 decayDuration)
+        internal
+        returns (address tokenAddress)
+    {
+        vm.prank(creator);
+        tokenAddress = factoryTax.createToken(
+            "DecayToken",
+            "DCY",
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _fs(creator),
+            _noSs(),
+            false,
+            _decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true),
+            _emptyAntiSniperCfg()
+        );
+    }
+
     /// @notice Helper to get pool key with tax hook
     /// @param tokenAddress The token address
     /// @return PoolKey with tax hook configured
