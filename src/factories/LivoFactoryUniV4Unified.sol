@@ -27,6 +27,16 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         in the abstract base as `GRADUATOR`.
     address public immutable GRADUATOR_0P5;
 
+    /// @notice Pre-graduation launchpad LP fee for V4 tokens (bps), charged on every bonding-curve trade
+    ///         and split treasury/creator by `V4_LAUNCHPAD_TREASURY_SHARE_BPS`. Fixed at 1% for every V4
+    ///         token regardless of the post-graduation hook fee it selects (`UniV4Configs.lpFeeBps`, 50 or
+    ///         100): the pre-graduation rate is a constant launchpad policy, decoupled from the LP fee the
+    ///         hook charges after graduation.
+    uint16 internal constant V4_LAUNCHPAD_LP_FEE_BPS = 100;
+
+    /// @notice Treasury share of the V4 pre-graduation LP fee (bps): 60 treasury / 40 creator.
+    uint16 internal constant V4_LAUNCHPAD_TREASURY_SHARE_BPS = 6_000;
+
     error InvalidLpFeeBps();
 
     constructor(
@@ -96,30 +106,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         emit LpFeeBpsSet(token, 100);
     }
 
-    /// @notice Struct-based overload without creator vaults. `univ4Configs.lpFeeBps` selects which
-    ///         graduator/hook pair to use (100 or 50).
-    /// @dev DEPRECATED: kept for backwards compatibility. New integrations should use the
-    ///      struct-based overload that takes `creatorVaults`. Always deploys with no creator vaults.
-    function createToken(
-        TokenSetup calldata tokenSetup,
-        TaxConfigInit calldata taxConfigs,
-        UniV4Configs calldata univ4Configs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs
-    ) external payable returns (address token) {
-        _validateUniv4Configs(univ4Configs);
-        _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
-        address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
-        token = _createToken(
-            tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, new CreatorVault[](0)
-        );
-        emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
-    }
-
-    /// @notice Struct-based overload. Equivalent to the deprecated struct-based overload above, plus
-    ///         the `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects which
-    ///         graduator/hook pair to use (100 or 50). This is the current recommended overload.
+    /// @notice Struct-based overload taking a `creatorVaults` array (pass empty for none).
+    ///         `univ4Configs.lpFeeBps` selects which graduator/hook pair to use (100 or 50).
+    ///         This is the current recommended overload.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,
@@ -155,6 +144,25 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         return lpFeeBps == 100 ? address(GRADUATOR) : GRADUATOR_0P5;
     }
 
+    /// @dev Pre-graduation launchpad LP fee, fixed at `V4_LAUNCHPAD_LP_FEE_BPS` (1%) for every V4 token
+    ///      regardless of the post-graduation hook fee it selected. The pre-graduation rate is a constant
+    ///      launchpad policy, decoupled from the post-graduation LP fee, so `graduator` is ignored.
+    function _launchpadLpFeeBps(
+        address /* graduator */
+    )
+        internal
+        pure
+        override
+        returns (uint16)
+    {
+        return V4_LAUNCHPAD_LP_FEE_BPS;
+    }
+
+    /// @inheritdoc LivoFactoryAbstract
+    function _launchpadTreasuryShareBps() internal pure override returns (uint16) {
+        return V4_LAUNCHPAD_TREASURY_SHARE_BPS;
+    }
+
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
     /// @dev Mirrors the dispatch-relevant `createToken` inputs minus the identity fields (`name`,
     ///      `symbol`, `salt`) and ownership flag so the ABI stays stable when future features change
@@ -171,5 +179,32 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateAntiSniperConfig(antiSniperCfg);
         _validateTaxConfig(taxCfg);
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
+    }
+
+    /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer buy.
+    ///         Pass the same `taxCfg` and `univ4Configs` you'll pass to `createToken`; the buy fee is
+    ///         derived from them (the fixed pre-graduation launchpad LP fee plus the buy tax) so the
+    ///         frontend doesn't recompute it.
+    /// @param tokenAmount Amount of tokens to receive
+    /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults (0 for none); selects
+    ///        the same curve `createToken` uses. See `_quoteBuyOnDeploy`.
+    /// @param taxCfg The tax config the token will be created with; only `buyTaxBps` affects the buy,
+    ///        and only when the window is creation-anchored (`startTaxFromLaunch`) — a graduation-anchored
+    ///        tax is not charged on the deploy buy (see `_deployBuyTaxBps`).
+    /// @param univ4Configs The V4 config the token will be created with; `lpFeeBps` selects the
+    ///        post-graduation hook fee. Validated here so the fee is one of the supported hook variants.
+    ///        The deploy buy is a pre-graduation trade, so it is quoted at the fixed
+    ///        `V4_LAUNCHPAD_LP_FEE_BPS`, not `lpFeeBps`.
+    /// @return totalEthNeeded The msg.value to pass to createToken
+    function quoteBuyOnDeploy(
+        uint256 tokenAmount,
+        uint256 totalLockedInVaultsBps,
+        TaxConfigInit calldata taxCfg,
+        UniV4Configs calldata univ4Configs
+    ) external view returns (uint256 totalEthNeeded) {
+        _validateUniv4Configs(univ4Configs);
+        return _quoteBuyOnDeploy(
+            tokenAmount, totalLockedInVaultsBps, uint256(V4_LAUNCHPAD_LP_FEE_BPS) + _deployBuyTaxBps(taxCfg)
+        );
     }
 }

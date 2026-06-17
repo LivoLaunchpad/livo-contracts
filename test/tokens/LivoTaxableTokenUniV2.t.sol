@@ -152,6 +152,57 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
         assertEq(IERC20(testToken).balanceOf(address(taxToken)), contractBalanceBefore);
     }
 
+    // ─────────────────── Graduation-anchored tax window ──────────────────────────
+
+    /// @notice A V2 token created with `startTaxFromLaunch == false` runs its intrinsic-tax window from
+    ///         graduation, not creation. Even after sitting on the bonding curve well past
+    ///         `launchTimestamp + duration` (where a launch-anchored token's tax would already be over),
+    ///         post-graduation sells are still taxed; the window only ends `duration` after graduation.
+    function test_graduationAnchored_windowAnchoredAtGraduation() public {
+        // The setUp token is launch-anchored; deploy a graduation-anchored variant.
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+        vm.prank(creator);
+        address gToken = factoryV2Unified.createToken(
+            "GTax",
+            "GTAX",
+            salt,
+            _fs(creator),
+            _noSs(),
+            _taxCfg(BUY_BPS, SELL_BPS, TAX_DURATION, false),
+            _emptyAntiSniperCfg()
+        );
+        testToken = gToken;
+        taxToken = LivoTaxableTokenUniV2(payable(gToken));
+        pair = taxToken.pair();
+
+        uint40 launchTs = ILivoToken(gToken).launchTimestamp();
+
+        // Sit on the curve past where a launch-anchored window would have closed, then graduate.
+        vm.warp(uint256(launchTs) + 2 * TAX_DURATION);
+        _setupGraduatedTokenWithBuyer();
+
+        uint40 graduationTs = taxToken.graduationTimestamp();
+        assertGt(graduationTs, launchTs + TAX_DURATION, "graduated past the launch-anchored expiry");
+
+        // Window is active post-graduation (a launch-anchored token would report 0 here).
+        assertEq(ILivoToken(gToken).getTaxConfig().sellTaxBps, SELL_BPS, "tax active in the graduation-anchored window");
+
+        // The intrinsic `_update` tax IS taken on a sell, despite being past launch + duration.
+        uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 4;
+        uint256 contractBefore = IERC20(testToken).balanceOf(address(taxToken));
+        uint256 expectedTax = sellAmount * SELL_BPS / 10_000; // below SWAP_THRESHOLD → no auto swap-back
+        _swapSellV2(buyer, testToken, sellAmount, 0, true);
+        assertEq(
+            IERC20(testToken).balanceOf(address(taxToken)),
+            contractBefore + expectedTax,
+            "sell taxed within the graduation-anchored window"
+        );
+
+        // The window ends `duration` after graduation, not after launch.
+        vm.warp(uint256(graduationTs) + TAX_DURATION + 1);
+        assertEq(ILivoToken(gToken).getTaxConfig().sellTaxBps, 0, "tax ends `duration` after graduation");
+    }
+
     // ─────────────────────────── Auto swap-back ──────────────────────────────────
 
     function test_autoSwapBack_firesWhenThresholdCrossed() public {

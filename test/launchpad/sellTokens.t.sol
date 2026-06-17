@@ -238,7 +238,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
-        assertEq(treasury.balance - treasuryBefore, expectedEthFee);
+        assertEq(treasury.balance - treasuryBefore, _treasuryShareOf(expectedEthFee));
     }
 
     function testSellExactTokens_quotingAccuracy() public createTestToken afterOneBuy {
@@ -258,7 +258,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 ethBalanceAfter = alice.balance;
 
         // Verify quote accuracy
-        assertEq(treasury.balance - treasuryBefore, quotedEthFee);
+        assertEq(treasury.balance - treasuryBefore, _treasuryShareOf(quotedEthFee));
         assertEq(stateBefore.ethCollected - stateAfter.ethCollected, quotedEthFromSale);
         assertEq(ethBalanceAfter - ethBalanceBefore, quotedEthForSeller);
     }

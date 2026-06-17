@@ -16,7 +16,7 @@ contract LivoTokenSniperProtected is LivoToken, SniperProtection {
         initializer
     {
         _initializeLivoToken(params);
-        _initializeSniperProtection(antiSniperCfg);
+        _initializeSniperProtection(antiSniperCfg, launchTimestamp);
     }
 
     function _update(address from, address to, uint256 amount) internal override {

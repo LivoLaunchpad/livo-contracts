@@ -10,8 +10,8 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Upgrade the LivoFactoryUniV4Unified proxy to the dual-graduator implementation
 /// @notice Rolls out the 0.5% LP-fee variant: the new `LivoFactoryUniV4Unified` constructor now
@@ -22,7 +22,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///
 ///         Single broadcast:
 ///         1. deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the addresses in
-///            the per-chain manifest (`src/config/deployments.{mainnet,sepolia}.sol`), including
+///            the per-chain manifest (`src/config/manifest.{mainnet,sepolia}.sol`), including
 ///            the new `GRADUATOR_UNIV4_0P5`.
 ///         2. calls `upgradeToAndCall(newImpl, "")` on the existing V4 factory proxy.
 ///
@@ -35,7 +35,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         Pre-flight: `GRADUATOR_UNIV4_0P5` must already be deployed and recorded in the manifest.
 ///         Use `script/DeployUniV4Graduator0p5.s.sol` first if it's still `address(0)`.
 ///
-///         Post-broadcast: update `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/deployments.<chain>.sol`,
+///         Post-broadcast: update `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`.
 ///
 /// @dev    Run with:

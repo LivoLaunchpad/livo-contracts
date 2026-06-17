@@ -108,7 +108,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
     /// @dev cap applies to aggregate — a single recipient holding 100% shares can receive up to the full cap
     function test_createToken_capAppliesToAggregate_singleRecipientCanHitFullCap() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(maxTokens);
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(maxTokens, 0, _emptyTaxCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
@@ -246,7 +246,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
     /// @dev quoteBuyOnDeploy returns correct ETH that yields exactly tokenAmount
     function test_quoteBuyOnDeploy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(tokenAmount);
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(tokenAmount, 0, _emptyTaxCfg());
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
@@ -255,13 +255,15 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
 
-        assertGe(LivoToken(token).balanceOf(creator), tokenAmount);
+        uint256 creatorBalance = LivoToken(token).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
     function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(maxTokens);
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(maxTokens, 0, _emptyTaxCfg());
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
@@ -272,9 +274,42 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
 
         assertGe(LivoToken(token).balanceOf(creator), maxTokens);
     }
+
+    /// @dev With a graduation-anchored tax window (`startTaxFromLaunch == false`) the deploy buy pays
+    ///      no tax — the window hasn't opened — so the quote must exclude `buyTaxBps`. A quote that
+    ///      includes it over-estimates the ETH and the exact-ETH-in deploy buy overshoots the quoted
+    ///      token amount.
+    function test_quoteBuyOnDeploy_graduationAnchoredTax_quoteIsTight() public {
+        uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(tokenAmount, 0, _taxCfg(400, 0, uint32(14 days), false));
+
+        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoTaxTokenV2));
+
+        vm.prank(creator);
+        address token = factoryV2.createToken{value: totalEthNeeded}(
+            "TestToken",
+            "TEST",
+            salt,
+            _fs(creator),
+            _ss(creator),
+            _taxCfg(400, 0, uint32(14 days), false),
+            _emptyAntiSniperCfg()
+        );
+
+        uint256 creatorBalance = LivoToken(token).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // within 0.5% of the quote
+    }
 }
 
 contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
+    /// @dev The V4 config these tests deploy with: 100-bps hook LP fee, ownership retained. The
+    ///      positional `createToken` overload they use hardcodes the same 100-bps fee, so passing this
+    ///      to `quoteBuyOnDeploy` matches the token's actual buy fee.
+    function _univ4Cfg100() internal pure returns (LivoFactoryUniV4Unified.UniV4Configs memory) {
+        return LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+    }
+
     // ============ Happy Path ============
 
     /// @dev deployer can buy tokens with ETH during createToken
@@ -344,7 +379,8 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     /// @dev quoteBuyOnDeploy returns correct ETH that yields exactly tokenAmount
     function test_quoteBuyOnDeploy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(tokenAmount);
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _taxCfg(0, 400, uint32(14 days)), _univ4Cfg100());
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
@@ -360,13 +396,44 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
             _emptyAntiSniperCfg()
         );
 
-        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), tokenAmount);
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
+    }
+
+    /// @dev With a non-zero BUY tax the deploy-buy fee is LP + buy tax, so the quote must be told that
+    ///      full fee. Exercises that `buyFeeBps` is threaded into `quoteBuyOnDeploy` — the old
+    ///      hardcoded-100 quote under-quoted here and the deployer would receive fewer than `tokenAmount`.
+    function test_quoteBuyOnDeploy_roundTrip_withBuyTax() public {
+        uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
+        uint16 buyTax = 300; // 3%; with the 100 bps V4 LP fee the deploy-buy fee is 400 bps
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _taxCfg(buyTax, 0, uint32(14 days)), _univ4Cfg100());
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryTax.createToken{value: totalEthNeeded}(
+            "TestToken",
+            "TEST",
+            salt,
+            _fs(creator),
+            _ss(creator),
+            false,
+            _taxCfg(buyTax, 0, uint32(14 days)),
+            _emptyAntiSniperCfg()
+        );
+
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
     function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(maxTokens);
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(maxTokens, 0, _taxCfg(0, 400, uint32(14 days)), _univ4Cfg100());
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
@@ -379,6 +446,61 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
             _ss(creator),
             false,
             _taxCfg(0, 400, uint32(14 days)),
+            _emptyAntiSniperCfg()
+        );
+
+        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
+    }
+
+    /// @dev With a graduation-anchored tax window (`startTaxFromLaunch == false`) the deploy buy pays
+    ///      no tax — the window hasn't opened — so the quote must exclude `buyTaxBps`. A quote that
+    ///      includes it over-estimates the ETH and the exact-ETH-in deploy buy overshoots the quoted
+    ///      token amount.
+    function test_quoteBuyOnDeploy_graduationAnchoredTax_quoteIsTight() public {
+        uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
+        uint16 buyTax = 400;
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _taxCfg(buyTax, 0, uint32(14 days), false), _univ4Cfg100());
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryTax.createToken{value: totalEthNeeded}(
+            "TestToken",
+            "TEST",
+            salt,
+            _fs(creator),
+            _ss(creator),
+            false,
+            _taxCfg(buyTax, 0, uint32(14 days), false),
+            _emptyAntiSniperCfg()
+        );
+
+        uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
+        assertGe(creatorBalance, tokenAmount);
+        assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // within 0.5% of the quote
+    }
+
+    /// @dev The user-facing harm of an inflated quote: at the `maxBuyOnDeployBps` limit, the extra
+    ///      ETH from wrongly including a graduation-anchored `buyTaxBps` buys more than the cap and
+    ///      `createToken` reverts with InvalidBuyOnDeploy.
+    function test_quoteBuyOnDeploy_graduationAnchoredTax_maxAllowedTokens_doesNotRevert() public {
+        uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;
+        uint16 buyTax = 400;
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(maxTokens, 0, _taxCfg(buyTax, 0, uint32(14 days), false), _univ4Cfg100());
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryTax.createToken{value: totalEthNeeded}(
+            "TestToken",
+            "TEST",
+            salt,
+            _fs(creator),
+            _ss(creator),
+            false,
+            _taxCfg(buyTax, 0, uint32(14 days), false),
             _emptyAntiSniperCfg()
         );
 

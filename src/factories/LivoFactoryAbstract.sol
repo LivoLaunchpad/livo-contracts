@@ -141,37 +141,21 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
+    ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer
-    ///         buy on a NON-vault token, priced against the base `BONDING_CURVE`.
-    /// @param tokenAmount Amount of tokens to receive
-    /// @return totalEthNeeded The msg.value to pass to createToken
-    /// @dev Doesn't account for the `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount`
-    ///      under it.
-    /// @dev IMPORTANT: this single-arg form prices ONLY the base curve. For a creator-vault token,
-    ///      which is sold on a steeper-starting (allocation-specific) curve, use the two-arg overload
-    ///      that takes `totalLockedInVaultsBps` — otherwise the quote under-estimates the ETH and the deployer
-    ///      would receive fewer tokens than expected for the msg.value sent.
-    function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded) {
-        return _quoteBuyOnDeploy(tokenAmount, BONDING_CURVE);
-    }
-
-    /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer
-    ///         buy, priced against the curve that `totalLockedInVaultsBps` of locked supply selects in
-    ///         `createToken`. Pass the SUM of `supplyBps` across the vaults you will deploy with (0
-    ///         for a non-vault token); the quote then matches the curve the launchpad actually uses,
-    ///         so the deployer is not mis-quoted. Only the aggregate matters — the curve is keyed off
-    ///         it, not the individual vault owners/vesting — so those need not be finalized to quote.
-    /// @param tokenAmount Amount of tokens to receive
-    /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults; must be 0 or a
-    ///        multiple of `CREATOR_VAULT_BPS_STEP` (500) up to `MAX_CREATOR_VAULT_TOTAL_BPS` (3000) —
-    ///        the same aggregate `_validateCreatorVaults` enforces for the array passed to `createToken`.
-    /// @return totalEthNeeded The msg.value to pass to createToken
-    /// @dev Doesn't account for the `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount` under
-    ///      it. Reverts (`InvalidCreatorVault`) on a `totalLockedInVaultsBps` no vault array could sum to.
-    function quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalLockedInVaultsBps)
-        external
+    /// @dev Shared body for the concrete factories' `quoteBuyOnDeploy`: total ETH (including the
+    ///      inverse buy fee) needed to buy `tokenAmount` from the curve `totalLockedInVaultsBps`
+    ///      selects. `buyFeeBps` is the pre-graduation buy fee the launchpad will charge (LP fee + buy
+    ///      tax); each factory's public `quoteBuyOnDeploy` derives it from the venue config + tax the
+    ///      deployer will pass to `createToken` — the token doesn't exist at quote time, so the fee is
+    ///      computed from those inputs rather than read from the token. Pass the SUM of `supplyBps`
+    ///      across the vaults (0 for a non-vault token); only the aggregate matters (it keys the curve),
+    ///      so vault owners/vesting need not be finalized to quote. Doesn't account for the
+    ///      `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount` under it. Reverts
+    ///      (`InvalidCreatorVault`) on a `totalLockedInVaultsBps` no vault array could sum to; a
+    ///      `buyFeeBps >= BASIS_POINTS` reverts on the subtraction below (nonsensical input).
+    function _quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalLockedInVaultsBps, uint256 buyFeeBps)
+        internal
         view
         returns (uint256 totalEthNeeded)
     {
@@ -180,23 +164,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
                 && totalLockedInVaultsBps % CREATOR_VAULT_BPS_STEP == 0,
             InvalidCreatorVault()
         );
-        return _quoteBuyOnDeploy(tokenAmount, _resolveBondingCurve(totalLockedInVaultsBps));
-    }
-
-    /// @dev Shared body: ETH (incl. inverse buy fee) to buy `tokenAmount` from a fresh curve.
-    function _quoteBuyOnDeploy(uint256 tokenAmount, ILivoBondingCurve curve)
-        internal
-        view
-        returns (uint256 totalEthNeeded)
-    {
-        (uint256 ethForReserves,) = curve.buyExactTokens(0, tokenAmount);
-
-        uint16 buyFeeBps = LAUNCHPAD.baseBuyFeeBps();
+        (uint256 ethForReserves,) = _resolveBondingCurve(totalLockedInVaultsBps).buyExactTokens(0, tokenAmount);
         uint256 denom = BASIS_POINTS - buyFeeBps;
         totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
     }
-
-    ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
@@ -337,10 +308,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
     ///      calldata args — can build a `TokenSetup` in memory and call this same umbrella. The
     ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
-    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/
-    ///      `_initializeTaxToken`/`_initializeNonTaxToken`/`_finalizeCreation` to accept `memory`
-    ///      for those fields too. Once the legacy overload is removed, switch `tokenSetup` (and
-    ///      the cascaded fields) back to `calldata` to skip the one-time copy (~100–250 gas/deploy).
+    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`
+    ///      to accept `memory` for those fields too. Once the legacy overload is removed, switch
+    ///      `tokenSetup` (and the cascaded fields) back to `calldata` to skip the one-time copy
+    ///      (~100–250 gas/deploy).
     function _createToken(
         TokenSetup memory tokenSetup,
         address tokenOwner,
@@ -461,6 +432,17 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         require(bytes(symbol).length <= 96, InvalidNameOrSymbol());
     }
 
+    /// @notice Pre-graduation LP/trading fee (bps) the launchpad charges on bonding-curve trades for a
+    ///         token whose post-graduation venue is `graduator`. A fixed per-venue rate, decoupled from the
+    ///         post-graduation LP fee: V4 charges 1% regardless of the token's 50/100-bps post-graduation
+    ///         hook fee; V2 has no post-graduation LP fee and returns its own fixed pre-graduation rate.
+    ///         Split between treasury and creator by `_launchpadTreasuryShareBps`.
+    function _launchpadLpFeeBps(address graduator) internal view virtual returns (uint16);
+
+    /// @notice Share of the pre-graduation LP fee routed to the treasury (bps); the remainder goes to
+    ///         the creator. Venue-specific protocol policy fixed at the factory level, not deployer-set.
+    function _launchpadTreasuryShareBps() internal pure virtual returns (uint16);
+
     /// @dev Clones the resolved token implementation deterministically, enforces the `0x1110` vanity
     ///      suffix, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
     ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
@@ -488,7 +470,15 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             graduator: graduator,
             launchpad: address(LAUNCHPAD),
             feeHandler: address(MASTER_FEE_HANDLER),
-            vaultAllocation: vaultAllocation
+            vaultAllocation: vaultAllocation,
+            // Pre-graduation LP-fee policy carried by the token and read by the launchpad each trade. A
+            // fixed per-venue rate, decoupled from the post-graduation LP fee (V4: 1% regardless of the
+            // token's 50/100-bps hook fee; V2: a fixed rate, as V2 has no post-graduation LP fee). The
+            // treasury/creator split is venue-specific protocol policy. The creator tax is NOT stored here —
+            // taxable variants store it from `TaxConfigInit` in `_initializeTaxConfig`, and it applies
+            // identically pre- and post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
+            lpFeeBps: _launchpadLpFeeBps(graduator),
+            treasuryShareBps: _launchpadTreasuryShareBps()
         });
     }
 
@@ -506,11 +496,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         }
     }
 
-    /// @dev Caps the aggregate fee a swapper pays (LP fee + tax) at `MAX_TOTAL_FEE_BPS` (5%). Applied
-    ///      to buy and sell tax independently since a swap only ever pays one direction. `lpFeeBps`
-    ///      is the venue's LP fee — 0 for V2 (no LP fee, so tax can reach the full 5%), 50 or 100 for
-    ///      V4 (leaving 450/400 bps for tax). `taxCfg` bps are unbounded here, so the sum is widened
-    ///      to `uint256` to avoid a spurious overflow revert before this check fires.
+    /// @dev Caps the POST-graduation total fee a swapper pays (LP fee + tax) at `MAX_TOTAL_FEE_BPS`
+    ///      (5%). Applied to buy and sell tax independently since a swap only ever pays one direction.
+    ///      `lpFeeBps` is the venue's post-graduation LP fee — 0 for V2 (no LP fee, so tax can reach the
+    ///      full 5%), 50 or 100 for V4 (leaving 450/400 bps for tax). Pre-graduation the launchpad
+    ///      additionally charges its own LP fee on top of the tax; that transient total is bounded by
+    ///      the launchpad's (looser) `MAX_TRADING_FEE_BPS`, not here. `taxCfg` bps are unbounded here, so
+    ///      the sum is widened to `uint256` to avoid a spurious overflow revert before this check fires.
     function _validateTotalFee(uint256 lpFeeBps, TaxConfigInit calldata taxCfg) internal pure {
         require(
             lpFeeBps + taxCfg.buyTaxBps <= MAX_TOTAL_FEE_BPS && lpFeeBps + taxCfg.sellTaxBps <= MAX_TOTAL_FEE_BPS,
@@ -520,6 +512,17 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
 
     function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {
         return t.taxDurationSeconds != 0;
+    }
+
+    /// @dev Buy tax (bps) the launchpad will charge on the deploy buy inside `createToken`. Only a
+    ///      creation-anchored window (`startTaxFromLaunch`) is open at creation; a graduation-anchored
+    ///      one charges no tax pre-graduation, so the deploy buy pays the LP fee alone. Used by the
+    ///      concrete factories' `quoteBuyOnDeploy` so the quote matches the fee actually charged.
+    /// @dev Design decision: the deployer's own deploy buy is intentionally taxed (no buyer-identity
+    ///      exemption) — tax stays a pure function of (window, direction), keeping quotes caller-independent.
+    //       If deployer==tax receiver, there is no extra cost, as all taxes go to the deployer anyway.
+    function _deployBuyTaxBps(TaxConfigInit calldata taxCfg) internal pure returns (uint256) {
+        return (_isTaxConfigured(taxCfg) && taxCfg.startTaxFromLaunch) ? taxCfg.buyTaxBps : 0;
     }
 
     function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {
@@ -544,11 +547,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         return hasAntiSniper ? TOKEN_IMPL_ANTISNIPER : TOKEN_IMPL_BASE;
     }
 
-    /// @dev Resolves the implementation via `_previewTokenImplementation` and then routes to the
-    ///      tax or non-tax sub-helper. Splitting by family keeps each sub-helper's stack frame
-    ///      small enough to compile without `via_ir`. Callers (`createToken` on the derived
-    ///      factory) are responsible for invoking `LAUNCHPAD.launchToken` and `_finalizeCreation`
-    ///      (which registers the token's fee config with the master handler) after this returns.
+    /// @dev Resolves the implementation for the `(taxCfg, antiSniperCfg)` pair, clones it, and runs
+    ///      the matching `initialize` overload. The four combinations dispatch across two interface
+    ///      families: the tax family through the venue-agnostic `ILivoTaxableToken[SniperProtected]`
+    ///      interfaces, the non-tax family through `LivoToken` / `LivoTokenSniperProtected` directly.
+    ///      Impl resolution shares `_previewTokenImplementation` with the public preview, so a salt
+    ///      that previews to a `0x1110` address also clones to one. Callers (`createToken` on the
+    ///      derived factory) invoke `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers
+    ///      the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(
         string memory name,
         string memory symbol,
@@ -560,61 +566,25 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
+
+        ILivoToken.InitializeParams memory params;
+        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
+
+        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            token = _initializeTaxToken(
-                impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, taxCfg, antiSniperCfg
-            );
+            // taxCfg is non-empty; the token stores its tax rate from it in `_initializeTaxConfig`.
+            if (hasAntiSniper) {
+                ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
+            } else {
+                ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
+            }
         } else {
-            token =
-                _initializeNonTaxToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation, antiSniperCfg);
-        }
-    }
-
-    /// @dev Clones the resolved tax implementation (passed in by `_dispatchAndInitialize` so the
-    ///      preview/create dispatch share a single source of truth) and dispatches into the 2-arg
-    ///      or 3-arg `initialize` overload through the venue-agnostic
-    ///      `ILivoTaxableToken[SniperProtected]` interfaces.
-    function _initializeTaxToken(
-        address impl,
-        string memory name,
-        string memory symbol,
-        bytes32 salt,
-        address tokenOwner,
-        address graduator,
-        uint256 vaultAllocation,
-        TaxConfigInit calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) internal returns (address token) {
-        ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
-
-        if (_isAntiSniperConfigured(antiSniperCfg)) {
-            ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
-        } else {
-            ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
-        }
-    }
-
-    /// @dev Clones the resolved non-tax implementation (passed in by `_dispatchAndInitialize`) and
-    ///      runs the appropriate `initialize` overload. Identical between V2 and V4 because both
-    ///      venues share the same `LivoToken` / `LivoTokenSniperProtected` non-tax implementations.
-    function _initializeNonTaxToken(
-        address impl,
-        string memory name,
-        string memory symbol,
-        bytes32 salt,
-        address tokenOwner,
-        address graduator,
-        uint256 vaultAllocation,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) internal returns (address token) {
-        ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
-
-        if (_isAntiSniperConfigured(antiSniperCfg)) {
-            LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
-        } else {
-            LivoToken(token).initialize(params);
+            // non-tax path: taxCfg is empty (validated); base `getLaunchpadFees` returns 0 tax.
+            if (hasAntiSniper) {
+                LivoTokenSniperProtected(token).initialize(params, antiSniperCfg);
+            } else {
+                LivoToken(token).initialize(params);
+            }
         }
     }
 

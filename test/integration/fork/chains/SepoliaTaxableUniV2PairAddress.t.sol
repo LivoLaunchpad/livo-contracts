@@ -25,8 +25,12 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
         ILivoFactory.FeeShare[] memory fees = new ILivoFactory.FeeShare[](1);
         fees[0] = ILivoFactory.FeeShare({account: creator, shares: 10_000, directFeesEnabled: false});
         ILivoFactory.SupplyShare[] memory supply = new ILivoFactory.SupplyShare[](0);
-        TaxConfigInit memory taxCfg =
-            TaxConfigInit({buyTaxBps: TAX_BUY_BPS, sellTaxBps: TAX_SELL_BPS, taxDurationSeconds: TAX_DURATION_SECONDS});
+        TaxConfigInit memory taxCfg = TaxConfigInit({
+            buyTaxBps: TAX_BUY_BPS,
+            sellTaxBps: TAX_SELL_BPS,
+            taxDurationSeconds: TAX_DURATION_SECONDS,
+            startTaxFromLaunch: true
+        });
         AntiSniperConfigs memory noSniper = AntiSniperConfigs({
             maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
         });

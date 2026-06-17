@@ -8,8 +8,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @notice Deploys `LivoSwapHook` via CREATE2 after mining a salt that encodes the four
 ///         required Uniswap V4 permission flags into the address.
@@ -57,7 +57,7 @@ contract DeployLivoSwapHook is Script {
         console.log("LivoSwapHook: %s", address(hook));
         console.log("");
         console.log(
-            "Next: paste this address into SWAP_HOOK in src/config/deployments.%s.sol",
+            "Next: paste this address into SWAP_HOOK in src/config/manifest.%s.sol",
             block.chainid == 1 ? "mainnet" : "sepolia"
         );
         console.log("Then: just export-deployments");

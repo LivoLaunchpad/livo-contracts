@@ -9,7 +9,8 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoQuoter} from "src/LivoQuoter.sol";
-import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
+import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
+import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
 
 /// @notice End-to-end tests for the creator-vault feature: createToken-with-vaults across the
 ///         V2/V4 + tax/sniper variants, the supply split, allocation-specific curve selection,
@@ -355,12 +356,12 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         address token = _createV4(_one(_vault(vaultOwner, 3000, 0, 1 days)));
 
         uint256 ethValue = 0.1 ether;
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, ethValue);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, ethValue);
         assertEq(uint256(q.reason), uint256(LimitReason.NONE), "quote should be valid");
         assertGt(q.tokensToReceive, 0, "non-zero tokens");
 
         // matches the launchpad's direct quote (both read the registered vault curve)
-        (, uint256 ethFee, uint256 tokensDirect) = launchpad.quoteBuyTokensWithExactEth(token, ethValue);
+        (, uint256 ethFee, uint256 tokensDirect,) = launchpad.quoteBuyTokensWithExactEth(token, ethValue);
         assertEq(q.tokensToReceive, tokensDirect, "quoter matches launchpad on the vault curve");
         assertEq(q.ethFee, ethFee, "fee matches");
     }
@@ -372,8 +373,11 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         ILivoFactory.CreatorVault[] memory vaults = _one(_vault(vaultOwner, 3000, 0, 1 days));
         uint256 tokenAmount = 50_000_000e18; // 5% of supply, under the 10% buy-on-deploy cap
 
-        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000);
-        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount);
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+
+        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000, _emptyTaxCfg(), cfg);
+        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 0, _emptyTaxCfg(), cfg);
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 
@@ -383,8 +387,6 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
             feeShares: _fs(creator)
         });
-        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
 
         vm.deal(creator, ethVaultAware);
         vm.prank(creator);

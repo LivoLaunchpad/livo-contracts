@@ -73,7 +73,8 @@ contract Finding01_V2GraduationDOS is LaunchpadBaseTestsWithUniv2Graduator {
         // ── 3. Graduation must still succeed. On the buggy code this reverts inside
         //       the graduator's addLiquidityETH; on the fixed code it goes through.
         uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
-        uint256 finalBuy = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        // Gross up by the tax token's actual buy fee (LP fee + buy tax) so reserves reach the threshold.
+        uint256 finalBuy = ((GRADUATION_THRESHOLD - ethReserves) * 10000) / (10000 - _currentBuyFeeBps(testToken));
         vm.deal(buyer, finalBuy);
 
         vm.prank(buyer);

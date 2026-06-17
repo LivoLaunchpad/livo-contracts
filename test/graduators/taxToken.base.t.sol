@@ -59,6 +59,28 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         );
     }
 
+    /// @notice Helper to create a tax token whose tax window starts at graduation (not launch).
+    /// @param buyTaxBps Buy tax rate in basis points
+    /// @param sellTaxBps Sell tax rate in basis points
+    /// @param taxDurationSeconds Tax window duration, measured from graduation
+    /// @return tokenAddress The address of the created tax token
+    function _createTaxTokenFromGraduation(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds)
+        internal
+        returns (address tokenAddress)
+    {
+        vm.prank(creator);
+        tokenAddress = factoryTax.createToken(
+            "TaxToken",
+            "TAX",
+            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _fs(creator),
+            _noSs(),
+            false,
+            _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds), false),
+            _emptyAntiSniperCfg()
+        );
+    }
+
     /// @notice Helper to get pool key with tax hook
     /// @param tokenAddress The token address
     /// @return PoolKey with tax hook configured

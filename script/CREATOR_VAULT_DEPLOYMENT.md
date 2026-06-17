@@ -11,17 +11,17 @@ and wire it into the existing unified factories.
 Two on-chain broadcasts, with a manifest edit + `just export-deployments` after each:
 
 1. `DeployCreatorVaultSystem` → deploys the 6 curves, the vault impl, and the vault factory (proxy + impl).
-2. Edit `src/config/deployments.<chain>.sol` with the **9** addresses from step 1.
+2. Edit `src/config/manifest.<chain>.sol` with the **9** addresses from step 1.
 3. `RedeployAllTokensAndUpgradeFactories` → redeploys all 6 token impls + both factory impls (now wired to
    the vault system) and UUPS-upgrades the two factory proxies **in place**.
-4. Edit `src/config/deployments.<chain>.sol` with the **8** addresses from step 3.
+4. Edit `src/config/manifest.<chain>.sol` with the **8** addresses from step 3.
 
 The factory **proxy** addresses never change, so the launchpad whitelist and all integrators/frontends are
 untouched.
 
 ## ⚠️ Ordering is load-bearing — do not reorder
 
-The vault addresses live as **compile-time `constant`s** in `deployments.<chain>.sol`, read by
+The vault addresses live as **compile-time `constant`s** in `manifest.<chain>.sol`, read by
 `CreatorVaultScriptConfig.factoryFor()` / `curvesFor()` and baked into the factory **immutables** by step 3.
 
 - The constants are read at **compile time**, so you must **edit the `.sol` and let `forge script`
@@ -63,7 +63,7 @@ forge script DeployCreatorVaultSystem \
 
 ## Step 2 — Fill the manifest (9 constants)
 
-Edit `src/config/deployments.<chain>.sol` (all currently `address(0)`), copying from step 1's console log:
+Edit `src/config/manifest.<chain>.sol` (all currently `address(0)`), copying from step 1's console log:
 
 | Constant | Source row in the log |
 | --- | --- |
@@ -105,7 +105,7 @@ forge script RedeployAllTokensAndUpgradeFactories \
 
 ## Step 4 — Fill the manifest (8 constants)
 
-Edit `src/config/deployments.<chain>.sol` from step 3's log:
+Edit `src/config/manifest.<chain>.sol` from step 3's log:
 
 ```
 TOKEN_IMPL                                 TAXABLE_TOKEN_IMPL                      (V4 tax)

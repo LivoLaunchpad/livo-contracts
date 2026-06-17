@@ -688,9 +688,10 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
         // EOA balance: started at 0, was funded with `missing`, spent all `missing` on the buy, then received 0.005 from the graduator
         assertEq(eoa.balance, TRIGGERER_GRADUATION_COMPENSATION, "triggerer should net +0.005 ether");
 
-        // Treasury delta = trading fee + 0.120 (treasury graduation share after the triggerer carve-out)
+        // Treasury delta = treasury's share of the trading fee + 0.120 (treasury graduation share
+        // after the triggerer carve-out). The creator gets the remainder of the trading fee.
         uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD);
-        uint256 expectedTradingFee = (missing * BASE_BUY_FEE_BPS) / 10000;
+        uint256 expectedTradingFee = _treasuryShareOf((missing * BASE_BUY_FEE_BPS) / 10000);
         uint256 expectedTreasuryGraduationShare =
             GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION - TRIGGERER_GRADUATION_COMPENSATION;
         assertEq(
@@ -717,10 +718,11 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
         // Triggerer can't receive ETH, ends at exactly zero (started at 0, was funded with `missing`, spent all of it on the buy)
         assertEq(triggererAddr.balance, 0, "non-receiver triggerer must not gain ETH");
 
-        // Treasury collects: trading fee + 0.120 (TreasuryGraduationFeeCollected push) + 0.005 (sweep) = trading fee + 0.125
+        // Treasury collects: its share of the trading fee + 0.120 (TreasuryGraduationFeeCollected
+        // push) + 0.005 (sweep) = treasury trading share + 0.125
         uint256 treasuryDelta = treasury.balance - treasuryBalanceBefore;
         uint256 missing = _increaseWithFees(GRADUATION_THRESHOLD);
-        uint256 expectedTradingFee = (missing * BASE_BUY_FEE_BPS) / 10000;
+        uint256 expectedTradingFee = _treasuryShareOf((missing * BASE_BUY_FEE_BPS) / 10000);
         assertEq(
             treasuryDelta,
             expectedTradingFee + GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,

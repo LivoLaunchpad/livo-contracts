@@ -5,8 +5,8 @@ import {Script} from "lib/forge-std/src/Script.sol";
 import {console} from "lib/forge-std/src/console.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @notice Deploys a `LivoGraduatorUniswapV4` instance wired to `SWAP_HOOK_0P5` (50-bps LP fee).
 /// @dev    The existing `GRADUATOR_UNIV4` (paired with the 100-bps hook) is untouched — only the
@@ -48,7 +48,7 @@ contract DeployUniV4Graduator0p5 is Script {
         console.log("LivoGraduatorUniswapV4 (0.5%%): %s", address(graduator));
         console.log("");
         console.log(
-            "Next: paste this address into GRADUATOR_UNIV4_0P5 in src/config/deployments.%s.sol",
+            "Next: paste this address into GRADUATOR_UNIV4_0P5 in src/config/manifest.%s.sol",
             block.chainid == 1 ? "mainnet" : "sepolia"
         );
         console.log("Then: `just export-deployments` and re-run UpgradeUnifiedFactories.");

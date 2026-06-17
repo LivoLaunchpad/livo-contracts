@@ -18,8 +18,8 @@ import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Redeploy every token implementation + both unified factory implementations and upgrade
 ///        the unified factory proxies
@@ -47,7 +47,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run
 ///         `just taxtokenaddresses` before deploying to Sepolia).
 ///
-///         Post-broadcast: update these eight address constants in `src/config/deployments.<chain>.sol`,
+///         Post-broadcast: update these eight address constants in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`:
 ///         - `TOKEN_IMPL`
 ///         - `TOKEN_SNIPER_PROTECTED_IMPL`
@@ -63,7 +63,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///             --verify --account livo.dev --slow --broadcast
 contract RedeployAllTokensAndUpgradeFactories is Script {
     /// @dev Per-chain addresses needed to wire the new factory implementations and target the proxy
-    ///      upgrades. Pulled from `src/config/deployments.<chain>.sol`. No token impls listed here —
+    ///      upgrades. Pulled from `src/config/manifest.<chain>.sol`. No token impls listed here —
     ///      every token impl is freshly deployed in this script.
     struct Deps {
         address factoryV2Proxy;

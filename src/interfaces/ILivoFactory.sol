@@ -96,15 +96,7 @@ interface ILivoFactory {
     error CreatorVaultAllocationTooHigh();
     error CreatorVaultDistributionFailed();
 
-    ////////////////// Views //////////////////////
-
-    function quoteBuyOnDeploy(uint256 tokenAmount) external view returns (uint256 totalEthNeeded);
-
-    /// @notice Vault-aware deployer-buy quote: prices against the curve `totalLockedInVaultsBps` of
-    ///         locked supply selects, so vault tokens are not under-quoted. Pass the SUM of `supplyBps`
-    ///         across the vaults you'll deploy with (0 for none).
-    function quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalLockedInVaultsBps)
-        external
-        view
-        returns (uint256 totalEthNeeded);
+    // Note: `quoteBuyOnDeploy` is venue-specific (its buy fee derives from the venue's LP fee, which
+    // for V4 lives in `UniV4Configs`), so it is declared on each concrete factory rather than here —
+    // the same way the venue-specific `createToken` overloads are not part of this shared interface.
 }

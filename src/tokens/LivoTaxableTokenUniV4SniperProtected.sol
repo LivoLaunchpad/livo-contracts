@@ -22,7 +22,7 @@ contract LivoTaxableTokenUniV4SniperProtected is
         AntiSniperConfigs memory antiSniperCfg
     ) external virtual initializer {
         _initializeLivoTaxableToken(params, taxCfg);
-        _initializeSniperProtection(antiSniperCfg);
+        _initializeSniperProtection(antiSniperCfg, launchTimestamp);
     }
 
     function _update(address from, address to, uint256 amount) internal override {

@@ -11,6 +11,11 @@ interface ILivoToken is IERC20 {
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
+    /// @notice Emitted once during init with the pre-graduation LP-fee config the token carries.
+    ///         The creator tax (taxable variants only) is reported separately by
+    ///         `LivoTaxableTokenInitialized`.
+    event LaunchpadFeesInitialized(uint16 lpFeeBps, uint16 treasuryShareBps);
+
     /// @notice Shared initialization parameters for Livo token clones
     /// @dev `vaultAllocation` is the amount of supply that is minted to the factory (`msg.sender` of
     ///      `initialize`) instead of the launchpad, so the factory can lock it in creator vaults.
@@ -23,14 +28,41 @@ interface ILivoToken is IERC20 {
         address launchpad;
         address feeHandler;
         uint256 vaultAllocation;
+        uint16 lpFeeBps; // pre-graduation LP/trading fee on buys and sells (bps), split treasury/creator
+        uint16 treasuryShareBps; // share of the LP fee routed to the treasury (bps); remainder to creator
     }
 
     /// @notice Tax configuration for a token
     struct TaxConfig {
         uint16 buyTaxBps; // Buy tax in basis points (max 500 = 5%)
         uint16 sellTaxBps; // Sell tax in basis points (max 500 = 5%)
-        uint40 taxDurationSeconds; // Duration after graduation during which taxes apply
+        uint40 taxDurationSeconds; // Duration of the tax window from token creation (0 once the window has closed)
         uint40 graduationTimestamp; // Timestamp when token graduated (0 if not graduated)
+    }
+
+    /// @notice Pre-trade context the launchpad passes to `getLaunchpadFees` during pre-graduation trades.
+    /// @dev Deliberately carries only objective pre-trade pool state. Two omissions are load-bearing:
+    ///      - The trade's own gross size (ETH in / tokens out) is not provided: the launchpad treats
+    ///        the fee as a constant bps and inverts it for exact-output quotes, so a fee that depended
+    ///        on this trade's own size would make the forward and inverse quotes inconsistent.
+    ///      - The trader identity is not provided: quotes are served from views (`LivoQuoter`, the
+    ///        launchpad `quoteX` functions) whose `msg.sender` is the quoter caller, not the eventual
+    ///        trader, so a trader-dependent fee could not be quoted consistently with execution.
+    ///      The fee MUST therefore be a pure function of `(isBuy, ethReserves, releasedSupply, time)`.
+    struct LaunchpadTrade {
+        bool isBuy; // true for buys, false for sells
+        uint256 ethReserves; // launchpad ETH reserves for this token, pre-trade
+        uint256 releasedSupply; // circulating supply sold, pre-trade
+    }
+
+    /// @notice Pre-graduation fee policy returned by the token for a given trade. The launchpad always
+    ///         charges the LP (trading) fee, splitting it between treasury and creator by
+    ///         `treasuryShareBps`; the optional tax (0 when not configured) goes entirely to the creator.
+    ///         Mirrors the post-graduation `LivoSwapHook` accounting (LP fee split + creator tax).
+    struct LaunchpadFees {
+        uint16 lpFeeBps; // LP/trading fee for THIS trade, in bps of gross ETH; split treasury/creator
+        uint16 treasuryShareBps; // share of the LP fee routed to the treasury; remainder to the creator
+        uint16 taxBps; // creator tax for THIS trade (0 if none), in bps of gross ETH; 100% to creator
     }
 
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
@@ -55,9 +87,22 @@ interface ILivoToken is IERC20 {
 
     ////////////////// VIEW FUNCTIONS ////////////////////
 
+    /// @notice Version of the Livo stack this token belongs to
+    function VERSION() external view returns (string memory);
+
     /// @notice Returns the tax configuration for this token
     /// @return config The complete tax configuration
     function getTaxConfig() external view returns (TaxConfig memory config);
+
+    /// @notice Returns the pre-graduation fee policy for a given trade.
+    /// @dev Read by the launchpad on every pre-graduation buy/sell. `virtual` implementations may
+    ///      derive the rate dynamically from the pre-trade context in `trade` (reserves, released
+    ///      supply, timestamp); the base implementation returns the statically configured rates.
+    ///      The trade's own gross size and the trader identity are deliberately NOT provided (see
+    ///      `LaunchpadTrade`) — the fee must be a pure function of pre-trade pool state, otherwise
+    ///      the launchpad's forward/inverse quotes (which treat the fee as a constant bps) and the
+    ///      view-served quotes (whose `msg.sender` is not the trader) become inconsistent.
+    function getLaunchpadFees(LaunchpadTrade calldata trade) external view returns (LaunchpadFees memory);
 
     /// @notice Contract in charge of handling the graduation process
     /// @dev Must implement ILivoGraduator interface
@@ -65,6 +110,10 @@ interface ILivoToken is IERC20 {
 
     /// @notice Returns true if already graduated
     function graduated() external view returns (bool);
+
+    /// @notice Timestamp when this token was created (the `initialize` call). Anchors the
+    ///         sniper-protection window and, on taxable variants, the creation-anchored tax window.
+    function launchTimestamp() external view returns (uint40);
 
     /// @notice Address where liquidity is deployed after graduation
     function pair() external view returns (address);

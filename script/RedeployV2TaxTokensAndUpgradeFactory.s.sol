@@ -12,8 +12,8 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Redeploy V2 taxable token implementations and upgrade the V2 unified factory proxy
 /// @notice Three-step deploy, all in a single broadcast:
@@ -34,7 +34,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///         per-chain `DeploymentAddresses` (run `just taxtokenaddresses` before deploying to Sepolia).
 ///
 ///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`,
-///         and the V2 factory impl address in `src/config/deployments.<chain>.sol`, then run
+///         and the V2 factory impl address in `src/config/manifest.<chain>.sol`, then run
 ///         `just export-deployments`.
 ///
 /// @dev    Run with:

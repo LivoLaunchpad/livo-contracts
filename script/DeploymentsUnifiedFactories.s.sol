@@ -12,8 +12,8 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/deployments.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Deploy the unified factory implementations and their UUPS proxies
 /// @notice Deploys ONLY the four contracts that are net-new for this run:
@@ -22,7 +22,7 @@ import {DeploymentsSepolia} from "src/config/deployments.sepolia.sol";
 ///
 ///         Every other dependency — launchpad, bonding curve, graduators, master fee handler,
 ///         and every token implementation — is sourced from the per-chain manifest in
-///         `src/config/deployments.{mainnet,sepolia}.sol`. To redeploy any of those, use the
+///         `src/config/manifest.{mainnet,sepolia}.sol`. To redeploy any of those, use the
 ///         dedicated script for that component, not this one.
 ///
 ///         The proxy is the address the launchpad whitelists and that integrators track —
@@ -183,7 +183,7 @@ contract DeploymentsUnifiedFactories is Script {
         console.log("=== Deployment Complete ===");
         console.log("Next steps:");
         console.log("1. Update FACTORY_UNIV2_UNIFIED and FACTORY_UNIV4_UNIFIED in");
-        console.log("   src/config/deployments.{mainnet,sepolia}.sol with the proxy addresses above.");
+        console.log("   src/config/manifest.{mainnet,sepolia}.sol with the proxy addresses above.");
         console.log("2. Run `just export-deployments` to refresh the .md manifests and commit them.");
         console.log("3. Whitelist both factory PROXIES on the launchpad with the launchpad-owner account:");
         console.log("   cast send <LAUNCHPAD> 'whitelistFactory(address)' <factoryV2 proxy> --account livo.admin");

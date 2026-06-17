@@ -129,8 +129,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      4. In the tax window, on a pair-touching transfer from a non-graduator source, divert
     ///         `amount * bps / 10_000` to this contract and forward the rest.
     ///      The graduator exclusion is load-bearing: `markGraduated() → safeTransfer(pair) →
-    ///      addLiquidityETH` runs with `to == pair` AFTER `graduationTimestamp` is stamped, so
-    ///      without it the initial liquidity would be taxed.
+    ///      addLiquidityETH` runs with `to == pair` while `graduated == true` and (typically) the tax
+    ///      window is still open, so without it the initial liquidity would be taxed.
     function _update(address from, address to, uint256 amount) internal virtual override {
         if (_inSwap) {
             super._update(from, to, amount);
@@ -160,20 +160,19 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
                 _swapBack(swapAmount, 0);
-            } else if (contractBalance > 0 && block.timestamp > uint256(graduationTimestamp) + taxDurationSeconds) {
+            } else if (contractBalance > 0 && !_taxWindowActive()) {
                 // Post-window drain: window's closed, no fresh tax will ever flow in, so a residual
                 // stuck below SWAP_THRESHOLD would otherwise sit forever. No 2*SWAP_THRESHOLD cap
                 // needed: this branch only fires when contractBalance < SWAP_THRESHOLD, so the swap
                 // is already small.
+                // This path can only be reached if graduated==true. No risk of calling _swapBack before graduation
                 _swapBack(contractBalance, 0);
             }
         }
 
-        // charging the tax: only if graduated, only on pair-touching transfers
-        if (
-            _graduated && (isBuy || isSell) && block.timestamp <= uint256(graduationTimestamp) + taxDurationSeconds
-                && from != graduator
-        ) {
+        // charging the tax: only if graduated, only on pair-touching transfers, only while the
+        // tax window is active (anchored at launch or graduation per `startTaxFromLaunch`).
+        if (_graduated && (isBuy || isSell) && _taxWindowActive() && from != graduator) {
             uint16 bps = isBuy ? buyTaxBps : sellTaxBps;
             if (bps > 0) {
                 uint256 taxAmount = amount * bps / 10_000;

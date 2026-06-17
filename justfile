@@ -16,6 +16,8 @@ abis:
     @mkdir -p abis
     @jq '.abi' out/LivoLaunchpad.sol/LivoLaunchpad.json > abis/LivoLaunchpad.json
     @jq '.abi' out/ILivoQuoter.sol/ILivoQuoter.json > abis/ILivoQuoter.json
+    @jq '.abi' out/ILivoQuoter2.sol/ILivoQuoter2.json > abis/ILivoQuoter2.json
+    @jq '.abi' out/ILivoLaunchpad2.sol/ILivoLaunchpad2.json > abis/ILivoLaunchpad2.json
     @jq '.abi' out/ILivoToken.sol/ILivoToken.json > abis/ILivoToken.json
     @jq '.abi' out/ILivoClaims.sol/ILivoClaims.json > abis/ILivoClaims.json
     @jq '.abi' out/LivoFactoryUniV2Unified.sol/LivoFactoryUniV2Unified.json > abis/LivoFactoryUniV2Unified.json
@@ -114,7 +116,7 @@ deploy-mainnet-factories:
     forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
 # Mines a valid hook salt and deploys LivoSwapHook (50 bps LP fee build).
-# After broadcast, paste the deployed address into src/config/deployments.{sepolia,mainnet}.sol
+# After broadcast, paste the deployed address into src/config/manifest.{sepolia,mainnet}.sol
 # and run `just export-deployments`.
 deploy-swap-hook-sepolia:
     forge script DeployLivoSwapHook --rpc-url sepolia --verify --account livo.dev --slow --broadcast

@@ -32,8 +32,16 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
         testToken = token;
         _graduateToken();
 
-        // Creator graduation compensation is 0.125 ETH; alice receives it directly
-        assertEq(alice.balance - aliceBefore, CREATOR_GRADUATION_COMPENSATION, "graduation fee forwarded directly");
+        // Creator graduation compensation (0.125 ETH) plus the creator's share of the LP fee on the
+        // graduating buy both forward directly to alice (the sole 100% direct receiver).
+        uint256 missingForGraduation = (GRADUATION_THRESHOLD * 10_000) / (10_000 - BASE_BUY_FEE_BPS);
+        uint256 tradingFee = (missingForGraduation * BASE_BUY_FEE_BPS) / 10_000;
+        uint256 creatorTradingShare = tradingFee - _treasuryShareOf(tradingFee);
+        assertEq(
+            alice.balance - aliceBefore,
+            CREATOR_GRADUATION_COMPENSATION + creatorTradingShare,
+            "graduation fee forwarded directly"
+        );
 
         // Post-graduation swap → hook charges 1% LP fee, half goes to creator (alice direct).
         uint256 aliceAfterGrad = alice.balance;
@@ -66,15 +74,23 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
         testToken = token;
         _graduateToken();
 
-        // alice gets 40% of the creator graduation compensation directly
-        uint256 expectedAlice = (CREATOR_GRADUATION_COMPENSATION * 4_000) / 10_000;
+        // Two creator deposits split 40/60: the graduation compensation and the creator's share of
+        // the LP fee on the graduating buy. alice (direct) receives 40% of each immediately.
+        uint256 missingForGraduation = (GRADUATION_THRESHOLD * 10_000) / (10_000 - BASE_BUY_FEE_BPS);
+        uint256 tradingFee = (missingForGraduation * BASE_BUY_FEE_BPS) / 10_000;
+        uint256 creatorTradingShare = tradingFee - _treasuryShareOf(tradingFee);
+
+        // alice gets 40% of each creator deposit directly (floored per deposit)
+        uint256 expectedAlice =
+            (CREATOR_GRADUATION_COMPENSATION * 4_000) / 10_000 + (creatorTradingShare * 4_000) / 10_000;
         assertEq(alice.balance - aliceBefore, expectedAlice, "alice direct portion");
 
-        // bob's pending in the master handler is the remaining 60%
+        // bob's pending in the master handler is the remaining 60% of both deposits
         address[] memory tokens = new address[](1);
         tokens[0] = token;
         uint256 bobClaimable = feeHandler.getClaimable(tokens, bob)[0];
-        uint256 expectedBob = (CREATOR_GRADUATION_COMPENSATION * 6_000) / 10_000;
-        assertApproxEqAbs(bobClaimable, expectedBob, 1, "bob claimable portion");
+        uint256 expectedBob =
+            (CREATOR_GRADUATION_COMPENSATION * 6_000) / 10_000 + (creatorTradingShare * 6_000) / 10_000;
+        assertApproxEqAbs(bobClaimable, expectedBob, 2, "bob claimable portion");
     }
 }

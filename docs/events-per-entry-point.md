@@ -12,6 +12,17 @@ This document describes the active source tree after the legacy implementations 
 
 All new tokens use the singleton `LivoMasterFeeHandler`.
 
+Pre-graduation trading fees are no longer global launchpad state. Each token carries its own LP
+(trading) fee — split treasury/creator by `treasuryShareBps` — plus, on taxable variants, a creator
+tax (100% to the creator), read per-trade by the launchpad via `ILivoToken.getLaunchpadFees` and
+reported through `LivoLaunchpad.LpFeesAccrued` / `LivoLaunchpad.CreatorTaxesAccrued` (mirroring the
+post-graduation `LivoSwapHook` for accounting parity). The launchpad's global `setTradingFees` /
+`TradingFeesUpdated` are removed; the per-token LP-fee config surfaces as
+`LivoToken.LaunchpadFeesInitialized` (at creation). The LP fee is immutable after launch (no setter).
+The creator tax is configured on taxable variants and surfaces via `LivoTaxableTokenInitialized` /
+`TaxBpsUpdated`; its window is creation-anchored (`[launchTimestamp, launchTimestamp + taxDurationSeconds]`)
+and applies identically pre- and post-graduation.
+
 Unified factories register fee config automatically during token creation:
 
 `factory.createToken(...) -> _finalizeCreation(...) -> LivoToken.registerFees(...) -> LivoMasterFeeHandler.registerToken(...)`
@@ -46,10 +57,9 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
-Each unified factory exposes three `createToken` overloads with different selectors:
+Each unified factory exposes two `createToken` overloads with different selectors:
 - **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults.
-- **Struct-based without vaults** (deprecated): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs)` — same data, regrouped to keep the ABI extensible without hitting stack-too-deep. Never creates creator vaults.
-- **Struct-based with vaults** (current): the above plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults.
+- **Struct-based with vaults** (current): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults.
 
 All overloads share the same internal flow and emit the events listed below in the same order; only the struct-based-with-vaults overload can emit the creator-vault events in §1 step 4b.
 
@@ -61,8 +71,9 @@ For both unified factories, the common Livo event order is:
 2. **Graduator initialization events**:
    - V2: **`LivoGraduator.PairInitialized`** (`token, pair`) — pair address is predicted; pair deployment can happen later at graduation.
    - V4: **`LivoGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`LivoGraduatorUniswapV4.PoolIdRegistered`** (`token, poolId`).
-3. Optional implementation-specific initializer events:
-   - Tax token: **`LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds`).
+3. Implementation initializer events (emitted during the token's `initialize`, after the initial mint(s)):
+   - Always: **`LivoToken.LaunchpadFeesInitialized`** (`lpFeeBps, treasuryShareBps`) — the per-token pre-graduation LP-fee config the launchpad reads each trade. A single LP fee applies to both buys and sells (mirroring the post-graduation hook). The creator tax (if any) is reported separately by `LivoTaxableTokenInitialized` below. Emitted before the tax/sniper events below.
+   - Tax token: **`LivoTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration`). `startTaxFromLaunch` tells the indexer the tax-window anchor: `true` → window runs `[launchTimestamp, launchTimestamp + taxDurationSeconds]` (creation-anchored, spans graduation); `false` → `[graduationTimestamp, +taxDurationSeconds]` (no tax pre-graduation). The three `*Decay*` fields are reserved for the upcoming linear tax-decay feature and are always 0 today.
    - Sniper-protected token: **`SniperProtectionInitialized`** (`maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist`).
 4. **`LivoLaunchpad.TokenLaunched`** (`token, graduationThreshold, maxExcessOverThreshold`). For a creator-vault token the registered bonding curve is the allocation-specific one, but the graduation threshold/excess are identical to the base curve.
 4b. Creator vaults only (non-empty `CreatorVault[]`): the factory deploys and funds the vaults. Per vault, in order: **`LivoCreatorVaultFactory.CreatorVaultDeployed`** (`vault, token, owner, amount, cliffSeconds, vestingSeconds`) followed by an ERC20 `Transfer` (factory → vault). After all vaults: **`LivoFactory.CreatorVaultsCreated`** (`token, totalVaultAllocation, vaults, amounts`).
@@ -90,11 +101,26 @@ ERC20 `Transfer` events occur from launchpad to factory and then from factory to
 
 ## 2. `buyTokensWithExactEth` — pre-graduation
 
+The pre-graduation fee policy is read per-trade from the token (`ILivoToken.getLaunchpadFees`) and
+capped by the launchpad. The LP (trading) fee is split treasury/creator by `treasuryShareBps`; the
+optional tax goes 100% to the creator. The treasury share is pushed; the creator total (LP creator
+share + tax) is routed through `LivoToken.accrueFees` into `LivoMasterFeeHandler`. The event
+vocabulary mirrors the post-graduation `LivoSwapHook` for accounting parity.
+
 When the buy does not graduate the token:
 
 1. ERC20 transfer from `LivoLaunchpad` to buyer.
-2. Treasury receives the buy fee via a native ETH call (no Livo event for the ETH transfer).
-3. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount=msg.value, tokenAmount, ethFee`).
+2. **`LivoLaunchpad.LpFeesAccrued`** (`token, creatorShare, treasuryShare`) — emitted whenever a fee is taken.
+3. **`LivoLaunchpad.CreatorTaxesAccrued`** (`token, taxAmount`) — only when the tax is non-zero.
+4. Creator total (LP creator share + tax), when non-zero, routed through `LivoToken.accrueFees` → `LivoMasterFeeHandler.depositFees(token)`:
+   - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
+   - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) on a successful direct forward.
+5. Treasury share sent via a native ETH call (no Livo event for the ETH transfer).
+6. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount=msg.value, tokenAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
+
+A token with `treasuryShareBps = 100%` and no tax (the launchpad's legacy-equivalent default) has
+`creatorShare == 0` and no tax, so steps 3–4 are skipped; its only addition vs. the legacy flow is
+the `LpFeesAccrued` in step 2.
 
 If the buy crosses the graduation threshold, append the relevant graduation sequence from §3 or §4.
 
@@ -106,7 +132,7 @@ The initial buy emits the pre-graduation buy sequence from §2, then graduation 
 
 Livo event order:
 
-1. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`) — from the triggering buy.
+1. The triggering buy first emits its full §2 sequence — ERC20 transfer to buyer, the fee events (**`LivoLaunchpad.LpFeesAccrued`**, optional **`CreatorTaxesAccrued`**, and the creator-share `CreatorFeesDeposited` when applicable), and **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`).
 2. ERC20 transfer of the remaining launchpad token balance from `LivoLaunchpad` to `LivoGraduatorUniswapV2`.
 3. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount=creatorCompensation`).
 4. Creator compensation is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
@@ -127,7 +153,7 @@ The initial buy emits the pre-graduation buy sequence from §2, then graduation 
 
 Livo event order:
 
-1. **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`) — from the triggering buy.
+1. The triggering buy first emits its full §2 sequence — ERC20 transfer to buyer, the fee events (**`LivoLaunchpad.LpFeesAccrued`**, optional **`CreatorTaxesAccrued`**, and the creator-share `CreatorFeesDeposited` when applicable), and **`LivoLaunchpad.LivoTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`).
 2. ERC20 transfer of the remaining launchpad token balance from `LivoLaunchpad` to `LivoGraduatorUniswapV4`.
 3. **`LivoGraduator.CreatorGraduationFeeCollected`** (`token, amount=creatorCompensation`).
 4. Creator compensation is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
@@ -144,14 +170,24 @@ Livo event order:
 
 ## 5. `sellExactTokens` — pre-graduation
 
-When a token is not graduated yet, sells happen against launchpad reserves.
+When a token is not graduated yet, sells happen against launchpad reserves. As with buys, the fee
+policy is read per-trade from the token: the LP fee is split treasury/creator, the tax goes 100% to
+the creator. The treasury share is pushed and the creator total is routed through `accrueFees`.
+
+The event order matches buys (§2) and the post-graduation `LivoSwapHook` (§6): the fee events come
+first and the trade event closes the sequence.
 
 Livo event order:
 
-1. **`LivoLaunchpad.LivoTokenSell`** (`token, seller, tokenAmount, ethAmount, ethFee`).
-2. ERC20 transfer from seller to launchpad.
-3. Treasury receives the sell fee via native ETH call (no Livo event for the ETH transfer).
-4. Seller receives ETH via native ETH call (no Livo event for the ETH transfer).
+1. ERC20 transfer from seller to launchpad.
+2. **`LivoLaunchpad.LpFeesAccrued`** (`token, creatorShare, treasuryShare`) — emitted whenever a fee is taken.
+3. **`LivoLaunchpad.CreatorTaxesAccrued`** (`token, taxAmount`) — only when the tax is non-zero.
+4. Creator total, when non-zero, via `LivoToken.accrueFees` → `LivoMasterFeeHandler.depositFees(token)`:
+   - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
+   - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) on a successful direct forward.
+5. **`LivoLaunchpad.LivoTokenSell`** (`token, seller, tokenAmount, ethAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
+6. Treasury share sent via native ETH call (no Livo event for the ETH transfer).
+7. Seller receives ETH via native ETH call (no Livo event for the ETH transfer).
 
 ---
 

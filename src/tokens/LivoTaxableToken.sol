@@ -14,9 +14,10 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 ///         + `getTaxConfig` overrides, the dev-supplied init plumbing and the owner-only
 ///         `rescueTokens` path. Variant-specific behavior (intrinsic V2 taxation, V4 pool-manager
 ///         pair check) lives in the concrete subclasses.
-/// @dev Storage layout: this contract introduces 4 packed slots-fields (buyTaxBps, sellTaxBps,
-///      taxDurationSeconds, graduationTimestamp) directly after `LivoToken`'s storage. Subclasses
-///      that add their own state must do so AFTER these fields to preserve clone-storage layout.
+/// @dev Storage layout: this contract introduces 5 packed fields (buyTaxBps, sellTaxBps,
+///      taxDurationSeconds, startTaxFromLaunch, graduationTimestamp) directly after `LivoToken`'s
+///      storage. Subclasses that add their own state must do so AFTER these fields to preserve
+///      clone-storage layout.
 abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     using SafeERC20 for IERC20;
 
@@ -30,8 +31,16 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     ///         via `setTaxBps` (decrease-only — increases revert).
     uint16 public sellTaxBps;
 
-    /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
+    /// @notice Duration in seconds of the tax window, measured from the anchor selected by
+    ///         `startTaxFromLaunch` (`launchTimestamp` if true, else `graduationTimestamp`). Set
+    ///         during initialization, cannot be changed.
     uint40 public taxDurationSeconds;
+
+    /// @notice Anchor for the tax window. `true`: the window starts at token creation
+    ///         (`launchTimestamp`) and spans graduation transparently. `false`: the window starts at
+    ///         graduation (`graduationTimestamp`) and no tax is charged before graduation. Set during
+    ///         initialization, cannot be changed.
+    bool public startTaxFromLaunch;
 
     /////////////////////////// pure storage ///////////////////////
 
@@ -40,8 +49,18 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// Events //////////////////////
 
-    /// @notice Emitted once during init with the dev-supplied tax config.
-    event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
+    /// @notice Emitted once during init with the dev-supplied tax config. `startTaxFromLaunch` selects
+    ///         the tax-window anchor (creation vs graduation). The three `*Decay*` fields are reserved
+    ///         for the upcoming linear tax-decay feature and are always emitted as 0 until it ships.
+    event LivoTaxableTokenInitialized(
+        uint16 buyTaxBps,
+        uint16 sellTaxBps,
+        uint40 taxDurationSeconds,
+        bool startTaxFromLaunch,
+        uint16 buyTaxDecayStartBps,
+        uint16 sellTaxDecayStartBps,
+        uint40 taxDecayDuration
+    );
 
     /// @notice Emitted whenever `setTaxBps` successfully updates the buy/sell tax rates. Only the
     ///         new values are carried; indexers can resolve old values from the prior
@@ -62,7 +81,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     /// @notice Marks the token as graduated and records the timestamp.
     /// @dev Can only be called by the pre-set graduator contract. Overrides `LivoToken` to add
-    ///      timestamp tracking — the tax window is `[graduationTimestamp, graduationTimestamp + taxDurationSeconds]`.
+    ///      timestamp tracking. `graduationTimestamp` is the tax-window anchor for tokens configured
+    ///      with `startTaxFromLaunch == false`; for `startTaxFromLaunch == true` tokens it is only the
+    ///      V4 hook's "has graduated?" guard via `getTaxConfig` (the window is creation-anchored).
     function markGraduated() external override(ILivoToken, LivoToken) {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
@@ -124,8 +145,37 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
     //////////////////////// VIEW FUNCTIONS //////////////////////
 
-    /// @notice Returns the tax configuration for this taxable token
+    /// @notice Pre-graduation fee policy. Same LP fee as the base, plus the tax for the active window
+    ///         (0 outside it). For `startTaxFromLaunch == true` tokens the launchpad charges the exact
+    ///         tax rate the V4 hook / V2 `_update` apply post-graduation; for graduation-anchored
+    ///         tokens the window has not started pre-graduation, so the tax here is 0.
+    function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata trade)
+        external
+        view
+        override(ILivoToken, LivoToken)
+        returns (ILivoToken.LaunchpadFees memory)
+    {
+        uint16 taxBps = _taxWindowActive() ? (trade.isBuy ? buyTaxBps : sellTaxBps) : 0;
+        return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: taxBps});
+    }
+
+    /// @notice Returns the effective tax configuration. The tax window is anchored per
+    ///         `startTaxFromLaunch`: at `launchTimestamp` (spans graduation) or at `graduationTimestamp`.
+    /// @dev Once the window closes (or before it opens, for graduation-anchored tokens) this returns a
+    ///      fully-zeroed tax (both rates AND `taxDurationSeconds`), so the `LivoSwapHook` — which
+    ///      computes `block.timestamp > graduationTimestamp + taxDurationSeconds` and reads the rates —
+    ///      correctly stops taxing. For creation-anchored tokens the zeroed `taxDurationSeconds` collapses
+    ///      the hook's graduation-anchored check onto the creation-anchored expiry, and the zeroed rates
+    ///      also cover the edge where the window expires before graduation and a swap lands in the
+    ///      graduation block. Within the window it returns the stored rates and duration.
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
+        if (!_taxWindowActive()) {
+            // window closed: report no active tax. `graduationTimestamp` is still surfaced for reference.
+            return
+                TaxConfig({
+                    buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, graduationTimestamp: graduationTimestamp
+                });
+        }
         config = TaxConfig({
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
@@ -151,12 +201,36 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     }
 
     /// @notice Internal helper to store tax configuration.
-    /// @dev Tax-bps and duration bounds are enforced upstream in the factory.
+    /// @dev Tax-bps and duration bounds are enforced upstream in the factory. The
+    ///      `LivoTaxableTokenInitialized` event carries `startTaxFromLaunch` plus three placeholder
+    ///      `*Decay*` fields (emitted as 0) reserved for the upcoming linear tax-decay feature, so the
+    ///      indexer schema is forward-compatible and won't need another signature change when it ships.
     function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
-        emit LivoTaxableTokenInitialized(cfg.buyTaxBps, cfg.sellTaxBps, uint40(cfg.taxDurationSeconds));
+        emit LivoTaxableTokenInitialized(
+            cfg.buyTaxBps,
+            cfg.sellTaxBps,
+            uint40(cfg.taxDurationSeconds),
+            cfg.startTaxFromLaunch,
+            0, // buyTaxDecayStartBps: reserved for the upcoming linear tax-decay feature
+            0, // sellTaxDecayStartBps: reserved (see above)
+            0 // taxDecayDuration: reserved (see above)
+        );
 
         buyTaxBps = cfg.buyTaxBps;
         sellTaxBps = cfg.sellTaxBps;
         taxDurationSeconds = uint40(cfg.taxDurationSeconds);
+        startTaxFromLaunch = cfg.startTaxFromLaunch;
+    }
+
+    /// @dev True while the tax window is open. The anchor is `startTaxFromLaunch`-dependent:
+    ///      - `true`: `[launchTimestamp, launchTimestamp + taxDurationSeconds]` (creation-anchored,
+    ///        spans graduation). `launchTimestamp` is non-zero after init, so the window is always live.
+    ///      - `false`: `[graduationTimestamp, graduationTimestamp + taxDurationSeconds]`
+    ///        (graduation-anchored). Before graduation `graduationTimestamp == 0`, so this returns
+    ///        false and no tax is charged pre-graduation.
+    function _taxWindowActive() internal view returns (bool) {
+        uint256 anchor = startTaxFromLaunch ? launchTimestamp : graduationTimestamp;
+        if (anchor == 0) return false;
+        return block.timestamp <= anchor + taxDurationSeconds;
     }
 }

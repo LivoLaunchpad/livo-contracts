@@ -11,6 +11,9 @@ import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
+    /// @notice Version of the Livo stack this token belongs to
+    string public constant override VERSION = "2.0";
+
     /// @notice all Livo tokens have same supply
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
 
@@ -38,6 +41,21 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
+    /// @notice Pre-graduation LP/trading fee on buys and sells (bps), read by the launchpad each trade
+    ///         and split between treasury and creator. Single rate for both directions, mirroring the
+    ///         post-graduation `LivoSwapHook`. Fixed at launch (no setter — the owner cannot change LP fees).
+    uint16 public lpFeeBps;
+
+    /// @notice Share of the LP fee routed to the treasury (bps); the remainder goes to the creator via
+    ///         `accrueFees`. Fixed at launch.
+    uint16 public treasuryShareBps;
+
+    /// @notice Timestamp of token creation (the `initialize` call). Anchors both the sniper-protection
+    ///         window (passed into `SniperProtection`) and, on taxable variants, the creation-anchored
+    ///         tax window. Set once at the end of `_initializeLivoToken`, after the initial mint, so the
+    ///         mint still observes `launchTimestamp == 0`. Packs into this slot alongside `feeHandler`.
+    uint40 public launchTimestamp;
+
     /// @notice Factory that initialized this token. Allowed to perform one-shot fee registration.
     /// @dev Lives in transient storage: the factory calls `initialize` and `registerFees` in the
     ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
@@ -53,12 +71,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     ///          `ERC20InvalidReceiver` before reaching `_update`, so the `to == factoryAddr`
     ///          branch is unreachable with `factoryAddr == 0`.
     ///        - `from == 0`: the only mint is `_initializeLivoToken`'s initial mint to the
-    ///          launchpad, which runs BEFORE `_initializeSniperProtection` sets `launchTimestamp`.
-    ///          At that moment the window-active check returns early on its own, so the
+    ///          launchpad, which runs before `_initializeSniperProtection` caches
+    ///          `protectionWindowEnd` (so it reads 0 during the mint, and `launchTimestamp` itself
+    ///          is also set only at the END of this initializer). At that moment the window-active
+    ///          check (`block.timestamp >= protectionWindowEnd`) returns early on its own, so the
     ///          `from == factoryAddr` branch is unreachable with `factoryAddr == 0`.
     /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `to == address(0)`
-    ///      OR with `from == address(0)` AFTER `launchTimestamp` is set would silently bypass
-    ///      the sniper caps. Concrete cases to watch out for:
+    ///      OR with `from == address(0)` while the protection window is open (`protectionWindowEnd`
+    ///      set, not yet elapsed) would silently bypass the sniper caps. Concrete cases to watch out for:
     ///        - a custom transfer override (or alternate ERC20 base) that drops the
     ///          zero-recipient guard, enabling burns through `_update`;
     ///        - any new `_mint` call site that runs after init (e.g. a rebase or inflation
@@ -112,8 +132,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
         // reads it sees the real value. The mint itself is not gated by the sniper-protection check:
-        // `_initializeSniperProtection` runs after this initializer, so `launchTimestamp == 0` here
-        // and the check's window-active early-return covers the mint.
+        // `protectionWindowEnd` is cached only later by `_initializeSniperProtection`, so it reads 0
+        // during the mint and the check's window-active early-return (`block.timestamp >= 0`) covers it.
         launchpad = LivoLaunchpad(params.launchpad);
 
         // Creator-vault tokens lock `vaultAllocation` of the supply: only `TOTAL_SUPPLY - vaultAllocation`
@@ -127,6 +147,19 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         if (vaultAllocation > 0) {
             _mint(msg.sender, vaultAllocation);
         }
+
+        // Pre-graduation LP-fee policy carried by the token and read by the launchpad each trade.
+        // Bounds are enforced upstream in the factory (and re-capped by the launchpad at read time).
+        // These fields pack into a single storage slot (shared with `feeHandler` and `launchTimestamp`),
+        // so the launchpad's per-trade `getLaunchpadFees` read is a single warm SLOAD.
+        lpFeeBps = params.lpFeeBps;
+        treasuryShareBps = params.treasuryShareBps;
+        emit LaunchpadFeesInitialized(params.lpFeeBps, params.treasuryShareBps);
+
+        // Creation timestamp, set AFTER the initial mint so that mint still observes
+        // `launchTimestamp == 0` (the sniper-window early-return relies on it; see the `tokenFactory`
+        // security note). Anchors the sniper window and the taxable variants' tax window.
+        launchTimestamp = uint40(block.timestamp);
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -195,6 +228,19 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+
+    /// @notice Returns the pre-graduation fee policy for a trade. The base implementation returns the
+    ///         configured LP fee with no tax (non-taxable tokens never have one); taxable variants
+    ///         override to add the creation-anchored tax. `virtual` so future variants can compute
+    ///         dynamic rates.
+    function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata)
+        external
+        view
+        virtual
+        returns (ILivoToken.LaunchpadFees memory)
+    {
+        return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: 0});
+    }
 
     /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
     function maxTokenPurchase(address) external view virtual returns (uint256) {

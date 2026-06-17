@@ -15,7 +15,8 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoQuoter, LimitReason} from "src/interfaces/ILivoQuoter.sol";
+import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
+import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
@@ -194,12 +195,14 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
 
     function _taxCfg(ForkIntegrationCaseLib.IntegrationCase memory c) internal pure returns (TaxConfigInit memory) {
         if (_hasTax(c)) {
-            return
-                TaxConfigInit({
-                    buyTaxBps: TAX_BUY_BPS, sellTaxBps: TAX_SELL_BPS, taxDurationSeconds: TAX_DURATION_SECONDS
-                });
+            return TaxConfigInit({
+                buyTaxBps: TAX_BUY_BPS,
+                sellTaxBps: TAX_SELL_BPS,
+                taxDurationSeconds: TAX_DURATION_SECONDS,
+                startTaxFromLaunch: true
+            });
         }
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0});
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
     }
 
     function _antiSniperCfg(ForkIntegrationCaseLib.IntegrationCase memory c)
@@ -273,7 +276,10 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             impl = factoryV4.previewTokenImplementation(fees, supply, _taxCfg(c), sniper);
         } else {
             impl = factoryV2.previewTokenImplementation(
-                fees, supply, TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}), sniper
+                fees,
+                supply,
+                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false}),
+                sniper
             );
         }
     }
@@ -336,7 +342,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
                 input.salt,
                 input.fees,
                 input.supply,
-                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0}),
+                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false}),
                 _antiSniperCfg(c)
             );
         }
@@ -476,7 +482,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         internal
         returns (uint256 receivedTokens)
     {
-        ILivoQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, requestedEth);
+        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, requestedEth);
         assertTrue(
             q.reason == LimitReason.NONE || q.reason == LimitReason.GRADUATION_EXCESS
                 || q.reason == LimitReason.SNIPER_CAP,
@@ -497,7 +503,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         internal
         returns (uint256 receivedEth)
     {
-        ILivoQuoter.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, requestedTokens);
+        ILivoQuoter2.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, requestedTokens);
         assertEq(uint256(q.reason), uint256(LimitReason.NONE), "unexpected sell quote reason");
         assertGt(q.tokensSold, 0, "empty sell quote");
         assertGt(q.ethForSeller, 0, "empty ETH sell quote");

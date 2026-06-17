@@ -12,29 +12,29 @@ library DeploymentsSepolia {
     uint256 internal constant BLOCKCHAIN_ID = 11155111;
 
     // --- Core ---
-    address internal constant LAUNCHPAD = 0xd9f8bbe437a3423b725c6616C1B543775ecf1110;
+    address internal constant LAUNCHPAD = 0x0f82BE05B136266203FcAD79A951bDbBB4f31110;
     address internal constant BONDING_CURVE = 0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5;
-    address internal constant GRADUATOR_UNIV2 = 0x973B8F3b1e52244E79ecb86591C8FdA6E2D0e691;
-    address internal constant GRADUATOR_UNIV4 = 0x85fE2051413a4b80b904f05841d1142FeF7f789c;
+    address internal constant GRADUATOR_UNIV2 = 0xdf2A4F12Af6Cce0588678FdA7ce69D5Edc7d0897;
+    address internal constant GRADUATOR_UNIV4 = 0x130C39e08Ac899b992c69B56C7364DD9d1800026;
     /// @notice V4 graduator paired with the 50-bps `SWAP_HOOK_0P5` variant. Update after deploying.
-    address internal constant GRADUATOR_UNIV4_0P5 = 0x3d6398E54549c5a8b88071C180509B41043Df7Da;
+    address internal constant GRADUATOR_UNIV4_0P5 = 0x11b2037D69F9851DD740730c8A8084EB97AB20c6;
     address internal constant MASTER_FEE_HANDLER = 0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f;
 
     address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
     address internal constant SWAP_HOOK_0P5 = 0xC04Bb5bA43795330e54efaC7244ce40318FD80cc;
-    address internal constant QUOTER = 0x288E9F2251Ea1BA930ef8D5DB654947Ece41F438;
+    address internal constant QUOTER = 0x17b8f037a261344714A64643Bde0Bd7C5745b3BE;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x51711129C86b5f1D374B48F14f033cb38f6946F6;
-    address internal constant TAXABLE_TOKEN_IMPL = 0xaA783a3dd27F87d506103593BE28125dE0D68c49;
+    address internal constant TOKEN_IMPL = 0x98010219eB88a8c9547023f3a26B6edd40204B2c;
+    address internal constant TAXABLE_TOKEN_IMPL = 0xbd41cD321Da13Eb0fa981199b618e8D7Eac693e5;
 
     /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xe4f969e30a729024A94a6D22D8DEbDB6Af27CF31;
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xe81e3a3aFD0348565ea33bdE7cb88d2E93265B6A;
+    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = 0xb1f0387Bcfe4555F46182e477387aF8DcF78AA8B;
+    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = 0xbD881Cb3137792a535BCED232D286f6b2D843ED6;
 
     /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xAB24feF14E89558D3531E05E3096D1add6A77a1C;
-    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0xeaC942C6078B77904498F59f2f6605f9964ECe8C;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x330FB3b8A6730453C6990E35c807b4bE02a1914f;
+    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = 0xDad26b507A27AD07fBCdc29497DD8c8993A46aA8;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -44,8 +44,8 @@ library DeploymentsSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x9405f56c966BE3d40Dd77d1384d356330370b6Cb;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xa76d696532Cb6Eaba7f2b05FEc0011C2eC1CE66b;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x52Da2Fbd0EFD9D3a2B8B065b2c9F431882c4e85d;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xF9212769D1353a9AC0f53571640905Fd7e74Dd2b;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.

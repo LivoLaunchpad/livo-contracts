@@ -6,10 +6,6 @@ import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 struct TokenConfig {
     /// @notice Bonding curve address. Cannot be altered once is set
     ILivoBondingCurve bondingCurve;
-    /// @notice Trading (buy) fee in basis points (100 bps = 1%). Only applies before graduation
-    uint16 buyFeeBps;
-    /// @notice Trading (sell) fee in basis points (100 bps = 1%). Only applies before graduation
-    uint16 sellFeeBps;
 }
 
 struct TokenState {
