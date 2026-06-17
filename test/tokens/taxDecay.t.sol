@@ -124,23 +124,23 @@ contract TaxDecayUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(_tax(token, false), 0, "sell elapsed end");
     }
 
-    /// @dev The spec example: buy decay starts at 10% over 20min while a 5% long-term static tax runs for
-    ///      1h. Effective = max(decay, static): decay dominates until it crosses 5% at t=10min, then the
-    ///      static 5% floor holds until the static window ends.
-    function test_maxOfDecayAndStatic_crossover() public {
+    /// @dev The spec example: buy decay starts at 10% and decays linearly to the 5% long-term static
+    ///      rate over the FULL 20min decay window (no early crossover — the decay duration the deployer
+    ///      configures is honored end to end). The static 5% then holds until the 1h static window ends.
+    function test_decayInterpolatesToStaticRate() public {
         uint40 t0 = uint40(block.timestamp);
-        // static buy 500 for 1h; buy decay 1000 over 20min; same launch anchor.
+        // static buy 500 for 1h; buy decay 1000 -> 500 over 20min; same launch anchor.
         LivoTaxableTokenUniV2 token = _cloneAndInit(_taxCfg(500, 0, uint32(1 hours), true, 1000, 0, 1200));
 
-        assertEq(_tax(token, true), 1000, "t0: decay 10% > static 5%");
+        assertEq(_tax(token, true), 1000, "t0: decay starts at 10%");
         vm.warp(t0 + 300);
-        assertEq(_tax(token, true), 750, "t+5min: decay 7.5%");
+        assertEq(_tax(token, true), 875, "t+5min: 3/4 of the way 10%->5% = 8.75%");
         vm.warp(t0 + 600);
-        assertEq(_tax(token, true), 500, "t+10min: decay == static crossover");
+        assertEq(_tax(token, true), 750, "t+10min: halfway 10%->5% = 7.5%");
         vm.warp(t0 + 900);
-        assertEq(_tax(token, true), 500, "t+15min: static 5% floor (decay would be 2.5%)");
+        assertEq(_tax(token, true), 625, "t+15min: 1/4 of the way = 6.25%");
         vm.warp(t0 + 1200);
-        assertEq(_tax(token, true), 500, "t+20min: decay 0, static 5% holds");
+        assertEq(_tax(token, true), 500, "t+20min: decay reaches static 5%");
         vm.warp(t0 + 3600);
         assertEq(_tax(token, true), 500, "t+1h: static inclusive boundary");
         vm.warp(t0 + 3601);
