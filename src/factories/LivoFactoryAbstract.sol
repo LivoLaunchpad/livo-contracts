@@ -15,7 +15,12 @@ import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoCreatorVaultFactory} from "src/interfaces/ILivoCreatorVaultFactory.sol";
-import {ILivoTaxableToken, ILivoTaxableTokenSniperProtected, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {
+    ILivoTaxableToken,
+    ILivoTaxableTokenSniperProtected,
+    TaxConfigInit,
+    TaxConfigs
+} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
@@ -31,7 +36,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     uint256 internal constant BASIS_POINTS = 10_000;
 
     /// @notice Max configurable tax duration. Capped at 120 years purely to prevent overflow —
-    ///         the upper bound is driven by `TaxConfigInit.taxDurationSeconds`'s `uint32` packing.
+    ///         the upper bound is driven by `TaxConfigs.taxDurationSeconds`'s `uint32` packing.
     ///         Any deployer can use any duration up to this cap; no fee-receiver or
     ///         ownership constraints are imposed beyond the standard validation.
     uint256 public constant MAX_TAX_DURATION_SECONDS = 120 * 365 days;
@@ -330,7 +335,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address tokenOwner,
         address graduator,
         SupplyShare[] calldata buyOnDeployShares,
-        TaxConfigInit calldata taxConfigs,
+        TaxConfigs memory taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
         CreatorVault[] memory creatorVaults
     ) internal returns (address token) {
@@ -488,11 +493,24 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             // fixed per-venue rate, decoupled from the post-graduation LP fee (V4: 1% regardless of the
             // token's 50/100-bps hook fee; V2: a fixed rate, as V2 has no post-graduation LP fee). The
             // treasury/creator split is venue-specific protocol policy. The creator tax is NOT stored here —
-            // taxable variants store it from `TaxConfigInit` in `_initializeTaxConfig`, and it applies
+            // taxable variants store it from `TaxConfigs` in `_initializeTaxConfig`, and it applies
             // identically pre- and post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
             lpFeeBps: _launchpadLpFeeBps(graduator),
             treasuryShareBps: _launchpadTreasuryShareBps()
         });
+    }
+
+    /// @dev Lifts a legacy `TaxConfigInit` (static tax only) into the full `TaxConfigs`, leaving the three
+    ///      launch-decay fields zeroed. The two backwards-compatible `createToken` overloads call this so
+    ///      the whole internal pipeline (`_validateTotalFee`, `_createToken` and everything below it)
+    ///      operates on a single `TaxConfigs` type; launch-tax decay is reachable only via the new overload
+    ///      that takes a `TaxConfigs` directly.
+    function _toTaxConfigs(TaxConfigInit calldata legacy) internal pure returns (TaxConfigs memory cfg) {
+        cfg.buyTaxBps = legacy.buyTaxBps;
+        cfg.sellTaxBps = legacy.sellTaxBps;
+        cfg.taxDurationSeconds = legacy.taxDurationSeconds;
+        cfg.startTaxFromLaunch = legacy.startTaxFromLaunch;
+        // buyTaxDecayStartBps / sellTaxDecayStartBps / taxDecayDuration stay 0 — no decay on the legacy path.
     }
 
     /// @dev Validates a tax config. The static tax and the decay add-on are validated INDEPENDENTLY,
@@ -507,7 +525,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///        (the effective rate is `max(decay, static)`, not their sum); the launchpad's own per-trade
     ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total.
     ///      No fee-receiver or ownership constraints are imposed at any duration.
-    function _validateTaxConfig(TaxConfigInit calldata t) internal pure {
+    function _validateTaxConfig(TaxConfigs memory t) internal pure {
         if (t.taxDurationSeconds != 0) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
@@ -534,7 +552,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      additionally charges its own LP fee on top of the tax; that transient total is bounded by
     ///      the launchpad's (looser) `MAX_TRADING_FEE_BPS`, not here. `taxCfg` bps are unbounded here, so
     ///      the sum is widened to `uint256` to avoid a spurious overflow revert before this check fires.
-    function _validateTotalFee(uint256 lpFeeBps, TaxConfigInit calldata taxCfg) internal pure {
+    function _validateTotalFee(uint256 lpFeeBps, TaxConfigs memory taxCfg) internal pure {
         require(
             lpFeeBps + taxCfg.buyTaxBps <= MAX_TOTAL_FEE_BPS && lpFeeBps + taxCfg.sellTaxBps <= MAX_TOTAL_FEE_BPS,
             InvalidTaxBps()
@@ -544,7 +562,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev A token uses the taxable impl family if it configures a long-term static tax OR the launch
     ///      decay add-on. Decay-only tokens (no static tax) still need the taxable impl: post-graduation
     ///      tax collection (V2 intrinsic swap-back / V4 hook plumbing) lives only there.
-    function _isTaxConfigured(TaxConfigInit calldata t) internal pure returns (bool) {
+    function _isTaxConfigured(TaxConfigs memory t) internal pure returns (bool) {
         return t.taxDurationSeconds != 0 || t.taxDecayDuration != 0;
     }
 
@@ -557,7 +575,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev Design decision: the deployer's own deploy buy is intentionally taxed (no buyer-identity
     ///      exemption) — tax stays a pure function of (window, direction), keeping quotes caller-independent.
     //       If deployer==tax receiver, there is no extra cost, as all taxes go to the deployer anyway.
-    function _deployBuyTaxBps(TaxConfigInit calldata taxCfg) internal pure returns (uint256) {
+    function _deployBuyTaxBps(TaxConfigs memory taxCfg) internal pure returns (uint256) {
         if (!taxCfg.startTaxFromLaunch) return 0;
         uint256 staticBps = taxCfg.buyTaxBps;
         uint256 decayBps = taxCfg.buyTaxDecayStartBps;
@@ -573,7 +591,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      frontends to mine a `0x1110`-suffixed salt) and `_dispatchAndInitialize` (the path
     ///      that actually clones the impl) read from this function — so a salt that previews to
     ///      a vanity-suffixed address is guaranteed to also produce one at create time.
-    function _previewTokenImplementation(TaxConfigInit calldata taxCfg, AntiSniperConfigs calldata antiSniperCfg)
+    function _previewTokenImplementation(TaxConfigs memory taxCfg, AntiSniperConfigs calldata antiSniperCfg)
         internal
         view
         returns (address)
@@ -601,7 +619,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address tokenOwner,
         address graduator,
         uint256 vaultAllocation,
-        TaxConfigInit calldata taxCfg,
+        TaxConfigs memory taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);

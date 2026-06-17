@@ -4,8 +4,25 @@ pragma solidity 0.8.28;
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
-/// @notice Initialization-time tax configuration for taxable tokens.
+/// @notice Initialization-time tax configuration for taxable tokens (legacy: static tax only).
 /// @dev Separate from `ILivoToken.TaxConfig` (which adds the post-init `graduationTimestamp`).
+/// @dev Kept unchanged for the backwards-compatible `createToken` overloads so existing integrators
+///      aren't broken. The optional launch-tax decay lives in the superset `TaxConfigs`; the legacy
+///      overloads lift this struct into a `TaxConfigs` (zeroing the decay fields) before dispatch.
+struct TaxConfigInit {
+    uint16 buyTaxBps;
+    uint16 sellTaxBps;
+    uint32 taxDurationSeconds;
+    /// @dev Anchor for the tax window. `true`: window runs `[launchTimestamp, launchTimestamp + duration]`
+    ///      (starts at token creation, spans graduation). `false`: window runs
+    ///      `[graduationTimestamp, graduationTimestamp + duration]` (no tax before graduation).
+    bool startTaxFromLaunch;
+}
+
+/// @notice Full initialization-time tax configuration: the static tax of `TaxConfigInit` plus the
+///         optional linearly-decaying launch tax. Consumed by the new struct-based `createToken`
+///         overload and the whole internal token-init pipeline; the legacy `createToken` overloads build
+///         one in memory from a `TaxConfigInit` (decay fields zeroed) before dispatch.
 /// @dev The three `*Decay*` fields configure the optional linearly-decaying launch tax. It runs from
 ///      the SAME anchor `startTaxFromLaunch` selects, decaying each direction linearly from its start
 ///      rate to 0 over `taxDecayDuration`. The effective rate a trade pays is `max(decay, static)` per
@@ -13,7 +30,7 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 ///      pure decaying launch tax with no long-term tax — a "non-taxable token with tax decay". Such a
 ///      token is still deployed as a taxable-impl clone (the post-graduation collection machinery lives
 ///      there); its dispatch is triggered by `taxDecayDuration != 0` alone.
-struct TaxConfigInit {
+struct TaxConfigs {
     uint16 buyTaxBps;
     uint16 sellTaxBps;
     uint32 taxDurationSeconds;
@@ -42,8 +59,10 @@ interface ILivoTaxableToken is ILivoToken {
     function startTaxFromLaunch() external view returns (bool);
 
     /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2
-    ///         or V4 concrete tax-token implementations through a single shared type.
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg) external;
+    ///         or V4 concrete tax-token implementations through a single shared type. Takes the full
+    ///         `TaxConfigs` so the clone receives any launch-tax-decay config; the factory builds it
+    ///         (from `TaxConfigInit` on the legacy paths, or passes it through on the new path).
+    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg) external;
 
     /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
     ///         attempts to raise either rate revert.
@@ -58,7 +77,7 @@ interface ILivoTaxableToken is ILivoToken {
 interface ILivoTaxableTokenSniperProtected is ILivoTaxableToken {
     function initialize(
         ILivoToken.InitializeParams memory params,
-        TaxConfigInit memory taxCfg,
+        TaxConfigs memory taxCfg,
         AntiSniperConfigs memory antiSniperCfg
     ) external;
 }

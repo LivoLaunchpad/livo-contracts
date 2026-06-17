@@ -19,22 +19,25 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
     // ───────────── Dispatch — preview ─────────────
 
     function test_dispatch_noAntiSniper_returnsBaseImpl() public view {
-        address impl =
-            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        address impl = factoryV2Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
+        );
         assertEq(impl, address(livoToken));
     }
 
     function test_dispatch_withAntiSniper_returnsAntiSniperImpl() public view {
-        address impl =
-            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg());
+        address impl = factoryV2Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()
+        );
         assertEq(impl, address(livoTokenSniper));
     }
 
     // ───────────── Dispatch — preview matches deployed ─────────────
 
     function test_createToken_dispatchMatchesPreview_base() public {
-        address impl =
-            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        address impl = factoryV2Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
+        );
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
@@ -46,8 +49,9 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_createToken_dispatchMatchesPreview_antiSniper() public {
-        address impl =
-            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg());
+        address impl = factoryV2Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()
+        );
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
@@ -67,7 +71,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         wl[1] = bob;
         AntiSniperConfigs memory cfg = _antiSniperCfg(50, 150, 45 minutes, wl);
 
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), cfg);
+        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), cfg);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
@@ -88,7 +92,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         AntiSniperConfigs memory cfg = _antiSniperCfg(50, 0, 0, new address[](0));
 
         vm.expectRevert(ILivoFactory.InvalidAntiSniperConfig.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _emptyTaxCfg(), cfg);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), cfg);
     }
 
     function test_createToken_revertsOnDisabledAntiSniperWithWhitelist() public {

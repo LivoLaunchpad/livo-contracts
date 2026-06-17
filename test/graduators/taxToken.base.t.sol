@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -90,16 +92,20 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "DecayToken",
+            symbol: "DCY",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator)
+        });
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(
-            "DecayToken",
-            "DCY",
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-            _fs(creator),
-            _noSs(),
-            false,
+            setup,
             _decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true),
-            _emptyAntiSniperCfg()
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0)
         );
     }
 

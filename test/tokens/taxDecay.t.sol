@@ -5,7 +5,7 @@ import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/lau
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @title Linear tax-decay computation — token-level unit tests
@@ -15,7 +15,7 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 contract TaxDecayUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev Clone the V2 taxable impl and init it directly with `cfg` (bypasses the factory so the
     ///      computation can be tested in isolation). `graduatorV2.initialize` sets the pair.
-    function _cloneAndInit(TaxConfigInit memory cfg) internal returns (LivoTaxableTokenUniV2 t) {
+    function _cloneAndInit(TaxConfigs memory cfg) internal returns (LivoTaxableTokenUniV2 t) {
         t = LivoTaxableTokenUniV2(payable(Clones.clone(address(livoTaxTokenV2))));
         t.initialize(
             ILivoToken.InitializeParams({

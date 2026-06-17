@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
@@ -82,7 +82,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param params Shared token initialization parameters
     /// @param taxCfg Tax configuration (buy/sell bps and post-graduation tax duration)
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
         external
         virtual
         initializer
@@ -93,7 +93,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @inheritdoc LivoTaxableToken
     /// @dev Adds a one-shot infinite approval to the V2 router so `_swapBack` doesn't have to
     ///      re-approve every call. OZ ERC20 v5 skips allowance decrement when value is `type(uint256).max`.
-    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
         internal
         override
         onlyInitializing

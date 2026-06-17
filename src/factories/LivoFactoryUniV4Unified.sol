@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 
 /// @notice Unified factory for the Uniswap V4 token family. Dispatches between four token
@@ -81,9 +81,11 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
     ///         The per-token fee config is registered with the master fee handler at deploy time.
     ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
-    /// @dev DEPRECATED: legacy positional overload, kept for backwards compatibility. New
-    ///      integrations should use the struct-based overload that takes `creatorVaults`.
-    ///      Always deploys with the 100-bps graduator/hook pair and no creator vaults.
+    /// @dev DEPRECATED: legacy positional overload, kept for backwards compatibility (unchanged
+    ///      signature). New integrations should use the struct-based overload that takes `creatorVaults`
+    ///      and the full `TaxConfigs`. Always deploys with the 100-bps graduator/hook pair, no creator
+    ///      vaults and no launch-tax decay — the `TaxConfigInit` is lifted into a `TaxConfigs` with the
+    ///      decay fields zeroed.
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -95,23 +97,62 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         AntiSniperConfigs calldata antiSniperCfg
     ) external payable returns (address token) {
         // Positional overload always uses the 100-bps graduator/hook pair — only the struct-based
-        // overload below exposes the 50-bps variant. See the "V4-only event-emission rule" comment
+        // overloads below expose the 50-bps variant. See the "V4-only event-emission rule" comment
         // above for why the emit lives here.
-        _validateTotalFee(100, taxCfg);
+        // Build `tokenSetup` first (consuming the deep `name`/`symbol`/`salt`/`feeReceivers` calldata
+        // params) before introducing the `taxConfigs` memory local, to keep the stack shallow enough
+        // to compile without `via_ir`.
         TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
-        address tokenOwner = renounceOwnership_ ? address(0) : msg.sender;
+        TaxConfigs memory taxConfigs = _toTaxConfigs(taxCfg);
+        _validateTotalFee(100, taxConfigs);
         token = _createToken(
-            tokenSetup, tokenOwner, address(GRADUATOR), supplyShares, taxCfg, antiSniperCfg, new CreatorVault[](0)
+            tokenSetup,
+            renounceOwnership_ ? address(0) : msg.sender,
+            address(GRADUATOR),
+            supplyShares,
+            taxConfigs,
+            antiSniperCfg,
+            new CreatorVault[](0)
         );
         emit LpFeeBpsSet(token, 100);
     }
 
-    /// @notice Struct-based overload taking a `creatorVaults` array (pass empty for none).
-    ///         `univ4Configs.lpFeeBps` selects which graduator/hook pair to use (100 or 50).
-    ///         This is the current recommended overload.
+    /// @notice Struct-based overload taking a `creatorVaults` array (pass empty for none) and the legacy
+    ///         `TaxConfigInit` (static tax only). `univ4Configs.lpFeeBps` selects which graduator/hook pair
+    ///         to use (100 or 50).
+    /// @dev Kept with an unchanged signature for backwards compatibility. For the launch-tax decay, use
+    ///      the `TaxConfigs` overload below; this one lifts `TaxConfigInit` into a `TaxConfigs` with the
+    ///      decay fields zeroed.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigInit calldata taxConfigs,
+        UniV4Configs calldata univ4Configs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults
+    ) external payable returns (address token) {
+        TaxConfigs memory fullTaxConfigs = _toTaxConfigs(taxConfigs);
+        _validateUniv4Configs(univ4Configs);
+        _validateTotalFee(univ4Configs.lpFeeBps, fullTaxConfigs);
+        token = _createToken(
+            tokenSetup,
+            univ4Configs.renounceOwnership ? address(0) : msg.sender,
+            _resolveGraduator(univ4Configs.lpFeeBps),
+            buyOnDeployShares,
+            fullTaxConfigs,
+            antiSniperConfigs,
+            creatorVaults
+        );
+        emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
+    }
+
+    /// @notice Struct-based overload taking the full `TaxConfigs` (static tax + optional linear launch-tax
+    ///         decay) and a `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects
+    ///         which graduator/hook pair to use (100 or 50). This is the current recommended overload and
+    ///         the only one that exposes launch-tax decay.
+    function createToken(
+        TokenSetup calldata tokenSetup,
+        TaxConfigs calldata taxConfigs,
         UniV4Configs calldata univ4Configs,
         SupplyShare[] calldata buyOnDeployShares,
         AntiSniperConfigs calldata antiSniperConfigs,
@@ -166,14 +207,15 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
     /// @dev Mirrors the dispatch-relevant `createToken` inputs minus the identity fields (`name`,
     ///      `symbol`, `salt`) and ownership flag so the ABI stays stable when future features change
-    ///      which inputs participate in dispatch. Today only `taxCfg.taxDurationSeconds` and
+    ///      which inputs participate in dispatch. Today `taxCfg.taxDurationSeconds`,
+    ///      `taxCfg.taxDecayDuration` (a decay-only token still clones the taxable impl) and
     ///      `antiSniperCfg.protectionWindowSeconds` matter for dispatch; disabled configs must
     ///      have all other tax/anti-sniper fields
     ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
     function previewTokenImplementation(
         FeeShare[] calldata, /* feeReceivers */
         SupplyShare[] calldata, /* supplyShares */
-        TaxConfigInit calldata taxCfg,
+        TaxConfigs calldata taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) external view returns (address) {
         _validateAntiSniperConfig(antiSniperCfg);
@@ -199,7 +241,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     function quoteBuyOnDeploy(
         uint256 tokenAmount,
         uint256 totalLockedInVaultsBps,
-        TaxConfigInit calldata taxCfg,
+        TaxConfigs calldata taxCfg,
         UniV4Configs calldata univ4Configs
     ) external view returns (uint256 totalEthNeeded) {
         _validateUniv4Configs(univ4Configs);

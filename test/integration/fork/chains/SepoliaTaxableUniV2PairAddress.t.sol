@@ -29,16 +29,13 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
             buyTaxBps: TAX_BUY_BPS,
             sellTaxBps: TAX_SELL_BPS,
             taxDurationSeconds: TAX_DURATION_SECONDS,
-            startTaxFromLaunch: true,
-            buyTaxDecayStartBps: 0,
-            sellTaxDecayStartBps: 0,
-            taxDecayDuration: 0
+            startTaxFromLaunch: true
         });
         AntiSniperConfigs memory noSniper = AntiSniperConfigs({
             maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
         });
 
-        address impl = factoryV2.previewTokenImplementation(fees, supply, taxCfg, noSniper);
+        address impl = factoryV2.previewTokenImplementation(fees, supply, _toCfgs(taxCfg), noSniper);
         _assertCode(impl, "v2 tax impl code missing");
         bytes32 salt = _nextValidSalt(address(factoryV2), impl);
 

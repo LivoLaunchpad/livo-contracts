@@ -6,7 +6,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
@@ -188,14 +188,12 @@ contract LaunchpadBaseTests is Test {
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: taxDurationSeconds,
-            startTaxFromLaunch: startTaxFromLaunch,
-            buyTaxDecayStartBps: 0,
-            sellTaxDecayStartBps: 0,
-            taxDecayDuration: 0
+            startTaxFromLaunch: startTaxFromLaunch
         });
     }
 
-    /// @dev Full `_taxCfg` overload exposing the linear-decay fields too.
+    /// @dev Full `_taxCfg` overload exposing the linear-decay fields too. Returns the superset
+    ///      `TaxConfigs` (decay lives only there); pass it to the new struct-based `createToken` overload.
     function _taxCfg(
         uint16 buyTaxBps,
         uint16 sellTaxBps,
@@ -204,8 +202,8 @@ contract LaunchpadBaseTests is Test {
         uint16 buyTaxDecayStartBps,
         uint16 sellTaxDecayStartBps,
         uint32 taxDecayDuration
-    ) internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({
+    ) internal pure returns (TaxConfigs memory) {
+        return TaxConfigs({
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: taxDurationSeconds,
@@ -216,29 +214,37 @@ contract LaunchpadBaseTests is Test {
         });
     }
 
-    /// @dev Decay-only `TaxConfigInit`: no long-term static tax, just a linear launch-tax decay. Models
+    /// @dev Decay-only `TaxConfigs`: no long-term static tax, just a linear launch-tax decay. Models
     ///      a "non-taxable token that opts into tax decay".
     function _decayCfg(
         uint16 buyTaxDecayStartBps,
         uint16 sellTaxDecayStartBps,
         uint32 taxDecayDuration,
         bool startTaxFromLaunch
-    ) internal pure returns (TaxConfigInit memory) {
+    ) internal pure returns (TaxConfigs memory) {
         return _taxCfg(0, 0, 0, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration);
     }
 
-    /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 and
-    ///      taxDecayDuration == 0 disable dispatch to the taxable impl).
-    function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({
-            buyTaxBps: 0,
-            sellTaxBps: 0,
-            taxDurationSeconds: 0,
-            startTaxFromLaunch: false,
+    /// @dev Lifts a legacy `TaxConfigInit` into the full `TaxConfigs` (decay fields zeroed). Mirrors the
+    ///      factory's `_toTaxConfigs`; use at the `initialize` / `previewTokenImplementation` /
+    ///      `quoteBuyOnDeploy` call-sites, which now take `TaxConfigs`, when the test already has a
+    ///      `TaxConfigInit` from `_taxCfg`/`_emptyTaxCfg`.
+    function _toCfgs(TaxConfigInit memory legacy) internal pure returns (TaxConfigs memory) {
+        return TaxConfigs({
+            buyTaxBps: legacy.buyTaxBps,
+            sellTaxBps: legacy.sellTaxBps,
+            taxDurationSeconds: legacy.taxDurationSeconds,
+            startTaxFromLaunch: legacy.startTaxFromLaunch,
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0
         });
+    }
+
+    /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 and, once
+    ///      lifted into `TaxConfigs`, taxDecayDuration == 0 disable dispatch to the taxable impl).
+    function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
+        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
     }
 
     /// @dev Empty `AntiSniperConfigs` — sentinel for "no sniper protection" (protectionWindowSeconds == 0).

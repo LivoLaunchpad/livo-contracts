@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice Factory-layer tests for the linear tax-decay add-on: validation (caps + sentinel
@@ -31,11 +31,15 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_createToken_decayOnly_isTaxableCloneWithDecay() public {
-        TaxConfigInit memory cfg = _decayCfg(1000, 800, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(1000, 800, MAX_DECAY_DURATION, true);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "D", symbol: "D", salt: salt, feeShares: _fs(creator)});
 
         vm.prank(creator);
-        address token = factoryV2Unified.createToken("D", "D", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+        );
 
         LivoTaxableTokenUniV2 t = LivoTaxableTokenUniV2(payable(token));
         // no long-term static tax
@@ -54,14 +58,14 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     // ───────────── Decay sentinel validation ─────────────
 
     function test_preview_revertsOnDecayDurationWithZeroBps() public {
-        TaxConfigInit memory cfg = _decayCfg(0, 0, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(0, 0, MAX_DECAY_DURATION, true);
         vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnDecayBpsWithZeroDuration() public {
         // decay bps set but duration 0 — inconsistent
-        TaxConfigInit memory cfg = _taxCfg(0, 0, 0, true, 1000, 0, 0);
+        TaxConfigs memory cfg = _taxCfg(0, 0, 0, true, 1000, 0, 0);
         vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
@@ -70,36 +74,36 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_preview_acceptsBalancedDecayBpsAtMax() public view {
         // 10% / 10% — sums to exactly the combined cap
-        TaxConfigInit memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_DURATION, true);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_acceptsAsymmetricSplitAtMax() public view {
         // 5% / 15% — rejected under the old per-direction 10% cap, allowed now (sum == 20%)
-        TaxConfigInit memory cfg = _decayCfg(500, 1500, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(500, 1500, MAX_DECAY_DURATION, true);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_acceptsSingleDirectionAtMax() public view {
         // 20% / 0% — whole combined budget on one direction
-        TaxConfigInit memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS, 0, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS, 0, MAX_DECAY_DURATION, true);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnCombinedDecayBpsOverMax() public {
         // 10% + 10.01% = 20.01% combined, one bp over the cap
-        TaxConfigInit memory cfg = _decayCfg(1000, MAX_DECAY_TOTAL_BPS / 2 + 1, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(1000, MAX_DECAY_TOTAL_BPS / 2 + 1, MAX_DECAY_DURATION, true);
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_acceptsDecayDurationAtMax() public view {
-        TaxConfigInit memory cfg = _decayCfg(1000, 1000, MAX_DECAY_DURATION, true);
+        TaxConfigs memory cfg = _decayCfg(1000, 1000, MAX_DECAY_DURATION, true);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnDecayDurationOverMax() public {
-        TaxConfigInit memory cfg = _decayCfg(1000, 1000, MAX_DECAY_DURATION + 1, true);
+        TaxConfigs memory cfg = _decayCfg(1000, 1000, MAX_DECAY_DURATION + 1, true);
         vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
@@ -108,12 +112,15 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_createToken_decayPlusStatic() public {
         // static 500 over 7 days + decay 1000 over 20min
-        TaxConfigInit memory cfg = _taxCfg(500, 500, uint32(7 days), true, 1000, 1000, MAX_DECAY_DURATION);
+        TaxConfigs memory cfg = _taxCfg(500, 500, uint32(7 days), true, 1000, 1000, MAX_DECAY_DURATION);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "DS", symbol: "DS", salt: salt, feeShares: _fs(creator)});
 
         vm.prank(creator);
-        address token =
-            factoryV2Unified.createToken("DS", "DS", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+        );
 
         assertEq(_tax(token, true), 1000, "at launch, decay 10% dominates static 5%");
     }

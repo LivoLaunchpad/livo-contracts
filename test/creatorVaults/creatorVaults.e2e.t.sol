@@ -376,8 +376,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
 
-        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000, _emptyTaxCfg(), cfg);
-        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 0, _emptyTaxCfg(), cfg);
+        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000, _toCfgs(_emptyTaxCfg()), cfg);
+        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_emptyTaxCfg()), cfg);
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 

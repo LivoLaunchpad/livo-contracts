@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoTaxableToken, TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {ILivoTaxableToken, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -231,7 +231,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     /// @dev Shared initializer body for taxable tokens. Subclasses override to add variant-specific
     ///      setup (e.g. router approval for V2, pool-manager pair check for V4) by chaining via
     ///      `super._initializeLivoTaxableToken(...)`.
-    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
         internal
         virtual
         onlyInitializing
@@ -247,7 +247,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
     /// @dev Tax-bps and duration bounds are enforced upstream in the factory. The
     ///      `LivoTaxableTokenInitialized` event carries `startTaxFromLaunch` plus the three `*Decay*`
     ///      fields configuring the linear launch-tax decay.
-    function _initializeTaxConfig(TaxConfigInit memory cfg) internal {
+    function _initializeTaxConfig(TaxConfigs memory cfg) internal {
         emit LivoTaxableTokenInitialized(
             cfg.buyTaxBps,
             cfg.sellTaxBps,

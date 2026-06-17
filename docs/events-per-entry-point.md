@@ -57,11 +57,12 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
-Each unified factory exposes two `createToken` overloads with different selectors:
-- **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults.
-- **Struct-based with vaults** (current): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults.
+Each unified factory exposes three `createToken` overloads with different selectors:
+- **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults. Takes the legacy `TaxConfigInit` (static tax only).
+- **Struct-based with vaults, legacy tax** (kept for backwards compatibility): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults. Takes the legacy `TaxConfigInit` (static tax only).
+- **Struct-based with vaults, full tax** (current): the same shape but with `TaxConfigs` in place of `TaxConfigInit` — the superset struct that adds the three launch-tax-decay fields. This is the only overload that can configure launch-tax decay.
 
-All overloads share the same internal flow and emit the events listed below in the same order; only the struct-based-with-vaults overload can emit the creator-vault events in §1 step 4b.
+The two `TaxConfigInit` overloads internally lift it into a `TaxConfigs` (decay fields zeroed) before dispatch, so all three share the same internal flow and emit the events listed below in the same order; only the struct-based-with-vaults overloads can emit the creator-vault events in §1 step 4b.
 
 ### 1.1 Common sequence
 
