@@ -174,7 +174,7 @@
   },
   {
     "type": "function",
-    "name": "MAX_TAX_DECAY_START_BPS",
+    "name": "MAX_TAX_DECAY_START_COMBINED_BPS",
     "inputs": [],
     "outputs": [
       {

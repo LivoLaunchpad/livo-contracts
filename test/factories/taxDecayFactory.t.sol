@@ -11,7 +11,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 ///         consistency) and dispatch (a decay-only token — no long-term static tax — still routes to
 ///         the taxable impl, since post-graduation collection lives there).
 contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
-    uint16 internal constant MAX_DECAY_BPS = 1_000; // 10%
+    uint16 internal constant MAX_DECAY_TOTAL_BPS = 2_000; // 20% combined (buy + sell)
     uint32 internal constant MAX_DECAY_DURATION = 20 minutes; // 1200s
 
     function _tax(address token, bool isBuy) internal view returns (uint16) {
@@ -66,21 +66,29 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
-    // ───────────── Decay caps ─────────────
+    // ───────────── Decay caps (combined buy + sell) ─────────────
 
-    function test_preview_acceptsDecayBpsAtMax() public view {
-        TaxConfigInit memory cfg = _decayCfg(MAX_DECAY_BPS, MAX_DECAY_BPS, MAX_DECAY_DURATION, true);
+    function test_preview_acceptsBalancedDecayBpsAtMax() public view {
+        // 10% / 10% — sums to exactly the combined cap
+        TaxConfigInit memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_DURATION, true);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
-    function test_preview_revertsOnBuyDecayBpsOverMax() public {
-        TaxConfigInit memory cfg = _decayCfg(MAX_DECAY_BPS + 1, 0, MAX_DECAY_DURATION, true);
-        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+    function test_preview_acceptsAsymmetricSplitAtMax() public view {
+        // 5% / 15% — rejected under the old per-direction 10% cap, allowed now (sum == 20%)
+        TaxConfigInit memory cfg = _decayCfg(500, 1500, MAX_DECAY_DURATION, true);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
 
-    function test_preview_revertsOnSellDecayBpsOverMax() public {
-        TaxConfigInit memory cfg = _decayCfg(0, MAX_DECAY_BPS + 1, MAX_DECAY_DURATION, true);
+    function test_preview_acceptsSingleDirectionAtMax() public view {
+        // 20% / 0% — whole combined budget on one direction
+        TaxConfigInit memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS, 0, MAX_DECAY_DURATION, true);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_preview_revertsOnCombinedDecayBpsOverMax() public {
+        // 10% + 10.01% = 20.01% combined, one bp over the cap
+        TaxConfigInit memory cfg = _decayCfg(1000, MAX_DECAY_TOTAL_BPS / 2 + 1, MAX_DECAY_DURATION, true);
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }

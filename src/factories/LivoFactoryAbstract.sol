@@ -36,12 +36,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///         ownership constraints are imposed beyond the standard validation.
     uint256 public constant MAX_TAX_DURATION_SECONDS = 120 * 365 days;
 
-    /// @notice Max start rate (bps) for the optional linear launch-tax decay, per direction. Fixed at
-    ///         10% — higher than the static `MAX_TOTAL_FEE_BPS` (5%) because the decay only applies
-    ///         transiently at launch and falls to 0 within `MAX_TAX_DECAY_DURATION_SECONDS`. The
-    ///         effective tax a trade pays is `max(decay, static)`, so this caps the worst-case rate at
-    ///         launch; the launchpad's own `MAX_TRADING_FEE_BPS` (25%) absorbs it on top of the LP fee.
-    uint256 public constant MAX_TAX_DECAY_START_BPS = 1_000;
+    /// @notice Max COMBINED start rate (bps) for the optional linear launch-tax decay: `buy + sell`.
+    ///         Fixed at 20% — higher than the static `MAX_TOTAL_FEE_BPS` (5%) because the decay only
+    ///         applies transiently at launch and falls to 0 within `MAX_TAX_DECAY_DURATION_SECONDS`. The
+    ///         cap is on the sum, so any split is allowed (e.g. 10%/10%, 5%/15%, 20%/0%). A trade pays
+    ///         only one direction and the effective tax is `max(decay, static)`, so the worst-case rate a
+    ///         single trade sees at launch is at most this cap; the launchpad's own `MAX_TRADING_FEE_BPS`
+    ///         (25%) absorbs it on top of the LP fee.
+    uint256 public constant MAX_TAX_DECAY_START_COMBINED_BPS = 2_000;
 
     /// @notice Max duration (seconds) of the linear launch-tax decay: 20 minutes. The decay rate falls
     ///         from its start value to 0 over at most this window, from the same anchor the static tax uses.
@@ -500,7 +502,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      - Static: `taxDurationSeconds` capped at `MAX_TAX_DURATION_SECONDS` (120 years — an
     ///        overflow-prevention bound from `uint32` packing); the static-bps ceiling is venue-dependent
     ///        and enforced separately by `_validateTotalFee`.
-    ///      - Decay: start bps capped at `MAX_TAX_DECAY_START_BPS` (10%) and duration at
+    ///      - Decay: combined start bps (`buy + sell`) capped at `MAX_TAX_DECAY_START_COMBINED_BPS` (20%) and duration at
     ///        `MAX_TAX_DECAY_DURATION_SECONDS` (20 min). The decay bps are NOT part of `_validateTotalFee`
     ///        (the effective rate is `max(decay, static)`, not their sum); the launchpad's own per-trade
     ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total.
@@ -517,7 +519,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             require(t.buyTaxDecayStartBps > 0 || t.sellTaxDecayStartBps > 0, InvalidTaxConfig());
             require(t.taxDecayDuration <= MAX_TAX_DECAY_DURATION_SECONDS, InvalidTaxDuration());
             require(
-                t.buyTaxDecayStartBps <= MAX_TAX_DECAY_START_BPS && t.sellTaxDecayStartBps <= MAX_TAX_DECAY_START_BPS,
+                uint256(t.buyTaxDecayStartBps) + t.sellTaxDecayStartBps <= MAX_TAX_DECAY_START_COMBINED_BPS,
                 InvalidTaxBps()
             );
         } else {
