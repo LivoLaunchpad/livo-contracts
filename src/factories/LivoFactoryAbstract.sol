@@ -523,7 +523,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      - Decay: combined start bps (`buy + sell`) capped at `MAX_TAX_DECAY_START_COMBINED_BPS` (20%) and duration at
     ///        `MAX_TAX_DECAY_DURATION_SECONDS` (20 min). The decay bps are NOT part of `_validateTotalFee`
     ///        (the effective rate is `max(decay, static)`, not their sum); the launchpad's own per-trade
-    ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total.
+    ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total. Each configured decay start must be
+    ///        strictly above its direction's static rate (`buyTaxDecayStartBps > buyTaxBps`, same for sell) —
+    ///        the decay interpolates down to the static rate, so a start at or below it would never decay.
+    ///        Checked per direction and only when that start is set, so single-direction and decay-only
+    ///        (static 0) configs stay valid.
     ///      - Both: if a static tax AND a decay are configured, the static window must cover the decay
     ///        window (`taxDurationSeconds >= taxDecayDuration`) — the decay interpolates down to the static
     ///        rate, so a shorter static window would leave the long-term static tax effectively unused.
@@ -543,6 +547,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
                 uint256(t.buyTaxDecayStartBps) + t.sellTaxDecayStartBps <= MAX_TAX_DECAY_START_COMBINED_BPS,
                 InvalidTaxBps()
             );
+            // A configured decay must START strictly ABOVE its long-term static rate (per direction): the
+            // decay interpolates DOWN to the static rate, so a start at or below it would never decay (the
+            // effective `max(decay, static)` would just hold the static rate). Guarded per direction so a
+            // single-direction decay (the other start 0) — and a decay-only token (static 0) — stay valid.
+            if (t.buyTaxDecayStartBps != 0) require(t.buyTaxDecayStartBps > t.buyTaxBps, InvalidTaxBps());
+            if (t.sellTaxDecayStartBps != 0) require(t.sellTaxDecayStartBps > t.sellTaxBps, InvalidTaxBps());
             // When BOTH a static tax and a decay are configured, the static window must cover the decay
             // window: the decay interpolates DOWN to the static rate, so a static window shorter than the
             // decay window would leave the long-term static tax effectively unused (it would expire before

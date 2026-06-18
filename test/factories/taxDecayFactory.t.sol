@@ -140,4 +140,56 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         TaxConfigs memory cfg = _taxCfg(500, 500, MAX_DECAY_DURATION, true, 1000, 1000, MAX_DECAY_DURATION);
         factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
     }
+
+    // ───────────── Decay start must exceed the static rate (per direction) ─────────────
+    // The decay interpolates DOWN to the long-term static rate, so a start at or below it would never
+    // decay (the effective `max(decay, static)` would just hold the static rate). Enforced per direction
+    // and only when that direction's decay start is set, so a single-direction decay (the other start 0)
+    // stays valid.
+
+    function test_preview_revertsWhenBuyDecayStartEqualsStatic() public {
+        // buy decay start (500) == buy static (500): inert decay, must revert
+        TaxConfigs memory cfg = _taxCfg(500, 0, MAX_DECAY_DURATION, true, 500, 0, MAX_DECAY_DURATION);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_preview_revertsWhenBuyDecayStartBelowStatic() public {
+        // buy decay start (400) < buy static (500): decay below the rate it decays toward, must revert
+        TaxConfigs memory cfg = _taxCfg(500, 0, MAX_DECAY_DURATION, true, 400, 0, MAX_DECAY_DURATION);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_preview_revertsWhenSellDecayStartNotAboveStatic() public {
+        // sell decay start (500) == sell static (500): inert decay, must revert
+        TaxConfigs memory cfg = _taxCfg(0, 500, MAX_DECAY_DURATION, true, 0, 500, MAX_DECAY_DURATION);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_preview_acceptsDecayStartJustAboveStatic() public view {
+        // boundary: one bp above the static rate, both directions
+        TaxConfigs memory cfg = _taxCfg(500, 500, MAX_DECAY_DURATION, true, 501, 501, MAX_DECAY_DURATION);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_preview_acceptsSingleDirectionDecayWithStaticOnOther() public view {
+        // buy decays (1000 > static 0); sell has no decay (start 0) but a flat static 400 — the guard
+        // skips the zero-start sell direction, so this is still valid.
+        TaxConfigs memory cfg = _taxCfg(0, 400, uint32(7 days), true, 1000, 0, MAX_DECAY_DURATION);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_createToken_revertsWhenDecayStartNotAboveStatic() public {
+        // same constraint enforced on the real deploy path, not just preview: sell decay (500) == sell
+        // static (500) reverts even though buy decay (1000 > 500) is fine.
+        TaxConfigs memory cfg = _taxCfg(500, 500, uint32(7 days), true, 1000, 500, MAX_DECAY_DURATION);
+        ILivoFactory.TokenSetup memory setup =
+            ILivoFactory.TokenSetup({name: "X", symbol: "X", salt: bytes32(0), feeShares: _fs(creator)});
+
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
+        factoryV2Unified.createToken(setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0));
+    }
 }
