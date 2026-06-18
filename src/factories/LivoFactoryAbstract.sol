@@ -524,6 +524,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///        `MAX_TAX_DECAY_DURATION_SECONDS` (20 min). The decay bps are NOT part of `_validateTotalFee`
     ///        (the effective rate is `max(decay, static)`, not their sum); the launchpad's own per-trade
     ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total.
+    ///      - Both: if a static tax AND a decay are configured, the static window must cover the decay
+    ///        window (`taxDurationSeconds >= taxDecayDuration`) — the decay interpolates down to the static
+    ///        rate, so a shorter static window would leave the long-term static tax effectively unused.
     ///      No fee-receiver or ownership constraints are imposed at any duration.
     function _validateTaxConfig(TaxConfigs memory t) internal pure {
         if (t.taxDurationSeconds != 0) {
@@ -540,6 +543,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
                 uint256(t.buyTaxDecayStartBps) + t.sellTaxDecayStartBps <= MAX_TAX_DECAY_START_COMBINED_BPS,
                 InvalidTaxBps()
             );
+            // When BOTH a static tax and a decay are configured, the static window must cover the decay
+            // window: the decay interpolates DOWN to the static rate, so a static window shorter than the
+            // decay window would leave the long-term static tax effectively unused (it would expire before
+            // the decay reaches it). A cliff at the static window's end is still expected — this only rules
+            // out the degenerate config where the static duration plays no part.
+            if (t.taxDurationSeconds != 0) {
+                require(t.taxDurationSeconds >= t.taxDecayDuration, InvalidTaxDuration());
+            }
         } else {
             require(t.buyTaxDecayStartBps == 0 && t.sellTaxDecayStartBps == 0, InvalidTaxConfig());
         }

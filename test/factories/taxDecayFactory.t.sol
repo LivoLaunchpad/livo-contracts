@@ -124,4 +124,20 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         assertEq(_tax(token, true), 1000, "at launch, decay 10% dominates static 5%");
     }
+
+    // ───────────── Static duration must cover the decay window (when both are configured) ─────────────
+
+    function test_preview_revertsWhenStaticDurationShorterThanDecay() public {
+        // both configured, but the static window (600s) is shorter than the decay window (1200s) — the
+        // static tax would never effectively apply. Must revert.
+        TaxConfigs memory cfg = _taxCfg(500, 500, 600, true, 1000, 1000, MAX_DECAY_DURATION);
+        vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
+
+    function test_preview_acceptsStaticDurationEqualToDecay() public view {
+        // boundary: static window exactly equals the decay window
+        TaxConfigs memory cfg = _taxCfg(500, 500, MAX_DECAY_DURATION, true, 1000, 1000, MAX_DECAY_DURATION);
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+    }
 }
