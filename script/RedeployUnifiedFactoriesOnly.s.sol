@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {Script, console} from "forge-std/Script.sol";
+
+import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
+import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
+
+import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
+import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+
+/// @title Redeploy BOTH unified factory implementations and upgrade their proxies — factories only
+/// @notice For changes that live in `LivoFactoryAbstract` / the concrete factories ONLY, leaving every
+///         token implementation untouched (e.g. a tweak to `_validateTaxConfig`). Unlike
+///         `RedeployTaxTokensAndUpgradeFactories`, this deploys NO token impls: it reuses the existing
+///         `TOKEN_IMPL`, `TOKEN_SNIPER_PROTECTED_IMPL`, `TAXABLE_TOKEN_V2_IMPL`,
+///         `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`, `TAXABLE_TOKEN_IMPL` and
+///         `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL` recorded in the per-chain manifest, wiring the fresh
+///         factory impls to them.
+///
+///         Single broadcast, two new deployments + two proxy upgrades:
+///         1. `LivoFactoryUniV2Unified` impl wired to the manifest's V2 token + tax-token impls.
+///         2. `LivoFactoryUniV4Unified` impl wired to the manifest's V4 token + tax-token impls
+///            (both graduators: 100 bps + 50 bps).
+///         3. `upgradeToAndCall(newV2FactoryImpl, "")` on the existing V2 UUPS proxy.
+///         4. `upgradeToAndCall(newV4FactoryImpl, "")` on the existing V4 UUPS proxy.
+///
+///         Proxy addresses are UNCHANGED — launchpad's `whitelistedFactories` entries stay valid;
+///         integrators see no address change. No init data is passed; the factories add no storage
+///         (their config is constructor immutables, baked into the bytecode).
+///
+///         The broadcaster MUST be the proxy owner on BOTH proxies. If not, `_authorizeUpgrade`
+///         reverts with `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
+///
+///         Token impls are NOT deployed here, so there is no `DeploymentAddresses` chain-guard to run
+///         (`just taxtokenaddresses` is unnecessary). Pre-flight only sanity-checks the proxies; the
+///         fresh impls' `LAUNCHPAD()` is asserted against the manifest before and after the flip.
+///
+///         Post-broadcast: update `FACTORY_UNIV2_UNIFIED_IMPL` and `FACTORY_UNIV4_UNIFIED_IMPL` in
+///         `src/config/manifest.<chain>.sol`, then run `just export-deployments`.
+///
+/// @dev    Run with:
+///         forge script RedeployUnifiedFactoriesOnly --rpc-url <mainnet|sepolia> \
+///             --verify --account livo.dev --slow --broadcast
+contract RedeployUnifiedFactoriesOnly is Script {
+    /// @dev Per-chain addresses needed to wire the new factory implementations and target the proxy
+    ///      upgrades. Pulled from `src/config/manifest.<chain>.sol`. Every token impl is reused as-is.
+    struct Deps {
+        // Proxies to upgrade
+        address factoryV2Proxy;
+        address factoryV4Proxy;
+        // Shared inputs reused by both fresh factory impls
+        address launchpad;
+        address bondingCurve;
+        address graduatorV2;
+        address graduatorV4;
+        address graduatorV4_0p5;
+        address masterFeeHandler;
+        // Existing token impls — reused as-is when wiring the new factories
+        address tokenImpl;
+        address tokenSniperImpl;
+        address taxTokenV2Impl;
+        address taxTokenV2SniperImpl;
+        address taxTokenV4Impl;
+        address taxTokenV4SniperImpl;
+    }
+
+    function _getDeps() internal view returns (Deps memory d) {
+        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                factoryV2Proxy: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsMainnet.LAUNCHPAD,
+                bondingCurve: DeploymentsMainnet.BONDING_CURVE,
+                graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
+                tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenV2Impl: DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV2SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
+                taxTokenV4Impl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
+                taxTokenV4SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+            });
+        } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
+            d = Deps({
+                factoryV2Proxy: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsSepolia.LAUNCHPAD,
+                bondingCurve: DeploymentsSepolia.BONDING_CURVE,
+                graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
+                tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenV2Impl: DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV2SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
+                taxTokenV4Impl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
+                taxTokenV4SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+            });
+        } else {
+            revert("Unsupported chain");
+        }
+
+        require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
+        require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
+        require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
+        require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
+        require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
+        require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
+        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
+        require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
+        require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
+        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
+        require(d.taxTokenV2SniperImpl != address(0), "manifest: TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
+        require(d.taxTokenV4SniperImpl != address(0), "manifest: TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL missing");
+    }
+
+    function run() public {
+        Deps memory d = _getDeps();
+
+        // Catch wrong manifest addresses pointing at non-Livo contracts before we waste deploys.
+        address v2ProxyOwner = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
+        address v4ProxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
+        require(v2ProxyOwner != address(0), "V2 proxy not initialized");
+        require(v4ProxyOwner != address(0), "V4 proxy not initialized");
+        // Same key is expected to own both proxies; soft sanity check, not a hard protocol invariant.
+        require(v2ProxyOwner == v4ProxyOwner, "V2 and V4 proxy owners differ; review before upgrading");
+
+        console.log("=== Livo Unified Factories Redeploy (factories only, tokens reused) ===");
+        console.log("Chain ID:                ", block.chainid);
+        console.log("Broadcaster:             ", msg.sender);
+        console.log("Required proxy owner:    ", v2ProxyOwner);
+        console.log("V2 factory proxy:        ", d.factoryV2Proxy);
+        console.log("V4 factory proxy:        ", d.factoryV4Proxy);
+        console.log("");
+
+        vm.startBroadcast();
+
+        console.log("| Contract Name                                  | Address |");
+        console.log("| ---------------------------------------------- | --- |");
+
+        // --- Factory implementations (2) wired to the EXISTING token impls from the manifest ---
+        address factoryV2Impl = address(
+            new LivoFactoryUniV2Unified(
+                d.launchpad,
+                d.tokenImpl,
+                d.tokenSniperImpl,
+                d.taxTokenV2Impl,
+                d.taxTokenV2SniperImpl,
+                d.bondingCurve,
+                d.graduatorV2,
+                d.masterFeeHandler,
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
+            )
+        );
+        console.log("| LivoFactoryUniV2Unified (new impl)            |", factoryV2Impl);
+
+        address factoryV4Impl = address(
+            new LivoFactoryUniV4Unified(
+                d.launchpad,
+                d.tokenImpl,
+                d.tokenSniperImpl,
+                d.taxTokenV4Impl,
+                d.taxTokenV4SniperImpl,
+                d.bondingCurve,
+                d.graduatorV4,
+                d.graduatorV4_0p5,
+                d.masterFeeHandler,
+                CreatorVaultScriptConfig.factoryFor(),
+                CreatorVaultScriptConfig.curvesFor()
+            )
+        );
+        console.log("| LivoFactoryUniV4Unified (new impl)            |", factoryV4Impl);
+
+        // --- Proxy upgrades (2) ---
+        UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(factoryV2Impl, "");
+        console.log("| V2 proxy upgraded to                          |", factoryV2Impl);
+
+        UUPSUpgradeable(d.factoryV4Proxy).upgradeToAndCall(factoryV4Impl, "");
+        console.log("| V4 proxy upgraded to                          |", factoryV4Impl);
+
+        vm.stopBroadcast();
+
+        // Post-broadcast: both proxies now delegate to the new impls, so they report the manifest launchpad.
+        require(address(LivoFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.launchpad, "V2 upgrade failed");
+        require(address(LivoFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.launchpad, "V4 upgrade failed");
+
+        console.log("");
+        console.log("=== Redeploy Complete ===");
+        console.log("Proxy addresses are UNCHANGED - no launchpad whitelisting or integrator action needed.");
+        console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
+        console.log("  FACTORY_UNIV2_UNIFIED_IMPL :", factoryV2Impl);
+        console.log("  FACTORY_UNIV4_UNIFIED_IMPL :", factoryV4Impl);
+    }
+}
