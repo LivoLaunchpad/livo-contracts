@@ -247,6 +247,37 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqRel(collected, expected, 0.001e18, "creator accrues the decayed buy tax + LP share");
     }
 
+    /// @notice A creation-anchored decay token must graduate through the real V4 curve → graduator
+    ///         flow while its decay window is still open. The rate-collection test above graduates
+    ///         incidentally at t≈launch; here we warp to mid-decay so the decay is provably live (5%)
+    ///         at the graduating buy, and assert graduation itself succeeds.
+    function test_v4_graduatesWhileTaxDecayActive() public {
+        uint40 t0 = uint40(block.timestamp);
+        testToken = _createDecayToken(1000, 1000, 20 minutes); // creation-anchored decay-only, 10% peak
+
+        // seed the curve below graduation while decay is at its launch peak
+        vm.deal(buyer, 2 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        // advance halfway into the decay window: the live launchpad buy tax is now 5% (decayed, nonzero)
+        vm.warp(t0 + 10 minutes);
+        assertEq(
+            ILivoToken(testToken)
+            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
+            .taxBps,
+            500,
+            "decay must be live (5%) right before graduation"
+        );
+
+        // graduate through the real curve + V4 graduator while decay is active
+        _graduateToken();
+
+        // graduation succeeded and the decay window is still open just after graduation
+        assertTrue(launchpad.getTokenState(testToken).graduated, "token must graduate with an active decay");
+        assertGt(ILivoToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
+    }
+
     /// @notice Test that zero sell tax rate results in no sell-tax collection on the sell leg.
     /// @dev The factory rejects `(0, 0, duration)` configs, so we use a token with non-zero buy
     ///      tax + zero sell tax to exercise the "zero sell tax" path. The buy-side tax accrued by
