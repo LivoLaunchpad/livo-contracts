@@ -26,7 +26,7 @@ contract CreatorVaultCurvesTest is Test {
 
     function _deploy(uint256 bps) internal returns (ConstantProductBondingCurveConfigurable) {
         (uint256 k, uint256 t0, uint256 e0) = C.paramsForBps(bps);
-        return new ConstantProductBondingCurveConfigurable(k, t0, e0);
+        return new ConstantProductBondingCurveConfigurable(k, t0, e0, GRADUATION_THRESHOLD, GRADUATION_MAX_EXCESS);
     }
 
     function _uniswapPrice(uint256 tokenReserves, uint256 ethReserves) internal pure returns (uint256) {
@@ -143,6 +143,6 @@ contract CreatorVaultCurvesTest is Test {
 
     function test_constructor_rejectsZeroE0() public {
         vm.expectRevert(ConstantProductBondingCurveConfigurable.InvalidCurveConstants.selector);
-        new ConstantProductBondingCurveConfigurable(C.K_5, C.T0_5, 0);
+        new ConstantProductBondingCurveConfigurable(C.K_5, C.T0_5, 0, GRADUATION_THRESHOLD, GRADUATION_MAX_EXCESS);
     }
 }

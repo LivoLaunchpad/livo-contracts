@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
@@ -47,7 +48,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "Vault",
             symbol: "VLT",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
@@ -221,7 +223,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "VaultSniper",
             symbol: "VS",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoTokenSniper)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
@@ -253,7 +256,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "VaultTaxV2",
             symbol: "VTX",
             salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
 
         vm.recordLogs();
@@ -376,8 +380,10 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
 
-        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000, _toCfgs(_emptyTaxCfg()), cfg);
-        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_emptyTaxCfg()), cfg);
+        uint256 ethVaultAware =
+            factoryV4Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 3000, _toCfgs(_emptyTaxCfg()), cfg);
+        uint256 ethBaseOnly =
+            factoryV4Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_emptyTaxCfg()), cfg);
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 
@@ -385,7 +391,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "VQ",
             symbol: "VQ",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
 
         vm.deal(creator, ethVaultAware);

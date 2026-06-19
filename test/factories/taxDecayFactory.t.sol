@@ -6,6 +6,7 @@ import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @notice Factory-layer tests for the linear tax-decay add-on: validation (caps + sentinel
 ///         consistency) and dispatch (a decay-only token — no long-term static tax — still routes to
@@ -33,8 +34,9 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     function test_createToken_decayOnly_isTaxableCloneWithDecay() public {
         TaxConfigs memory cfg = _decayCfg(1000, 800, MAX_DECAY_DURATION, true);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "D", symbol: "D", salt: salt, feeShares: _fs(creator)});
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "D", symbol: "D", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
@@ -114,8 +116,9 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         // static 500 over 7 days + decay 1000 over 20min
         TaxConfigs memory cfg = _taxCfg(500, 500, uint32(7 days), true, 1000, 1000, MAX_DECAY_DURATION);
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "DS", symbol: "DS", salt: salt, feeShares: _fs(creator)});
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "DS", symbol: "DS", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
@@ -185,8 +188,9 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         // same constraint enforced on the real deploy path, not just preview: sell decay (500) == sell
         // static (500) reverts even though buy decay (1000 > 500) is fine.
         TaxConfigs memory cfg = _taxCfg(500, 500, uint32(7 days), true, 1000, 500, MAX_DECAY_DURATION);
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "X", symbol: "X", salt: bytes32(0), feeShares: _fs(creator)});
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "X", symbol: "X", salt: bytes32(0), feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
 
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);

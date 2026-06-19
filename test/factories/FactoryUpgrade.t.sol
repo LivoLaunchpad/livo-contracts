@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
@@ -19,16 +20,19 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         return address(
             new LivoFactoryUniV4Unified(
                 address(launchpad),
-                address(livoToken),
-                address(livoTokenSniper),
-                address(livoTaxToken),
-                address(livoTaxTokenSniper),
+                ILivoFactory.TokenImpls({
+                    base: address(livoToken),
+                    antiSniper: address(livoTokenSniper),
+                    tax: address(livoTaxToken),
+                    taxAntiSniper: address(livoTaxTokenSniper)
+                }),
                 address(bondingCurve),
                 newGraduator,
                 newGraduator,
                 address(feeHandler),
                 address(creatorVaultFactory),
-                vaultCurves
+                vaultCurves,
+                _v4TierConfig()
             )
         );
     }

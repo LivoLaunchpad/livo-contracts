@@ -1,8 +1,37 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
+
 interface ILivoFactory {
     ////////////////// Structs //////////////////////
+
+    /// @notice Constructor-only bundle of the configurable bonding curves for a single liquidity tier:
+    ///         the no-vault (0%) curve plus the six vault curves (5%,10%,15%,20%,25%,30%). Passed to
+    ///         the factory constructor for the SMALL and LARGE tiers (DEFAULT reuses the deployed base
+    ///         curve + the six existing vault curves).
+    struct TierCurves {
+        address base;
+        address[6] vaults;
+    }
+
+    /// @notice Constructor-only bundle of the SMALL + LARGE tier curve sets. Grouped into one struct
+    ///         (rather than two `TierCurves` params) to keep the factory constructors' parameter count
+    ///         — and thus their ABI-decode stack depth — within limits without `via_ir`.
+    struct LiquidityTierConfig {
+        TierCurves small;
+        TierCurves large;
+    }
+
+    /// @notice Constructor-only bundle of the four token implementations the factory clones. Grouped
+    ///         into one struct to keep the factory constructors' parameter count within the ABI-decode
+    ///         stack limit without `via_ir`.
+    struct TokenImpls {
+        address base;
+        address antiSniper;
+        address tax;
+        address taxAntiSniper;
+    }
 
     /// @notice A single fee-receiver entry: account + shares in basis points (sum must == 10 000).
     /// @dev If `directFeesEnabled` is true, fees for this account are forwarded automatically on every
@@ -36,11 +65,15 @@ interface ILivoFactory {
     /// @notice Token-identity bundle for the struct-based `createToken` overload. Groups the inputs
     ///         that define the token itself (name, symbol, deterministic salt) and its fee receivers.
     ///         `feeShares` must be non-empty — every token has at least one receiver.
+    /// @dev `liquidityTier` selects the post-graduation pool depth (and the tier-specific bonding
+    ///      curve + graduation marketcap). Defaults to `LiquidityTier.DEFAULT` (the zero value), which
+    ///      the legacy positional `createToken` overloads always use.
     struct TokenSetup {
         string name;
         string symbol;
         bytes32 salt;
         FeeShare[] feeShares;
+        LiquidityTier liquidityTier;
     }
 
     ////////////////// Events //////////////////////

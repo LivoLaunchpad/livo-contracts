@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
 /// @title CreatorVaultScriptConfig
 /// @notice Script-only helper that resolves the two creator-vault constructor args the unified
@@ -27,5 +29,21 @@ library CreatorVaultScriptConfig {
         if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) return DeploymentsMainnet.vaultBondingCurves();
         if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) return DeploymentsSepolia.vaultBondingCurves();
         revert("CreatorVaultScriptConfig: unsupported chain");
+    }
+
+    /// @notice SMALL + LARGE tier curve sets (no-vault base + six vault curves each) for the active chain.
+    /// @dev TODO(tier-liquidity rollout): wire to the manifest once the SMALL/LARGE curves +
+    ///      graduators are deployed (mirror `curvesFor`). Until then this returns `address(0)`, the
+    ///      same documented interim state the vault curves had before `DeployCreatorVaultSystem` ran —
+    ///      the factory constructor doesn't validate them and they're only read when a token actually
+    ///      selects the SMALL/LARGE tier, so an early factory deploy/upgrade won't revert. You MUST
+    ///      deploy the tier system and refresh this config before SMALL/LARGE tokens can be created.
+    function tierConfigFor() internal pure returns (ILivoFactory.LiquidityTierConfig memory tierConfig) {
+        // tierConfig left zero-initialised; populate post-deploy.
+    }
+
+    /// @notice The full V4 tier config (curves + per-tier graduators) for the active chain. See `tierConfigFor`.
+    function v4TierConfigFor() internal pure returns (LivoFactoryUniV4Unified.V4TierConfig memory v4Tier) {
+        // v4Tier left zero-initialised; populate post-deploy.
     }
 }

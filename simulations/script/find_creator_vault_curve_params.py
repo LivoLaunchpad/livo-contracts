@@ -1,29 +1,32 @@
 #!/usr/bin/env python3
-"""Derive ConstantProductBondingCurve constants (K, T0, E0) for creator-vault tokens.
+"""Derive ConstantProductBondingCurveConfigurable constants (K, T0, E0) for every
+(liquidity tier x creator-vault allocation).
 
 A creator-vault token locks `vault_bps` of the 1B supply in vesting vaults, so only
 `S = TOTAL_SUPPLY * (10000 - vault_bps) / 10000` tokens are sold on the bonding curve.
 
-We hold EVERY graduation invariant identical to the base curve and relax ONLY the
-starting market cap / starting price:
-  - eth reserves at graduation      (E_g)        -> identical
-  - graduation fee                  (fee)        -> identical
-  - tokens deposited into liquidity (T_GRAD)     -> identical
-  - eth deposited into liquidity    (E_g - fee)  -> identical
-  - graduation price / marketcap    (P_grad)     -> identical
+Each LIQUIDITY TIER fixes its own graduation invariants (eth into liquidity, graduation
+threshold and graduation marketcap), chosen so the marketcap scales 1:2:4 with the LP depth.
+Within a tier, locking supply in vaults holds EVERY graduation invariant identical and relaxes
+ONLY the starting market cap (it rises as more supply is locked) — same property the original
+single-tier solver had.
 
 Closed-form: the curve must pass through two points with a fixed slope at graduation:
-  (1) t(0)        = S                       (token reserves at zero eth)
-  (2) t(E_g)      = T_GRAD                   (token reserves at graduation)
+  (1) t(0)        = S                              (token reserves at zero eth)
+  (2) t(E_g)      = T_GRAD                          (token reserves at graduation)
   (3) dprice@E_g  = (E_g+E0)/(T_GRAD+T0) = P_grad   (spot price at graduation)
-Three constraints, three unknowns (K, T0, E0) -> unique real solution per vault_bps.
-We then snap E0 to the best nearby integer and report residual errors.
+Three constraints, three unknowns (K, T0, E0) -> unique real solution per (tier, vault_bps).
+We snap to the integer constants near it (deterministic: prefer the lowest T0 on ties) and
+report residual errors.
 
-Run:  uv run script/find_creator_vault_curve_params.py
+Run:  uv run simulations/script/find_creator_vault_curve_params.py
+      uv run simulations/script/find_creator_vault_curve_params.py --solidity   # emit constants
 """
 
 from __future__ import annotations
 
+import sys
+from dataclasses import dataclass
 from decimal import Decimal, getcontext
 
 getcontext().prec = 120
@@ -31,66 +34,94 @@ getcontext().prec = 120
 WAD = 10**18
 TOTAL_SUPPLY = 1_000_000_000 * WAD
 
-# Base graduation invariants (identical to the deployed ConstantProductBondingCurve).
-TARGET_ETH = Decimal("3.75")          # E_g : eth reserves at graduation
-TARGET_FEE = Decimal("0.25")          # graduation fee
-GRAD_MCAP = Decimal("12.25")          # graduation marketcap in ETH (back-solved from deployed curve)
 
-E_G = int(TARGET_ETH * WAD)
-UNI_ETH = int((TARGET_ETH - TARGET_FEE) * WAD)        # eth deposited into liquidity = 3.5
-GRAD_MCAP_WEI = int(GRAD_MCAP * WAD)
+@dataclass(frozen=True)
+class Tier:
+    """A liquidity tier: LP depth + its own graduation marketcap (proportional to depth)."""
 
-# Tokens left in reserves at graduation == tokens deposited into liquidity.
-# Same integer for every curve so "tokens into liquidity" is identical across all variants.
-T_GRAD = TOTAL_SUPPLY * UNI_ETH // GRAD_MCAP_WEI       # = 2/7 * 1e27 (floored)
+    name: str
+    lp_eth: Decimal  # eth deposited into liquidity at graduation
+    grad_mcap: Decimal  # graduation marketcap in ETH (scales 1:2:4 with lp_eth)
+    fee: Decimal = Decimal("0.25")  # flat graduation fee
 
-# Target graduation spot price (wei eth / wei token), exact rational.
-P_GRAD = Decimal(UNI_ETH) / Decimal(T_GRAD)
+    @property
+    def E_G(self) -> int:  # eth reserves at graduation = lp + fee (= the graduation threshold)
+        return int((self.lp_eth + self.fee) * WAD)
+
+    @property
+    def UNI_ETH(self) -> int:  # eth deposited into liquidity
+        return int(self.lp_eth * WAD)
+
+    @property
+    def GRAD_MCAP_WEI(self) -> int:
+        return int(self.grad_mcap * WAD)
+
+    @property
+    def T_GRAD(self) -> int:  # tokens left in reserves at graduation == tokens into liquidity
+        return TOTAL_SUPPLY * self.UNI_ETH // self.GRAD_MCAP_WEI
+
+    @property
+    def P_GRAD(self) -> Decimal:  # graduation spot price (wei eth / wei token)
+        return Decimal(self.UNI_ETH) / Decimal(self.T_GRAD)
+
+
+# Tiers. DEFAULT reproduces the deployed single-tier system (12.25 ETH mcap). SMALL/LARGE scale
+# the graduation marketcap 1:2:4 with the LP depth, which keeps the token split (28.57% into
+# liquidity / 71.43% sold) and curve steepness identical across tiers.
+TIERS = [
+    Tier("SMALL", Decimal("1.75"), Decimal("6.125")),
+    Tier("DEFAULT", Decimal("3.5"), Decimal("12.25")),
+    Tier("LARGE", Decimal("7.0"), Decimal("24.5")),
+]
+
+BPS = [0, 500, 1000, 1500, 2000, 2500, 3000]
+
+# The deployed base curve (DEFAULT tier, no vault). Used as the sanity anchor.
+DEPLOYED_DEFAULT_BASE = (
+    3515625000000000000000000000000000000000000000,
+    250000000000000000000000000,
+    2812500000000000000,
+)
 
 
 def reserves(k: int, t0: int, e0: int, e: int) -> int:
     return k // (e + e0) - t0
 
 
-def closed_form(s: int) -> tuple[Decimal, Decimal]:
+def closed_form(s: int, tier: Tier) -> tuple[Decimal, Decimal]:
     """Exact real-valued (E0, T0) for supply-in-curve `s`."""
-    d = Decimal(s - T_GRAD)
-    pd = P_GRAD * d
-    t0 = (Decimal(E_G) * Decimal(s) - pd * Decimal(T_GRAD)) / (pd - Decimal(E_G))
-    e0 = P_GRAD * (Decimal(T_GRAD) + t0) - Decimal(E_G)
+    d = Decimal(s - tier.T_GRAD)
+    pd = tier.P_GRAD * d
+    t0 = (Decimal(tier.E_G) * Decimal(s) - pd * Decimal(tier.T_GRAD)) / (pd - Decimal(tier.E_G))
+    e0 = tier.P_GRAD * (Decimal(tier.T_GRAD) + t0) - Decimal(tier.E_G)
     return e0, t0
 
 
-def best_integer_curve(s: int) -> dict:
-    """Snap to integer constants near the closed-form solution; pick min composite error."""
-    e0_star, _ = closed_form(s)
+def best_integer_curve(s: int, tier: Tier) -> dict:
+    """Snap to integer constants near the closed-form solution; min composite error,
+    deterministic lowest-T0 tie-break."""
+    e0_star, _ = closed_form(s, tier)
     e0_center = int(e0_star.to_integral_value())
 
     best = None
     for e0 in range(e0_center - 200, e0_center + 201):
         if e0 <= 0:
             continue
-        # T0 forced by requiring t(0)=S and t(E_g)=T_GRAD simultaneously:
-        #   T0 = E0*(S - T_GRAD)/E_g - T_GRAD
-        t0_real = Decimal(e0) * Decimal(s - T_GRAD) / Decimal(E_G) - Decimal(T_GRAD)
-        for t0 in {int(t0_real.to_integral_value()), int(t0_real // 1), int(t0_real // 1) + 1}:
+        t0_real = Decimal(e0) * Decimal(s - tier.T_GRAD) / Decimal(tier.E_G) - Decimal(tier.T_GRAD)
+        # ascending so ties resolve to the lowest valid T0 (reproducible across runs)
+        for t0 in sorted({int(t0_real.to_integral_value()), int(t0_real // 1), int(t0_real // 1) + 1}):
             if t0 < 0:
                 continue
             k = (s + t0) * e0
             t_at_zero = reserves(k, t0, e0, 0)
-            t_at_grad = reserves(k, t0, e0, E_G)
+            t_at_grad = reserves(k, t0, e0, tier.E_G)
             if t_at_grad <= 0:
                 continue
             zero_err = abs(t_at_zero - s)
-            grad_err = abs(t_at_grad - T_GRAD)
-            # spot price at graduation, and deviation vs target
-            price = Decimal((E_G + e0)) / Decimal(t_at_grad + t0)
-            price_dev = abs(price - P_GRAD) / P_GRAD
-            score = (
-                Decimal(zero_err) / Decimal(s)
-                + Decimal(grad_err) / Decimal(T_GRAD)
-                + price_dev
-            )
+            grad_err = abs(t_at_grad - tier.T_GRAD)
+            price = Decimal((tier.E_G + e0)) / Decimal(t_at_grad + t0)
+            price_dev = abs(price - tier.P_GRAD) / tier.P_GRAD
+            score = Decimal(zero_err) / Decimal(s) + Decimal(grad_err) / Decimal(tier.T_GRAD) + price_dev
             cand = dict(
                 k=k, t0=t0, e0=e0, t_at_zero=t_at_zero, t_at_grad=t_at_grad,
                 zero_err=zero_err, grad_err=grad_err, price_dev=price_dev, score=score,
@@ -100,54 +131,53 @@ def best_integer_curve(s: int) -> dict:
     return best
 
 
-def report(vault_bps: int) -> None:
-    s = TOTAL_SUPPLY * (10_000 - vault_bps) // 10_000
-    c = best_integer_curve(s)
-    k, t0, e0 = c["k"], c["t0"], c["e0"]
+def report() -> None:
+    for tier in TIERS:
+        thr = Decimal(tier.E_G) / WAD
+        print(f"\n===== TIER {tier.name}  lp={tier.lp_eth} ETH  grad_mcap={tier.grad_mcap} ETH  threshold={thr} ETH =====")
+        print(f"  T_GRAD = {tier.T_GRAD}  (tokens into liquidity, identical for every vault bps)")
+        for bps in BPS:
+            s = TOTAL_SUPPLY * (10_000 - bps) // 10_000
+            c = best_integer_curve(s, tier)
+            note = ""
+            if tier.name == "DEFAULT" and bps == 0:
+                note = "  [deployed base curve uses round K/T0/E0; this slot is NOT redeployed]"
+            print(
+                f"  bps={bps:4d}  K={c['k']} T0={c['t0']} E0={c['e0']}"
+                f"  (zero_err={c['zero_err']}, grad_err={c['grad_err']}, dev={c['price_dev']*Decimal(100):.2e}%){note}"
+            )
 
-    start_price = Decimal(e0) / Decimal(s + t0)            # wei/wei at e=0
-    start_mcap = start_price * Decimal(TOTAL_SUPPLY) / WAD  # ETH (vs full 1B supply)
-    grad_price = Decimal(E_G + e0) / Decimal(c["t_at_grad"] + t0)
-    grad_mcap = grad_price * Decimal(TOTAL_SUPPLY) / WAD
-    eth_to_lp = Decimal(UNI_ETH) / WAD
-    tokens_to_lp = Decimal(c["t_at_grad"]) / WAD
-    sold = Decimal(s - c["t_at_grad"]) / WAD
-    vault_tokens = Decimal(TOTAL_SUPPLY - s) / WAD
 
-    print(f"\n===== vault = {vault_bps/100:.0f}%  (supply in curve = {Decimal(s)/WAD/1_000_000:.1f}M) =====")
-    print(f"K  = {k}")
-    print(f"T0 = {t0}")
-    print(f"E0 = {e0}")
-    print("  -- invariants (must match base curve) --")
-    print(f"  eth reserves @ grad      : {TARGET_ETH} ETH")
-    print(f"  eth into liquidity       : {eth_to_lp} ETH")
-    print(f"  tokens into liquidity    : {tokens_to_lp/1_000_000:.6f}M   (target {Decimal(T_GRAD)/WAD/1_000_000:.6f}M, err {c['grad_err']} wei)")
-    print(f"  graduation price (wei/wei): {grad_price:.30f}")
-    print(f"  graduation mcap          : {grad_mcap:.6f} ETH")
-    print("  -- relaxed (starting point) --")
-    print(f"  vault tokens locked      : {vault_tokens/1_000_000:.1f}M")
-    print(f"  tokens sold on curve     : {sold/1_000_000:.4f}M")
-    print(f"  t(0) error vs S          : {c['zero_err']} wei")
-    print(f"  starting price (wei/wei) : {start_price:.30f}")
-    print(f"  starting mcap            : {start_mcap:.6f} ETH")
-    print(f"  mcap multiplier g/s      : {grad_mcap/start_mcap:.4f}x")
-    print(f"  price deviation @ grad   : {c['price_dev']*100:.12f}%")
+def _sol_name(tier: Tier, bps: int) -> str:
+    prefix = "S" if tier.name == "SMALL" else "L"
+    return f"{prefix}_{bps // 100}"  # e.g. S_0, S_5, L_30 (bps/100 = percent)
+
+
+def emit_solidity() -> None:
+    """Emit the SMALL/LARGE constant declarations + dispatchers for CreatorVaultCurveConstants."""
+    for tier in TIERS:
+        if tier.name == "DEFAULT":
+            continue
+        print(f"    // ---- {tier.name} tier (lp {tier.lp_eth} ETH, grad mcap {tier.grad_mcap} ETH) ----")
+        for bps in BPS:
+            s = TOTAL_SUPPLY * (10_000 - bps) // 10_000
+            c = best_integer_curve(s, tier)
+            n = _sol_name(tier, bps)
+            print(f"    uint256 internal constant K_{n} = {c['k']};")
+            print(f"    uint256 internal constant T0_{n} = {c['t0']};")
+            print(f"    uint256 internal constant E0_{n} = {c['e0']};")
+        print()
 
 
 def main() -> None:
-    print("Base invariants held constant across ALL curves:")
-    print(f"  E_g (eth @ grad)        = {TARGET_ETH} ETH")
-    print(f"  fee                     = {TARGET_FEE} ETH")
-    print(f"  eth into liquidity      = {Decimal(UNI_ETH)/WAD} ETH")
-    print(f"  tokens into liquidity   = {Decimal(T_GRAD)/WAD/1_000_000:.6f}M  (T_GRAD={T_GRAD})")
-    print(f"  graduation mcap         = {GRAD_MCAP} ETH")
-    print(f"  graduation price        = {P_GRAD:.30f} wei/wei")
-    print("\n(vault=0% is the sanity check: should reproduce deployed K/T0/E0)")
-    print("  deployed: K=3515625000000000000000000000000000000000000000")
-    print("            T0=250000000000000000000000000  E0=2812500000000000000")
-
-    for bps in (0, 500, 1000, 1500, 2000, 2500, 3000):
-        report(bps)
+    if "--solidity" in sys.argv:
+        emit_solidity()
+        return
+    report()
+    # default-tier sanity: the no-vault closed-form lands within 1 wei of the deployed round base
+    c = best_integer_curve(TOTAL_SUPPLY, TIERS[1])
+    if c["e0"] != DEPLOYED_DEFAULT_BASE[2]:
+        print("\nWARNING: DEFAULT base E0 differs from deployed!", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @notice Unified factory for the Uniswap V4 token family. Dispatches between four token
 ///         implementations based on whether `TaxConfigInit` and `AntiSniperConfigs` are
@@ -23,9 +24,32 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         uint16 lpFeeBps;
     }
 
+    /// @notice Constructor-only bundle of the SMALL/LARGE tier V4 graduators (one per tier x hook fee).
+    ///         The DEFAULT-tier pair is `GRADUATOR` (100 bps, abstract) + `GRADUATOR_0P5` (50 bps).
+    struct TierGraduators {
+        address small; // 100 bps hook
+        address small0p5; // 50 bps hook
+        address large; // 100 bps hook
+        address large0p5; // 50 bps hook
+    }
+
+    /// @notice Constructor-only bundle of all the V4 tier additions (curves + graduators), grouped into
+    ///         one struct to keep the constructor's parameter count within the ABI-decode stack limit.
+    struct V4TierConfig {
+        LiquidityTierConfig curves;
+        TierGraduators graduators;
+    }
+
     /// @notice Graduator paired with the 50-bps `LivoSwapHook` variant. The 100-bps graduator lives
     ///         in the abstract base as `GRADUATOR`.
     address public immutable GRADUATOR_0P5;
+
+    /// @notice SMALL/LARGE tier graduators, one per (tier x hook fee). Each initializes its pool at the
+    ///         tier-specific graduation price. Selected by `_resolveGraduator(lpFeeBps, tier)`.
+    address public immutable GRADUATOR_SMALL; // 100 bps hook
+    address public immutable GRADUATOR_SMALL_0P5; // 50 bps hook
+    address public immutable GRADUATOR_LARGE; // 100 bps hook
+    address public immutable GRADUATOR_LARGE_0P5; // 50 bps hook
 
     /// @notice Pre-graduation launchpad LP fee for V4 tokens (bps), charged on every bonding-curve trade
     ///         and split treasury/creator by `V4_LAUNCHPAD_TREASURY_SHARE_BPS`. Fixed at 1% for every V4
@@ -41,31 +65,31 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
 
     constructor(
         address launchpad,
-        address tokenImplBase,
-        address tokenImplAntiSniper,
-        address tokenImplTax,
-        address tokenImplTaxAntiSniper,
+        TokenImpls memory impls,
         address bondingCurve,
         address graduator,
         address graduator0p5,
         address masterFeeHandler,
         address creatorVaultFactory,
-        address[6] memory vaultBondingCurves
+        address[6] memory vaultBondingCurves,
+        V4TierConfig memory v4Tier
     )
         LivoFactoryAbstract(
             launchpad,
-            tokenImplBase,
-            tokenImplAntiSniper,
-            tokenImplTax,
-            tokenImplTaxAntiSniper,
+            impls,
             bondingCurve,
             graduator,
             masterFeeHandler,
             creatorVaultFactory,
-            vaultBondingCurves
+            vaultBondingCurves,
+            v4Tier.curves
         )
     {
         GRADUATOR_0P5 = graduator0p5;
+        GRADUATOR_SMALL = v4Tier.graduators.small;
+        GRADUATOR_SMALL_0P5 = v4Tier.graduators.small0p5;
+        GRADUATOR_LARGE = v4Tier.graduators.large;
+        GRADUATOR_LARGE_0P5 = v4Tier.graduators.large0p5;
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -102,7 +126,10 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         // Build `tokenSetup` first (consuming the deep `name`/`symbol`/`salt`/`feeReceivers` calldata
         // params) before introducing the `taxConfigs` memory local, to keep the stack shallow enough
         // to compile without `via_ir`.
-        TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
+        // Legacy overload always uses the DEFAULT liquidity tier + the 100-bps graduator.
+        TokenSetup memory tokenSetup = TokenSetup({
+            name: name, symbol: symbol, salt: salt, feeShares: feeReceivers, liquidityTier: LiquidityTier.DEFAULT
+        });
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxCfg);
         _validateTotalFee(100, taxConfigs);
         token = _createToken(
@@ -137,7 +164,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         token = _createToken(
             tokenSetup,
             univ4Configs.renounceOwnership ? address(0) : msg.sender,
-            _resolveGraduator(univ4Configs.lpFeeBps),
+            _resolveGraduator(univ4Configs.lpFeeBps, tokenSetup.liquidityTier),
             buyOnDeployShares,
             fullTaxConfigs,
             antiSniperConfigs,
@@ -161,7 +188,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         _validateUniv4Configs(univ4Configs);
         _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
         address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        address graduator = _resolveGraduator(univ4Configs.lpFeeBps);
+        address graduator = _resolveGraduator(univ4Configs.lpFeeBps, tokenSetup.liquidityTier);
         token = _createToken(
             tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
         );
@@ -178,11 +205,15 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         require(configs.lpFeeBps == 100 || configs.lpFeeBps == 50, InvalidLpFeeBps());
     }
 
-    /// @dev Maps `lpFeeBps` to the graduator that pairs with the matching `LivoSwapHook` variant.
-    ///      Callers MUST pre-validate `lpFeeBps` via `_validateUniv4Configs`; this function trusts
-    ///      its input and treats anything other than 100 as the 50-bps branch.
-    function _resolveGraduator(uint16 lpFeeBps) internal view returns (address) {
-        return lpFeeBps == 100 ? address(GRADUATOR) : GRADUATOR_0P5;
+    /// @dev Maps `(lpFeeBps, tier)` to the graduator that pairs with the matching `LivoSwapHook` variant
+    ///      AND graduates at the tier's price. Callers MUST pre-validate `lpFeeBps` via
+    ///      `_validateUniv4Configs`; this function trusts its input and treats anything other than 100
+    ///      as the 50-bps branch.
+    function _resolveGraduator(uint16 lpFeeBps, LiquidityTier tier) internal view returns (address) {
+        bool is100 = lpFeeBps == 100;
+        if (tier == LiquidityTier.DEFAULT) return is100 ? address(GRADUATOR) : GRADUATOR_0P5;
+        if (tier == LiquidityTier.SMALL) return is100 ? GRADUATOR_SMALL : GRADUATOR_SMALL_0P5;
+        return is100 ? GRADUATOR_LARGE : GRADUATOR_LARGE_0P5; // LARGE
     }
 
     /// @dev Pre-graduation launchpad LP fee, fixed at `V4_LAUNCHPAD_LP_FEE_BPS` (1%) for every V4 token
@@ -239,6 +270,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///        `V4_LAUNCHPAD_LP_FEE_BPS`, not `lpFeeBps`.
     /// @return totalEthNeeded The msg.value to pass to createToken
     function quoteBuyOnDeploy(
+        LiquidityTier liquidityTier,
         uint256 tokenAmount,
         uint256 totalLockedInVaultsBps,
         TaxConfigs calldata taxCfg,
@@ -246,7 +278,10 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external view returns (uint256 totalEthNeeded) {
         _validateUniv4Configs(univ4Configs);
         return _quoteBuyOnDeploy(
-            tokenAmount, totalLockedInVaultsBps, uint256(V4_LAUNCHPAD_LP_FEE_BPS) + _deployBuyTaxBps(taxCfg)
+            liquidityTier,
+            tokenAmount,
+            totalLockedInVaultsBps,
+            uint256(V4_LAUNCHPAD_LP_FEE_BPS) + _deployBuyTaxBps(taxCfg)
         );
     }
 }
