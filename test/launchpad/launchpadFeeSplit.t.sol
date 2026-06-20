@@ -6,7 +6,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
@@ -52,8 +52,14 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
                     lpFeeBps: lpFee,
                     treasuryShareBps: treasuryShare
                 }),
-                TaxConfigInit({
-                    buyTaxBps: taxBuy, sellTaxBps: taxSell, taxDurationSeconds: window, startTaxFromLaunch: true
+                TaxConfigs({
+                    buyTaxBps: taxBuy,
+                    sellTaxBps: taxSell,
+                    taxDurationSeconds: window,
+                    startTaxFromLaunch: true,
+                    buyTaxDecayStartBps: 0,
+                    sellTaxDecayStartBps: 0,
+                    taxDecayDuration: 0
                 })
             );
         // Register the creator as the sole (claimable) fee receiver so creator-share routing works.

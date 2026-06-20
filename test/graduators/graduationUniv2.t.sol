@@ -9,6 +9,8 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
@@ -659,6 +661,54 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
         // `test_rightAmountOfTokensToLiquidity` tests — the pair pre-existing must not change them.
         assertApproxEqRel(wethReserve, 3.5 ether, 0.000001e18, "WETH reserves should match canonical graduation");
         assertApproxEqRel(tokenReserve, 285_714_286e18, 0.0001e18, "Token reserves should match canonical graduation");
+    }
+}
+
+/// @notice A creation-anchored tax-decay token must still graduate through the real V2 curve →
+///         graduator flow while its decay window is open. The token-level decay tests fake graduation
+///         with a direct `markGraduated()`; this drives the genuine launchpad path instead.
+contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
+    function test_v2_graduatesWhileTaxDecayActive() public {
+        uint40 t0 = uint40(block.timestamp);
+        // decay-only token: 10%/10% buy/sell decay over the full 20min window, creation-anchored.
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "Decay",
+            symbol: "DCY",
+            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            feeShares: _fs(creator)
+        });
+        vm.prank(creator);
+        testToken = factoryV2Unified.createToken(
+            setup,
+            _decayCfg(1000, 1000, 20 minutes, true),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0)
+        );
+        uniswapPair = LivoToken(testToken).pair();
+
+        // seed the curve below graduation while decay is at its launch peak (10%)
+        _launchpadBuy(testToken, 1 ether);
+
+        // advance halfway into the decay window: the live launchpad buy tax is now 5% (decayed, nonzero)
+        vm.warp(t0 + 10 minutes);
+        assertEq(
+            ILivoToken(testToken)
+            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
+            .taxBps,
+            500,
+            "decay must be live (5%) right before graduation"
+        );
+
+        // graduate through the real curve + V2 graduator while decay is active
+        _graduateToken();
+
+        // graduation succeeded and liquidity landed in the pair
+        assertTrue(launchpad.getTokenState(testToken).graduated, "token must graduate with an active decay");
+        assertGt(WETH.balanceOf(uniswapPair), 0, "pair must hold WETH reserves");
+        assertGt(IERC20(testToken).balanceOf(uniswapPair), 0, "pair must hold token reserves");
+        // the decay window is still open immediately after graduation
+        assertGt(ILivoToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
     }
 }
 

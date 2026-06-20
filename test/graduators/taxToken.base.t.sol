@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -78,6 +80,32 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             false,
             _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds), false),
             _emptyAntiSniperCfg()
+        );
+    }
+
+    /// @notice Helper to create a DECAY-only token (no long-term static tax) with a linear launch-tax
+    ///         decay, creation-anchored. Exercises the V4 hook serving a decaying `getTaxConfig`.
+    /// @param buyDecayStartBps Buy decay rate at launch (decays to 0 over `decayDuration`)
+    /// @param sellDecayStartBps Sell decay rate at launch
+    /// @param decayDuration Decay window length in seconds (from launch)
+    function _createDecayToken(uint16 buyDecayStartBps, uint16 sellDecayStartBps, uint32 decayDuration)
+        internal
+        returns (address tokenAddress)
+    {
+        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+            name: "DecayToken",
+            symbol: "DCY",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator)
+        });
+        vm.prank(creator);
+        tokenAddress = factoryTax.createToken(
+            setup,
+            _decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true),
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0)
         );
     }
 

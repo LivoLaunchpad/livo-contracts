@@ -179,6 +179,32 @@
   },
   {
     "type": "function",
+    "name": "MAX_TAX_DECAY_DURATION_SECONDS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TAX_DECAY_START_COMBINED_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_TAX_DURATION_SECONDS",
     "inputs": [],
     "outputs": [
@@ -524,6 +550,194 @@
     "name": "createToken",
     "inputs": [
       {
+        "name": "tokenSetup",
+        "type": "tuple",
+        "internalType": "struct ILivoFactory.TokenSetup",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "feeShares",
+            "type": "tuple[]",
+            "internalType": "struct ILivoFactory.FeeShare[]",
+            "components": [
+              {
+                "name": "account",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "shares",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "directFeesEnabled",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "taxConfigs",
+        "type": "tuple",
+        "internalType": "struct TaxConfigs",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "startTaxFromLaunch",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "univ4Configs",
+        "type": "tuple",
+        "internalType": "struct LivoFactoryUniV4Unified.UniV4Configs",
+        "components": [
+          {
+            "name": "renounceOwnership",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "lpFeeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      },
+      {
+        "name": "buyOnDeployShares",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.SupplyShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "antiSniperConfigs",
+        "type": "tuple",
+        "internalType": "struct AntiSniperConfigs",
+        "components": [
+          {
+            "name": "maxBuyPerTxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "maxWalletBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "protectionWindowSeconds",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "whitelist",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
+      },
+      {
+        "name": "creatorVaults",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.CreatorVault[]",
+        "components": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "supplyBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "cliffSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vestingSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "createToken",
+    "inputs": [
+      {
         "name": "name",
         "type": "string",
         "internalType": "string"
@@ -725,7 +939,7 @@
       {
         "name": "taxCfg",
         "type": "tuple",
-        "internalType": "struct TaxConfigInit",
+        "internalType": "struct TaxConfigs",
         "components": [
           {
             "name": "buyTaxBps",
@@ -746,6 +960,21 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       },
@@ -816,7 +1045,7 @@
       {
         "name": "taxCfg",
         "type": "tuple",
-        "internalType": "struct TaxConfigInit",
+        "internalType": "struct TaxConfigs",
         "components": [
           {
             "name": "buyTaxBps",
@@ -837,6 +1066,21 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       },

@@ -22,14 +22,14 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
 
     function test_dispatch_tax_returnsTaxImpl() public view {
         address impl = factoryV2Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _fs(creator), _noSs(), _toCfgs(_taxCfg(0, 400, uint32(7 days))), _emptyAntiSniperCfg()
         );
         assertEq(impl, address(livoTaxTokenV2));
     }
 
     function test_dispatch_taxAntiSniper_returnsTaxAntiSniperImpl() public view {
         address impl = factoryV2Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _taxCfg(0, 400, uint32(7 days)), _defaultAntiSniperCfg()
+            _fs(creator), _noSs(), _toCfgs(_taxCfg(0, 400, uint32(7 days))), _defaultAntiSniperCfg()
         );
         assertEq(impl, address(livoTaxTokenV2Sniper));
     }
@@ -38,7 +38,8 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
 
     function test_createToken_dispatchMatchesPreview_tax() public {
         TaxConfigInit memory cfg = _taxCfg(100, 200, uint32(7 days));
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
@@ -50,7 +51,8 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
 
     function test_createToken_dispatchMatchesPreview_taxAntiSniper() public {
         TaxConfigInit memory cfg = _taxCfg(100, 200, uint32(7 days));
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _defaultAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _defaultAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
         address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
 
@@ -65,7 +67,8 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
 
     function test_createToken_tax_configFieldsStoredOnToken() public {
         TaxConfigInit memory cfg = _taxCfg(150, 250, uint32(7 days));
-        address impl = factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        address impl =
+            factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
 
         vm.prank(creator);
@@ -83,13 +86,13 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
     function test_preview_revertsOnDisabledTaxWithNonZeroBps() public {
         TaxConfigInit memory cfg = _taxCfg(100, 0, 0);
         vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnEnabledTaxWithZeroBps() public {
         TaxConfigInit memory cfg = _taxCfg(0, 0, uint32(7 days));
         vm.expectRevert(ILivoFactory.InvalidTaxConfig.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
     }
 
     function test_preview_acceptsBpsAtMax() public view {
@@ -97,25 +100,25 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
         // MAX_TOTAL_FEE_BPS. The pre-graduation launchpad LP fee does not count against it. Boundary
         // value must be accepted.
         TaxConfigInit memory cfg = _taxCfg(500, 500, uint32(7 days));
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnTaxBpsOverMax() public {
         TaxConfigInit memory cfg = _taxCfg(501, 0, uint32(7 days));
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnSellTaxBpsOverMax() public {
         TaxConfigInit memory cfg = _taxCfg(0, 501, uint32(7 days));
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
     }
 
     function test_preview_revertsOnDurationOverCap() public {
         TaxConfigInit memory cfg = _taxCfg(100, 0, uint32(120 * 365 days + 1));
         vm.expectRevert(ILivoFactory.InvalidTaxDuration.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(alice), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(_fs(alice), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
     }
 
     // ───────────── Extended durations — no restrictions beyond the 120-year cap ─────────────

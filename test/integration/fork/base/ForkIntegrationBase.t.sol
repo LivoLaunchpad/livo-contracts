@@ -19,7 +19,7 @@ import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
 import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 interface ISniperProtectionRead {
@@ -205,6 +205,21 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
     }
 
+    /// @dev Lift a legacy `TaxConfigInit` into the full `TaxConfigs` (decay fields zeroed) for the
+    ///      `previewTokenImplementation` view, which now takes `TaxConfigs`. Local copy because this base
+    ///      does not inherit the launchpad test base's `_toCfgs`.
+    function _toCfgs(TaxConfigInit memory legacy) internal pure returns (TaxConfigs memory) {
+        return TaxConfigs({
+            buyTaxBps: legacy.buyTaxBps,
+            sellTaxBps: legacy.sellTaxBps,
+            taxDurationSeconds: legacy.taxDurationSeconds,
+            startTaxFromLaunch: legacy.startTaxFromLaunch,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0
+        });
+    }
+
     function _antiSniperCfg(ForkIntegrationCaseLib.IntegrationCase memory c)
         internal
         pure
@@ -273,12 +288,12 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     ) internal view returns (address impl) {
         AntiSniperConfigs memory sniper = _antiSniperCfg(c);
         if (_isV4(c)) {
-            impl = factoryV4.previewTokenImplementation(fees, supply, _taxCfg(c), sniper);
+            impl = factoryV4.previewTokenImplementation(fees, supply, _toCfgs(_taxCfg(c)), sniper);
         } else {
             impl = factoryV2.previewTokenImplementation(
                 fees,
                 supply,
-                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false}),
+                _toCfgs(TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false})),
                 sniper
             );
         }

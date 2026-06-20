@@ -35,7 +35,7 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
             maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
         });
 
-        address impl = factoryV2.previewTokenImplementation(fees, supply, taxCfg, noSniper);
+        address impl = factoryV2.previewTokenImplementation(fees, supply, _toCfgs(taxCfg), noSniper);
         _assertCode(impl, "v2 tax impl code missing");
         bytes32 salt = _nextValidSalt(address(factoryV2), impl);
 

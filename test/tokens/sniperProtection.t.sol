@@ -10,7 +10,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 
@@ -669,8 +669,14 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 lpFeeBps: 100,
                 treasuryShareBps: 10_000
             }),
-            TaxConfigInit({
-                buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days), startTaxFromLaunch: true
+            TaxConfigs({
+                buyTaxBps: 100,
+                sellTaxBps: 100,
+                taxDurationSeconds: uint32(1 days),
+                startTaxFromLaunch: true,
+                buyTaxDecayStartBps: 0,
+                sellTaxDecayStartBps: 0,
+                taxDecayDuration: 0
             }),
             _defaultCfg()
         );
@@ -701,8 +707,14 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     lpFeeBps: 100,
                     treasuryShareBps: 10_000
                 }),
-                TaxConfigInit({
-                    buyTaxBps: 100, sellTaxBps: 100, taxDurationSeconds: uint32(1 days), startTaxFromLaunch: true
+                TaxConfigs({
+                    buyTaxBps: 100,
+                    sellTaxBps: 100,
+                    taxDurationSeconds: uint32(1 days),
+                    startTaxFromLaunch: true,
+                    buyTaxDecayStartBps: 0,
+                    sellTaxDecayStartBps: 0,
+                    taxDecayDuration: 0
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,

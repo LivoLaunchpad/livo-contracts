@@ -16,15 +16,15 @@
 | LivoSwapHook (0.5%)                          | `0x068241d20c59980AbEAeDED990d2441F05f5C0Cc` |
 | LivoQuoter                                   | `0xBd208C238Dd7895a7b94833063C2397F10E056f1` |
 | LivoToken (impl)                             | `0x1002488Af3EE59871339FCe0D171e1d32F62Aa77` |
-| LivoTaxableTokenUniV4 (impl)                 | `0x7b62882F7cD321EfA920D8e16784189dBa018ED7` |
+| LivoTaxableTokenUniV4 (impl)                 | `0xeD45762D25ce4CAE647bf27c8c9c6C7645498c09` |
 | LivoTokenSniperProtected (impl)              | `0x35eBA2610F707B48E0e4ae66E2a0a1535d7B11Fb` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0x53DDe4869E433C1e495149F991CF2ECE9653631A` |
-| LivoTaxableTokenUniV2 (impl)                 | `0xc63ba11BDC26786280B0C17A3B9B18Af791058A0` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0x0426703D6e435af0AcD76bA4a5c95ea18f35AACC` |
+| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xFfb90D2d55515314210Fb0cB4BE82A6645572103` |
+| LivoTaxableTokenUniV2 (impl)                 | `0x8DBdc48B8d9066983ad84be79B0382edCe390a04` |
+| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xcF816bA12a24cD9CC3297A6Ff7528cb66ea7e388` |
 | LivoFactoryUniV2Unified (proxy)              | `0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9` |
-| LivoFactoryUniV2Unified (impl)               | `0xcC28e75cAB3722E88dDC52B0EF024bb2Ae4E422F` |
+| LivoFactoryUniV2Unified (impl)               | `0xaB56c5f8E111f6420277063E2E406Fd25159db97` |
 | LivoFactoryUniV4Unified (proxy)              | `0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565` |
-| LivoFactoryUniV4Unified (impl)               | `0xA2Da2da2f1Ae3F2af0787C57f9a3A21be4fc98b4` |
+| LivoFactoryUniV4Unified (impl)               | `0x8B770A483894ce7C1Eb91f7E1a33Bb040Fd4fA1C` |
 | LivoCreatorVaultFactory (proxy)              | `0xA06f07bf255cB63c694339F172f9459f3BF015E7` |
 | LivoCreatorVaultFactory (impl)               | `0x4b387716EbA7498Eb757467A876FAA98733A329e` |
 | LivoCreatorVault (impl)                      | `0xcad4C889e0897BF3fdeE367F402F728342651603` |

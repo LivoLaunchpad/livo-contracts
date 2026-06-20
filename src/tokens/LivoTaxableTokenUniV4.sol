@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
 import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
@@ -34,7 +34,7 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken {
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param params Shared token initialization parameters
     /// @param taxCfg Tax configuration (buy/sell bps and post-graduation tax duration)
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
         external
         virtual
         initializer
@@ -47,7 +47,7 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken {
     ///      have set `pair == UNIV4_POOL_MANAGER` during `LivoToken._initializeLivoToken`; if not,
     ///      revert and roll back any earlier writes (storage updates already performed are
     ///      reverted with the rest of the tx, so ordering vs `_initializeTaxConfig` is irrelevant).
-    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigInit memory taxCfg)
+    function _initializeLivoTaxableToken(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
         internal
         override
         onlyInitializing
