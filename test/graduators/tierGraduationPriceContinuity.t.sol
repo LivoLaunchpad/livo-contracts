@@ -51,7 +51,6 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         TAX, // taxable token
         SNIPER, // sniper-protected token
         TAX_SNIPER // taxable + sniper-protected
-
     }
 
     /// @dev The seven supported creator-vault levels: no-vault plus 5%..30% in 5% steps.
@@ -273,8 +272,9 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
 
     /// @dev "[V4 SMALL 1500bps tax] " prefix so a looped assertion names the exact failing cell.
     function _ctx(bool isV4, LiquidityTier tier, uint256 bps, Flavor f) internal pure returns (string memory) {
-        return string.concat(
-            "[", isV4 ? "V4 " : "V2 ", _tierName(tier), " ", vm.toString(bps), "bps ", _flavorName(f), "] "
-        );
+        return
+            string.concat(
+                "[", isV4 ? "V4 " : "V2 ", _tierName(tier), " ", vm.toString(bps), "bps ", _flavorName(f), "] "
+            );
     }
 }
