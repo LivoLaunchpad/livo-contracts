@@ -9,11 +9,11 @@ pragma solidity 0.8.28;
 ///         the curve steepness are identical across tiers — only the absolute price scale and the
 ///         post-graduation pool depth differ.
 ///
-/// @dev    `DEFAULT` is intentionally the zero value: a zero-initialised / legacy create path
-///         (e.g. the positional `createToken` overloads) resolves to the existing default tier with
-///         no behaviour change.
+/// @dev    Tiers are ordered by pool depth (SMALL < DEFAULT < LARGE), so `SMALL` is the zero value.
+///         Callers must set `liquidityTier` explicitly: a zero-initialised field resolves to `SMALL`,
+///         not `DEFAULT`. The legacy positional `createToken` overloads pass `DEFAULT` explicitly.
 enum LiquidityTier {
-    DEFAULT, // 3.5 ETH liquidity, 12.25 ETH graduation mcap (the original, deployed system)
     SMALL, // 1.75 ETH liquidity, 6.125 ETH graduation mcap
+    DEFAULT, // 3.5 ETH liquidity, 12.25 ETH graduation mcap (the original, deployed system)
     LARGE // 7.0 ETH liquidity, 24.5 ETH graduation mcap
 }

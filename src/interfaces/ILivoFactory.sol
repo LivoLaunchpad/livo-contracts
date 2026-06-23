@@ -66,8 +66,8 @@ interface ILivoFactory {
     ///         that define the token itself (name, symbol, deterministic salt) and its fee receivers.
     ///         `feeShares` must be non-empty — every token has at least one receiver.
     /// @dev `liquidityTier` selects the post-graduation pool depth (and the tier-specific bonding
-    ///      curve + graduation marketcap). Defaults to `LiquidityTier.DEFAULT` (the zero value), which
-    ///      the legacy positional `createToken` overloads always use.
+    ///      curve + graduation marketcap). The zero value is `LiquidityTier.SMALL`, so set this
+    ///      explicitly; the legacy positional `createToken` overloads pass `LiquidityTier.DEFAULT`.
     struct TokenSetup {
         string name;
         string symbol;
