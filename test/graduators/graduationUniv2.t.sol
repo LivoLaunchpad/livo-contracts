@@ -676,8 +676,7 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
             name: "Decay",
             symbol: "DCY",
             salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
+            feeShares: _fs(creator)
         });
         vm.prank(creator);
         testToken = factoryV2Unified.createToken(

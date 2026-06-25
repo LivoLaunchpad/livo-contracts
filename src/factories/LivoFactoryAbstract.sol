@@ -370,6 +370,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      (~100–250 gas/deploy).
     function _createToken(
         TokenSetup memory tokenSetup,
+        LiquidityTier liquidityTier,
         address tokenOwner,
         address graduator,
         SupplyShare[] calldata buyOnDeployShares,
@@ -385,7 +386,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         // is minted to this factory by the token initializer; everything else (`TOTAL_SUPPLY -
         // vaultAllocation`) is minted to the launchpad and sold on the resolved curve.
         (uint256 totalLockedInVaultsBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
-        ILivoBondingCurve bondingCurve = _resolveBondingCurve(tokenSetup.liquidityTier, totalLockedInVaultsBps);
+        ILivoBondingCurve bondingCurve = _resolveBondingCurve(liquidityTier, totalLockedInVaultsBps);
 
         token = _dispatchAndInitialize(
             tokenSetup.name,

@@ -77,7 +77,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
     {
         ILivoFactory.CreatorVault[] memory vaults = new ILivoFactory.CreatorVault[](1);
         vaults[0] = ILivoFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "Tier",
             symbol: "TIER",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
@@ -87,7 +87,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         if (value > 0) vm.deal(creator, value);
         vm.prank(creator);
         token = factoryV4Unified.createToken{value: value}(
-            setup, _emptyTaxCfg(), _cfg(), ss, _emptyAntiSniperCfg(), vaults
+            setup, _toCfgs(_emptyTaxCfg()), _cfg(), ss, _emptyAntiSniperCfg(), vaults
         );
     }
 

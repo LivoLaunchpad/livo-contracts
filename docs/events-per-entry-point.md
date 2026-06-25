@@ -58,11 +58,11 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 ## 1. `createToken` — unified factory paths
 
 Each unified factory exposes three `createToken` overloads with different selectors:
-- **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults. Takes the legacy `TaxConfigInit` (static tax only).
-- **Struct-based with vaults, legacy tax** (kept for backwards compatibility): `(TokenSetup, TaxConfigInit, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults. Takes the legacy `TaxConfigInit` (static tax only).
-- **Struct-based with vaults, full tax** (current): the same shape but with `TaxConfigs` in place of `TaxConfigInit` — the superset struct that adds the three launch-tax-decay fields. This is the only overload that can configure launch-tax decay.
+- **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults. Takes the legacy `TaxConfigInit` (static tax only) and always uses `LiquidityTier.DEFAULT`.
+- **Struct-based, tier-less** (tmp — current frontend ABI): `(TokenSetup, TaxConfigs, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults. Takes the full `TaxConfigs` (static tax + the three launch-tax-decay fields). Always uses `LiquidityTier.DEFAULT`. The `TokenSetup` struct is kept tier-less so existing frontends keep their ABI; it is removed once the frontend adopts liquidity tiers.
+- **Struct-based, tiered** (current): the same shape but with `TokenSetupTiered` in place of `TokenSetup` — the superset identity struct that adds the `liquidityTier` field selecting the post-graduation pool depth. Also takes the full `TaxConfigs`.
 
-The two `TaxConfigInit` overloads internally lift it into a `TaxConfigs` (decay fields zeroed) before dispatch, so all three share the same internal flow and emit the events listed below in the same order; only the struct-based-with-vaults overloads can emit the creator-vault events in §1 step 4b.
+The legacy positional overload internally lifts its `TaxConfigInit` into a `TaxConfigs` (decay fields zeroed) before dispatch, so all three share the same internal flow and emit the events listed below in the same order; only the two struct-based overloads can emit the creator-vault events in §1 step 4b.
 
 ### 1.1 Common sequence
 

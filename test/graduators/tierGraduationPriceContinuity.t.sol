@@ -193,7 +193,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
                 ILivoFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
         }
         address factory = isV4 ? address(factoryV4Unified) : address(factoryV2Unified);
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "Tier",
             symbol: "TIER",
             salt: _nextValidSalt(factory, _implFor(isV4, flavor)),
@@ -204,9 +204,9 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         AntiSniperConfigs memory sniperCfg = _sniperCfgFor(flavor);
         vm.prank(creator);
         if (isV4) {
-            token = factoryV4Unified.createToken(setup, taxCfg, _cfg(), _noSs(), sniperCfg, vaults);
+            token = factoryV4Unified.createToken(setup, _toCfgs(taxCfg), _cfg(), _noSs(), sniperCfg, vaults);
         } else {
-            token = factoryV2Unified.createToken(setup, taxCfg, _noSs(), sniperCfg, vaults);
+            token = factoryV2Unified.createToken(setup, _toCfgs(taxCfg), _noSs(), sniperCfg, vaults);
         }
     }
 

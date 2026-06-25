@@ -97,8 +97,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             name: "DecayToken",
             symbol: "DCY",
             salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
+            feeShares: _fs(creator)
         });
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(

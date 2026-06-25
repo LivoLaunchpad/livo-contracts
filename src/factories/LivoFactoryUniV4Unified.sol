@@ -127,13 +127,12 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         // params) before introducing the `taxConfigs` memory local, to keep the stack shallow enough
         // to compile without `via_ir`.
         // Legacy overload always uses the DEFAULT liquidity tier + the 100-bps graduator.
-        TokenSetup memory tokenSetup = TokenSetup({
-            name: name, symbol: symbol, salt: salt, feeShares: feeReceivers, liquidityTier: LiquidityTier.DEFAULT
-        });
+        TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxCfg);
         _validateTotalFee(100, taxConfigs);
         token = _createToken(
             tokenSetup,
+            LiquidityTier.DEFAULT,
             renounceOwnership_ ? address(0) : msg.sender,
             address(GRADUATOR),
             supplyShares,
@@ -144,39 +143,12 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         emit LpFeeBpsSet(token, 100);
     }
 
-    /// @notice Struct-based overload taking a `creatorVaults` array (pass empty for none) and the legacy
-    ///         `TaxConfigInit` (static tax only). `univ4Configs.lpFeeBps` selects which graduator/hook pair
-    ///         to use (100 or 50).
-    /// @dev Kept with an unchanged signature for backwards compatibility. For the launch-tax decay, use
-    ///      the `TaxConfigs` overload below; this one lifts `TaxConfigInit` into a `TaxConfigs` with the
-    ///      decay fields zeroed.
-    function createToken(
-        TokenSetup calldata tokenSetup,
-        TaxConfigInit calldata taxConfigs,
-        UniV4Configs calldata univ4Configs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults
-    ) external payable returns (address token) {
-        TaxConfigs memory fullTaxConfigs = _toTaxConfigs(taxConfigs);
-        _validateUniv4Configs(univ4Configs);
-        _validateTotalFee(univ4Configs.lpFeeBps, fullTaxConfigs);
-        token = _createToken(
-            tokenSetup,
-            univ4Configs.renounceOwnership ? address(0) : msg.sender,
-            _resolveGraduator(univ4Configs.lpFeeBps, tokenSetup.liquidityTier),
-            buyOnDeployShares,
-            fullTaxConfigs,
-            antiSniperConfigs,
-            creatorVaults
-        );
-        emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
-    }
-
-    /// @notice Struct-based overload taking the full `TaxConfigs` (static tax + optional linear launch-tax
-    ///         decay) and a `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects
-    ///         which graduator/hook pair to use (100 or 50). This is the current recommended overload and
-    ///         the only one that exposes launch-tax decay.
+    /// @notice TMP struct-based overload: full `TaxConfigs` (static tax + optional launch-tax decay) and a
+    ///         `creatorVaults` array (pass empty for none). `univ4Configs.lpFeeBps` selects the graduator/hook
+    ///         pair (100 or 50). Always uses `LiquidityTier.DEFAULT`.
+    /// @dev TEMPORARY: the tier-less overload existing frontends call while the liquidity-tier UI is not
+    ///      ready. Removed once the frontend adopts tiers; use the `TokenSetupTiered` overload below to
+    ///      select a tier.
     function createToken(
         TokenSetup calldata tokenSetup,
         TaxConfigs calldata taxConfigs,
@@ -187,10 +159,49 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         _validateUniv4Configs(univ4Configs);
         _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
-        address tokenOwner = univ4Configs.renounceOwnership ? address(0) : msg.sender;
-        address graduator = _resolveGraduator(univ4Configs.lpFeeBps, tokenSetup.liquidityTier);
+        // Inline `tokenOwner`/`graduator` (rather than locals) to keep the stack shallow enough to compile
+        // without `via_ir`.
         token = _createToken(
-            tokenSetup, tokenOwner, graduator, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
+            tokenSetup,
+            LiquidityTier.DEFAULT,
+            univ4Configs.renounceOwnership ? address(0) : msg.sender,
+            _resolveGraduator(univ4Configs.lpFeeBps, LiquidityTier.DEFAULT),
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
+        );
+        emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
+    }
+
+    /// @notice Struct-based overload taking the full `TaxConfigs` (static tax + optional linear launch-tax
+    ///         decay), a `creatorVaults` array (pass empty for none) and a `TokenSetupTiered` selecting the
+    ///         liquidity tier. `univ4Configs.lpFeeBps` selects which graduator/hook pair to use (100 or 50).
+    ///         This is the current recommended overload.
+    function createToken(
+        TokenSetupTiered calldata tokenSetup,
+        TaxConfigs calldata taxConfigs,
+        UniV4Configs calldata univ4Configs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults
+    ) external payable returns (address token) {
+        _validateUniv4Configs(univ4Configs);
+        _validateTotalFee(univ4Configs.lpFeeBps, taxConfigs);
+        // Inline `tokenOwner`/`graduator` (rather than locals) to keep the stack shallow enough to compile
+        // without `via_ir` — the extra `base` build pushes this overload over the limit otherwise.
+        TokenSetup memory base = TokenSetup({
+            name: tokenSetup.name, symbol: tokenSetup.symbol, salt: tokenSetup.salt, feeShares: tokenSetup.feeShares
+        });
+        token = _createToken(
+            base,
+            tokenSetup.liquidityTier,
+            univ4Configs.renounceOwnership ? address(0) : msg.sender,
+            _resolveGraduator(univ4Configs.lpFeeBps, tokenSetup.liquidityTier),
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
         );
         emit LpFeeBpsSet(token, univ4Configs.lpFeeBps);
     }

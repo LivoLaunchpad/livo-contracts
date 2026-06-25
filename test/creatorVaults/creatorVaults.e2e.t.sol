@@ -48,13 +48,13 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "Vault",
             symbol: "VLT",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
+            feeShares: _fs(creator)
         });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
         vm.prank(creator);
-        token = factoryV4Unified.createToken(setup, _emptyTaxCfg(), cfg, _noSs(), _emptyAntiSniperCfg(), vaults);
+        token =
+            factoryV4Unified.createToken(setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), vaults);
     }
 
     /// @dev Creates a token and returns the (single) deployed vault address by scanning logs.
@@ -223,8 +223,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "VaultSniper",
             symbol: "VS",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoTokenSniper)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
+            feeShares: _fs(creator)
         });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
@@ -238,7 +237,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.recordLogs();
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            setup, _emptyTaxCfg(), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days))
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days))
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
         address vault;
@@ -256,15 +255,14 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "VaultTaxV2",
             symbol: "VTX",
             salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
+            feeShares: _fs(creator)
         });
 
         vm.recordLogs();
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
             setup,
-            _taxCfg(300, 300, uint32(7 days)),
+            _toCfgs(_taxCfg(300, 300, uint32(7 days))),
             _noSs(),
             _emptyAntiSniperCfg(),
             _one(_vault(vaultOwner, 2000, 0, 1 days))
@@ -391,14 +389,13 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             name: "VQ",
             symbol: "VQ",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
+            feeShares: _fs(creator)
         });
 
         vm.deal(creator, ethVaultAware);
         vm.prank(creator);
         address token = factoryV4Unified.createToken{value: ethVaultAware}(
-            setup, _emptyTaxCfg(), cfg, _ss(creator), _emptyAntiSniperCfg(), vaults
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _ss(creator), _emptyAntiSniperCfg(), vaults
         );
 
         // deployer (sole supply-share recipient) receives ~tokenAmount, never less than quoted
