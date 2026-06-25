@@ -86,26 +86,26 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ILivoBondingCurve public immutable VAULT_CURVE_25;
     ILivoBondingCurve public immutable VAULT_CURVE_30;
 
-    /// @notice SMALL-tier curves (1.75 ETH liquidity, 6.125 ETH graduation mcap): the no-vault curve
+    /// @notice THIN-tier curves (1.75 ETH liquidity, 6.125 ETH graduation mcap): the no-vault curve
     ///         plus the six vault curves. Same graduation invariants as the rest of the tier; only the
     ///         starting market cap is relaxed as supply is locked.
-    ILivoBondingCurve public immutable SMALL_CURVE_BASE;
-    ILivoBondingCurve public immutable SMALL_VAULT_CURVE_5;
-    ILivoBondingCurve public immutable SMALL_VAULT_CURVE_10;
-    ILivoBondingCurve public immutable SMALL_VAULT_CURVE_15;
-    ILivoBondingCurve public immutable SMALL_VAULT_CURVE_20;
-    ILivoBondingCurve public immutable SMALL_VAULT_CURVE_25;
-    ILivoBondingCurve public immutable SMALL_VAULT_CURVE_30;
+    ILivoBondingCurve public immutable THIN_CURVE_BASE;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_5;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_10;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_15;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_20;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_25;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_30;
 
-    /// @notice LARGE-tier curves (7.0 ETH liquidity, 24.5 ETH graduation mcap): the no-vault curve
+    /// @notice THICK-tier curves (7.0 ETH liquidity, 24.5 ETH graduation mcap): the no-vault curve
     ///         plus the six vault curves.
-    ILivoBondingCurve public immutable LARGE_CURVE_BASE;
-    ILivoBondingCurve public immutable LARGE_VAULT_CURVE_5;
-    ILivoBondingCurve public immutable LARGE_VAULT_CURVE_10;
-    ILivoBondingCurve public immutable LARGE_VAULT_CURVE_15;
-    ILivoBondingCurve public immutable LARGE_VAULT_CURVE_20;
-    ILivoBondingCurve public immutable LARGE_VAULT_CURVE_25;
-    ILivoBondingCurve public immutable LARGE_VAULT_CURVE_30;
+    ILivoBondingCurve public immutable THICK_CURVE_BASE;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_5;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_10;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_15;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_20;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_25;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_30;
 
     /// @notice Cap on the aggregate fee a swapper pays (LP fee + tax), in basis points. Fixed at 5%.
     ///         Enforced per call by `_validateTotalFee`. The tax headroom is venue-dependent because
@@ -140,7 +140,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @param creatorVaultFactory Factory that deploys creator-vault clones
     /// @param vaultBondingCurves The six DEFAULT-tier allocation-specific bonding curves, ordered
     ///        [5%, 10%, 15%, 20%, 25%, 30%]
-    /// @param tierConfig The SMALL + LARGE tier curve sets (`small`/`large`, each `base` + `vaults`).
+    /// @param tierConfig The THIN + THICK tier curve sets (`thin`/`thick`, each `base` + `vaults`).
     constructor(
         address launchpad,
         TokenImpls memory impls,
@@ -167,21 +167,21 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         VAULT_CURVE_25 = ILivoBondingCurve(vaultBondingCurves[4]);
         VAULT_CURVE_30 = ILivoBondingCurve(vaultBondingCurves[5]);
 
-        SMALL_CURVE_BASE = ILivoBondingCurve(tierConfig.small.base);
-        SMALL_VAULT_CURVE_5 = ILivoBondingCurve(tierConfig.small.vaults[0]);
-        SMALL_VAULT_CURVE_10 = ILivoBondingCurve(tierConfig.small.vaults[1]);
-        SMALL_VAULT_CURVE_15 = ILivoBondingCurve(tierConfig.small.vaults[2]);
-        SMALL_VAULT_CURVE_20 = ILivoBondingCurve(tierConfig.small.vaults[3]);
-        SMALL_VAULT_CURVE_25 = ILivoBondingCurve(tierConfig.small.vaults[4]);
-        SMALL_VAULT_CURVE_30 = ILivoBondingCurve(tierConfig.small.vaults[5]);
+        THIN_CURVE_BASE = ILivoBondingCurve(tierConfig.thin.base);
+        THIN_VAULT_CURVE_5 = ILivoBondingCurve(tierConfig.thin.vaults[0]);
+        THIN_VAULT_CURVE_10 = ILivoBondingCurve(tierConfig.thin.vaults[1]);
+        THIN_VAULT_CURVE_15 = ILivoBondingCurve(tierConfig.thin.vaults[2]);
+        THIN_VAULT_CURVE_20 = ILivoBondingCurve(tierConfig.thin.vaults[3]);
+        THIN_VAULT_CURVE_25 = ILivoBondingCurve(tierConfig.thin.vaults[4]);
+        THIN_VAULT_CURVE_30 = ILivoBondingCurve(tierConfig.thin.vaults[5]);
 
-        LARGE_CURVE_BASE = ILivoBondingCurve(tierConfig.large.base);
-        LARGE_VAULT_CURVE_5 = ILivoBondingCurve(tierConfig.large.vaults[0]);
-        LARGE_VAULT_CURVE_10 = ILivoBondingCurve(tierConfig.large.vaults[1]);
-        LARGE_VAULT_CURVE_15 = ILivoBondingCurve(tierConfig.large.vaults[2]);
-        LARGE_VAULT_CURVE_20 = ILivoBondingCurve(tierConfig.large.vaults[3]);
-        LARGE_VAULT_CURVE_25 = ILivoBondingCurve(tierConfig.large.vaults[4]);
-        LARGE_VAULT_CURVE_30 = ILivoBondingCurve(tierConfig.large.vaults[5]);
+        THICK_CURVE_BASE = ILivoBondingCurve(tierConfig.thick.base);
+        THICK_VAULT_CURVE_5 = ILivoBondingCurve(tierConfig.thick.vaults[0]);
+        THICK_VAULT_CURVE_10 = ILivoBondingCurve(tierConfig.thick.vaults[1]);
+        THICK_VAULT_CURVE_15 = ILivoBondingCurve(tierConfig.thick.vaults[2]);
+        THICK_VAULT_CURVE_20 = ILivoBondingCurve(tierConfig.thick.vaults[3]);
+        THICK_VAULT_CURVE_25 = ILivoBondingCurve(tierConfig.thick.vaults[4]);
+        THICK_VAULT_CURVE_30 = ILivoBondingCurve(tierConfig.thick.vaults[5]);
         _disableInitializers();
     }
 
@@ -452,22 +452,22 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             if (totalBps == 2000) return VAULT_CURVE_20;
             if (totalBps == 2500) return VAULT_CURVE_25;
             if (totalBps == 3000) return VAULT_CURVE_30;
-        } else if (tier == LiquidityTier.SMALL) {
-            if (totalBps == 0) return SMALL_CURVE_BASE;
-            if (totalBps == 500) return SMALL_VAULT_CURVE_5;
-            if (totalBps == 1000) return SMALL_VAULT_CURVE_10;
-            if (totalBps == 1500) return SMALL_VAULT_CURVE_15;
-            if (totalBps == 2000) return SMALL_VAULT_CURVE_20;
-            if (totalBps == 2500) return SMALL_VAULT_CURVE_25;
-            if (totalBps == 3000) return SMALL_VAULT_CURVE_30;
-        } else if (tier == LiquidityTier.LARGE) {
-            if (totalBps == 0) return LARGE_CURVE_BASE;
-            if (totalBps == 500) return LARGE_VAULT_CURVE_5;
-            if (totalBps == 1000) return LARGE_VAULT_CURVE_10;
-            if (totalBps == 1500) return LARGE_VAULT_CURVE_15;
-            if (totalBps == 2000) return LARGE_VAULT_CURVE_20;
-            if (totalBps == 2500) return LARGE_VAULT_CURVE_25;
-            if (totalBps == 3000) return LARGE_VAULT_CURVE_30;
+        } else if (tier == LiquidityTier.THIN) {
+            if (totalBps == 0) return THIN_CURVE_BASE;
+            if (totalBps == 500) return THIN_VAULT_CURVE_5;
+            if (totalBps == 1000) return THIN_VAULT_CURVE_10;
+            if (totalBps == 1500) return THIN_VAULT_CURVE_15;
+            if (totalBps == 2000) return THIN_VAULT_CURVE_20;
+            if (totalBps == 2500) return THIN_VAULT_CURVE_25;
+            if (totalBps == 3000) return THIN_VAULT_CURVE_30;
+        } else if (tier == LiquidityTier.THICK) {
+            if (totalBps == 0) return THICK_CURVE_BASE;
+            if (totalBps == 500) return THICK_VAULT_CURVE_5;
+            if (totalBps == 1000) return THICK_VAULT_CURVE_10;
+            if (totalBps == 1500) return THICK_VAULT_CURVE_15;
+            if (totalBps == 2000) return THICK_VAULT_CURVE_20;
+            if (totalBps == 2500) return THICK_VAULT_CURVE_25;
+            if (totalBps == 3000) return THICK_VAULT_CURVE_30;
         }
         revert InvalidCreatorVault();
     }

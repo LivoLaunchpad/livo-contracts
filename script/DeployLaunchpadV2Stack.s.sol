@@ -113,7 +113,7 @@ contract DeployLaunchpadV2Stack is Script {
     address internal constant FOUNDRY_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     /// @dev DEFAULT-tier graduation price for the V4 graduators (12.25 ETH mcap). From
-    ///      `simulations/script/uniswapV4Settings.py 12250000000`. SMALL/LARGE tiers use their own.
+    ///      `simulations/script/uniswapV4Settings.py 12250000000`. THIN/THICK tiers use their own.
     uint160 internal constant DEFAULT_GRAD_SQRT_PRICE_X96 = 715832709642994126662528799866880;
 
     /// @dev Vanity suffix for the launchpad address: 0x1110 (same as v1).

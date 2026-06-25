@@ -8,19 +8,19 @@ interface ILivoFactory {
 
     /// @notice Constructor-only bundle of the configurable bonding curves for a single liquidity tier:
     ///         the no-vault (0%) curve plus the six vault curves (5%,10%,15%,20%,25%,30%). Passed to
-    ///         the factory constructor for the SMALL and LARGE tiers (DEFAULT reuses the deployed base
+    ///         the factory constructor for the THIN and THICK tiers (DEFAULT reuses the deployed base
     ///         curve + the six existing vault curves).
     struct TierCurves {
         address base;
         address[6] vaults;
     }
 
-    /// @notice Constructor-only bundle of the SMALL + LARGE tier curve sets. Grouped into one struct
+    /// @notice Constructor-only bundle of the THIN + THICK tier curve sets. Grouped into one struct
     ///         (rather than two `TierCurves` params) to keep the factory constructors' parameter count
     ///         — and thus their ABI-decode stack depth — within limits without `via_ir`.
     struct LiquidityTierConfig {
-        TierCurves small;
-        TierCurves large;
+        TierCurves thin;
+        TierCurves thick;
     }
 
     /// @notice Constructor-only bundle of the four token implementations the factory clones. Grouped
@@ -66,7 +66,7 @@ interface ILivoFactory {
     ///         that define the token itself (name, symbol, deterministic salt) and its fee receivers.
     ///         `feeShares` must be non-empty — every token has at least one receiver.
     /// @dev `liquidityTier` selects the post-graduation pool depth (and the tier-specific bonding
-    ///      curve + graduation marketcap). The zero value is `LiquidityTier.SMALL`, so set this
+    ///      curve + graduation marketcap). The zero value is `LiquidityTier.THIN`, so set this
     ///      explicitly; the legacy positional `createToken` overloads pass `LiquidityTier.DEFAULT`.
     struct TokenSetup {
         string name;

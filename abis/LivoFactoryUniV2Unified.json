@@ -65,7 +65,7 @@
         "internalType": "struct ILivoFactory.LiquidityTierConfig",
         "components": [
           {
-            "name": "small",
+            "name": "thin",
             "type": "tuple",
             "internalType": "struct ILivoFactory.TierCurves",
             "components": [
@@ -82,7 +82,7 @@
             ]
           },
           {
-            "name": "large",
+            "name": "thick",
             "type": "tuple",
             "internalType": "struct ILivoFactory.TierCurves",
             "components": [
@@ -151,97 +151,6 @@
         "name": "",
         "type": "address",
         "internalType": "contract ILivoGraduator"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_CURVE_BASE",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_VAULT_CURVE_10",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_VAULT_CURVE_15",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_VAULT_CURVE_20",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_VAULT_CURVE_25",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_VAULT_CURVE_30",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "LARGE_VAULT_CURVE_5",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ILivoBondingCurve"
       }
     ],
     "stateMutability": "view"
@@ -352,7 +261,7 @@
   },
   {
     "type": "function",
-    "name": "SMALL_CURVE_BASE",
+    "name": "THICK_CURVE_BASE",
     "inputs": [],
     "outputs": [
       {
@@ -365,7 +274,7 @@
   },
   {
     "type": "function",
-    "name": "SMALL_VAULT_CURVE_10",
+    "name": "THICK_VAULT_CURVE_10",
     "inputs": [],
     "outputs": [
       {
@@ -378,7 +287,7 @@
   },
   {
     "type": "function",
-    "name": "SMALL_VAULT_CURVE_15",
+    "name": "THICK_VAULT_CURVE_15",
     "inputs": [],
     "outputs": [
       {
@@ -391,7 +300,7 @@
   },
   {
     "type": "function",
-    "name": "SMALL_VAULT_CURVE_20",
+    "name": "THICK_VAULT_CURVE_20",
     "inputs": [],
     "outputs": [
       {
@@ -404,7 +313,7 @@
   },
   {
     "type": "function",
-    "name": "SMALL_VAULT_CURVE_25",
+    "name": "THICK_VAULT_CURVE_25",
     "inputs": [],
     "outputs": [
       {
@@ -417,7 +326,7 @@
   },
   {
     "type": "function",
-    "name": "SMALL_VAULT_CURVE_30",
+    "name": "THICK_VAULT_CURVE_30",
     "inputs": [],
     "outputs": [
       {
@@ -430,7 +339,98 @@
   },
   {
     "type": "function",
-    "name": "SMALL_VAULT_CURVE_5",
+    "name": "THICK_VAULT_CURVE_5",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_CURVE_BASE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_10",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_15",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_20",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_25",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_30",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_5",
     "inputs": [],
     "outputs": [
       {

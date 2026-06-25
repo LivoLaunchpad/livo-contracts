@@ -49,7 +49,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Starting price when graduation occurs, which must be inside the liquidity range.
     /// @dev Per liquidity tier, set at deploy (the graduation tick is derived from it on-chain).
     ///      DEFAULT: 715832709642994126662528799866880 (12.25 ETH mcap, 12250000000 wei/token).
-    ///      SMALL: 1012340326367404053977557838594048 (6.125 ETH mcap). LARGE:
+    ///      THIN: 1012340326367404053977557838594048 (6.125 ETH mcap). THICK:
     ///      506170163183702026988778919297024 (24.5 ETH mcap).
     uint160 immutable SQRT_PRICEX96_GRADUATION;
 

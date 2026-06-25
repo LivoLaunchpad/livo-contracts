@@ -10,7 +10,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TokenState} from "src/types/tokenData.sol";
 
 /// @notice Integrated lifecycle matrix (Uniswap V4 fork) across the full (liquidity tier x creator-vault
-///         supply) space: the 3 tiers {SMALL, DEFAULT, LARGE} x the 6 vault levels {5,10,15,20,25,30%}.
+///         supply) space: the 3 tiers {THIN, DEFAULT, THICK} x the 6 vault levels {5,10,15,20,25,30%}.
 ///         For every cell it exercises the six deployer-facing scenarios end-to-end through the real
 ///         factory + launchpad + V4 graduator:
 ///           1. create                          -> token wired to the tier+vault curve and tier graduator
@@ -26,7 +26,7 @@ import {TokenState} from "src/types/tokenData.sol";
 /// @dev    Tests sweep per-tier (one public test per tier per scenario) and loop the 6 vault levels
 ///         inside, so a failure isolates to a tier+scenario and the assert message names the exact cell.
 ///         Tiers are referenced by name only (never by enum index): the enum is ordered by pool depth
-///         (SMALL=0), so positional assumptions would silently target the wrong tier.
+///         (THIN=0), so positional assumptions would silently target the wrong tier.
 contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev The six supported creator-vault supply levels (5%..30% in 5% steps).
     uint256[6] BPS = [uint256(500), 1000, 1500, 2000, 2500, 3000];
@@ -34,28 +34,28 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
     // ───────────────────────── expected wiring per tier ─────────────────────────
 
     function _expectedThreshold(LiquidityTier tier) internal pure returns (uint256) {
-        if (tier == LiquidityTier.SMALL) return 2.0 ether;
+        if (tier == LiquidityTier.THIN) return 2.0 ether;
         if (tier == LiquidityTier.DEFAULT) return 3.75 ether;
-        return 7.25 ether; // LARGE
+        return 7.25 ether; // THICK
     }
 
     function _expectedGraduator(LiquidityTier tier) internal view returns (address) {
-        if (tier == LiquidityTier.SMALL) return address(graduatorV4Small);
+        if (tier == LiquidityTier.THIN) return address(graduatorV4Thin);
         if (tier == LiquidityTier.DEFAULT) return address(graduatorV4);
-        return address(graduatorV4Large); // LARGE
+        return address(graduatorV4Thick); // THICK
     }
 
     /// @dev The configurable curve a (tier, vault-level) token must be wired to. `bpsIdx` indexes `BPS`.
     function _expectedCurve(LiquidityTier tier, uint256 bpsIdx) internal view returns (address) {
-        if (tier == LiquidityTier.SMALL) return smallCurves.vaults[bpsIdx];
-        if (tier == LiquidityTier.LARGE) return largeCurves.vaults[bpsIdx];
+        if (tier == LiquidityTier.THIN) return thinCurves.vaults[bpsIdx];
+        if (tier == LiquidityTier.THICK) return thickCurves.vaults[bpsIdx];
         return vaultCurves[bpsIdx]; // DEFAULT
     }
 
     function _tierName(LiquidityTier tier) internal pure returns (string memory) {
-        if (tier == LiquidityTier.SMALL) return "SMALL";
+        if (tier == LiquidityTier.THIN) return "THIN";
         if (tier == LiquidityTier.DEFAULT) return "DEFAULT";
-        return "LARGE";
+        return "THICK";
     }
 
     /// @dev "[TIER NbpsBps] " prefix so a looped assertion names the exact failing cell.
@@ -139,7 +139,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     /// @dev Scenarios 4/5: a normal launchpad buy returns tokens; selling them all back returns eth that
     ///      matches the launchpad quote and never exceeds the eth deposited. Stays well below the lowest
-    ///      tier threshold (SMALL = 2.0 ETH) so the token does not graduate mid-test.
+    ///      tier threshold (THIN = 2.0 ETH) so the token does not graduate mid-test.
     function _sweepBuyThenSell(LiquidityTier tier) internal {
         uint256 buyValue = 0.5 ether;
         for (uint256 i; i < 6; ++i) {
@@ -190,31 +190,31 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     // ───────────────────────── scenario 1: create / wiring ─────────────────────────
 
-    function test_createWiring_small() public {
-        _sweepCreateWiring(LiquidityTier.SMALL);
+    function test_createWiring_thin() public {
+        _sweepCreateWiring(LiquidityTier.THIN);
     }
 
     function test_createWiring_default() public {
         _sweepCreateWiring(LiquidityTier.DEFAULT);
     }
 
-    function test_createWiring_large() public {
-        _sweepCreateWiring(LiquidityTier.LARGE);
+    function test_createWiring_thick() public {
+        _sweepCreateWiring(LiquidityTier.THICK);
     }
 
     // ───────────────────────── scenario 2: create + creator buy (small) ─────────────────────────
     // 1% of supply — a modest deploy buy, well under the 10% cap.
 
-    function test_creatorBuySmall_small() public {
-        _sweepCreatorBuy(LiquidityTier.SMALL, TOTAL_SUPPLY / 100);
+    function test_creatorBuySmall_thin() public {
+        _sweepCreatorBuy(LiquidityTier.THIN, TOTAL_SUPPLY / 100);
     }
 
     function test_creatorBuySmall_default() public {
         _sweepCreatorBuy(LiquidityTier.DEFAULT, TOTAL_SUPPLY / 100);
     }
 
-    function test_creatorBuySmall_large() public {
-        _sweepCreatorBuy(LiquidityTier.LARGE, TOTAL_SUPPLY / 100);
+    function test_creatorBuySmall_thick() public {
+        _sweepCreatorBuy(LiquidityTier.THICK, TOTAL_SUPPLY / 100);
     }
 
     // ───────────────────────── scenario 3: create + creator buy (max quoted) ─────────────────────────
@@ -224,43 +224,43 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         return TOTAL_SUPPLY * factoryV4Unified.maxBuyOnDeployBps() / 10_000;
     }
 
-    function test_creatorBuyMax_small() public {
-        _sweepCreatorBuy(LiquidityTier.SMALL, _maxBuyTokens());
+    function test_creatorBuyMax_thin() public {
+        _sweepCreatorBuy(LiquidityTier.THIN, _maxBuyTokens());
     }
 
     function test_creatorBuyMax_default() public {
         _sweepCreatorBuy(LiquidityTier.DEFAULT, _maxBuyTokens());
     }
 
-    function test_creatorBuyMax_large() public {
-        _sweepCreatorBuy(LiquidityTier.LARGE, _maxBuyTokens());
+    function test_creatorBuyMax_thick() public {
+        _sweepCreatorBuy(LiquidityTier.THICK, _maxBuyTokens());
     }
 
     // ───────────────────────── scenarios 4/5: buy + sell from launchpad ─────────────────────────
 
-    function test_buyThenSell_small() public {
-        _sweepBuyThenSell(LiquidityTier.SMALL);
+    function test_buyThenSell_thin() public {
+        _sweepBuyThenSell(LiquidityTier.THIN);
     }
 
     function test_buyThenSell_default() public {
         _sweepBuyThenSell(LiquidityTier.DEFAULT);
     }
 
-    function test_buyThenSell_large() public {
-        _sweepBuyThenSell(LiquidityTier.LARGE);
+    function test_buyThenSell_thick() public {
+        _sweepBuyThenSell(LiquidityTier.THICK);
     }
 
     // ───────────────────────── scenario 6: graduate ─────────────────────────
 
-    function test_graduation_small() public {
-        _sweepGraduation(LiquidityTier.SMALL);
+    function test_graduation_thin() public {
+        _sweepGraduation(LiquidityTier.THIN);
     }
 
     function test_graduation_default() public {
         _sweepGraduation(LiquidityTier.DEFAULT);
     }
 
-    function test_graduation_large() public {
-        _sweepGraduation(LiquidityTier.LARGE);
+    function test_graduation_thick() public {
+        _sweepGraduation(LiquidityTier.THICK);
     }
 }

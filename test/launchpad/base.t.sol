@@ -51,14 +51,14 @@ contract LaunchpadBaseTests is Test {
     LivoCreatorVaultFactory public creatorVaultFactory;
     address[6] public vaultCurves; // [5%, 10%, 15%, 20%, 25%, 30%] DEFAULT-tier vault curves
 
-    /// @notice SMALL/LARGE tier V4 graduators (single hook in tests). Deployed in `setUp`.
-    LivoGraduatorUniswapV4 public graduatorV4Small;
-    LivoGraduatorUniswapV4 public graduatorV4Large;
+    /// @notice THIN/THICK tier V4 graduators (single hook in tests). Deployed in `setUp`.
+    LivoGraduatorUniswapV4 public graduatorV4Thin;
+    LivoGraduatorUniswapV4 public graduatorV4Thick;
 
-    /// @notice SMALL/LARGE tier curves (no-vault base + 6 vault curves each), built in `setUp`.
+    /// @notice THIN/THICK tier curves (no-vault base + 6 vault curves each), built in `setUp`.
     ///         Stored so subclasses (e.g. factory-upgrade tests) can rebuild a factory with them.
-    ILivoFactory.TierCurves internal smallCurves;
-    ILivoFactory.TierCurves internal largeCurves;
+    ILivoFactory.TierCurves internal thinCurves;
+    ILivoFactory.TierCurves internal thickCurves;
 
     ILivoGraduator public graduator;
 
@@ -315,16 +315,16 @@ contract LaunchpadBaseTests is Test {
     ///      single hook, so the 100/50-bps slots reuse the same per-tier graduator instance.
     function _v4TierGraduators() internal view returns (LivoFactoryUniV4Unified.TierGraduators memory) {
         return LivoFactoryUniV4Unified.TierGraduators({
-            small: address(graduatorV4Small),
-            small0p5: address(graduatorV4Small),
-            large: address(graduatorV4Large),
-            large0p5: address(graduatorV4Large)
+            thin: address(graduatorV4Thin),
+            thin0p5: address(graduatorV4Thin),
+            thick: address(graduatorV4Thick),
+            thick0p5: address(graduatorV4Thick)
         });
     }
 
-    /// @dev SMALL+LARGE curve bundle for the factory constructors.
+    /// @dev THIN+THICK curve bundle for the factory constructors.
     function _tierConfig() internal view returns (ILivoFactory.LiquidityTierConfig memory) {
-        return ILivoFactory.LiquidityTierConfig({small: smallCurves, large: largeCurves});
+        return ILivoFactory.LiquidityTierConfig({thin: thinCurves, thick: thickCurves});
     }
 
     /// @dev Full V4 tier config (curves + graduators) for the V4 factory constructor.
@@ -377,25 +377,25 @@ contract LaunchpadBaseTests is Test {
         // Creator-vault infrastructure: vault factory (UUPS proxy) + the six allocation-specific curves.
         creatorVaultFactory = _deployCreatorVaultInfra();
 
-        // Non-default liquidity tiers: deploy the SMALL/LARGE curves + their V4 graduators. Tests use a
+        // Non-default liquidity tiers: deploy the THIN/THICK curves + their V4 graduators. Tests use a
         // single hook, so the 100/50-bps graduator slots reuse the same per-tier graduator instance.
-        smallCurves = _deployTierCurves(LiquidityTier.SMALL);
-        largeCurves = _deployTierCurves(LiquidityTier.LARGE);
-        graduatorV4Small = new LivoGraduatorUniswapV4(
+        thinCurves = _deployTierCurves(LiquidityTier.THIN);
+        thickCurves = _deployTierCurves(LiquidityTier.THICK);
+        graduatorV4Thin = new LivoGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
             positionManagerAddress,
             permit2Address,
             TEST_HOOK_ADDRESS,
-            1012340326367404053977557838594048 // SMALL graduation sqrtPriceX96 (6.125 ETH mcap)
+            1012340326367404053977557838594048 // THIN graduation sqrtPriceX96 (6.125 ETH mcap)
         );
-        graduatorV4Large = new LivoGraduatorUniswapV4(
+        graduatorV4Thick = new LivoGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
             positionManagerAddress,
             permit2Address,
             TEST_HOOK_ADDRESS,
-            506170163183702026988778919297024 // LARGE graduation sqrtPriceX96 (24.5 ETH mcap)
+            506170163183702026988778919297024 // THICK graduation sqrtPriceX96 (24.5 ETH mcap)
         );
 
         address factoryV2Impl = address(

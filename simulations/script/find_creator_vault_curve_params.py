@@ -65,13 +65,13 @@ class Tier:
         return Decimal(self.UNI_ETH) / Decimal(self.T_GRAD)
 
 
-# Tiers. DEFAULT reproduces the deployed single-tier system (12.25 ETH mcap). SMALL/LARGE scale
+# Tiers. DEFAULT reproduces the deployed single-tier system (12.25 ETH mcap). THIN/THICK scale
 # the graduation marketcap 1:2:4 with the LP depth, which keeps the token split (28.57% into
 # liquidity / 71.43% sold) and curve steepness identical across tiers.
 TIERS = [
-    Tier("SMALL", Decimal("1.75"), Decimal("6.125")),
+    Tier("THIN", Decimal("1.75"), Decimal("6.125")),
     Tier("DEFAULT", Decimal("3.5"), Decimal("12.25")),
-    Tier("LARGE", Decimal("7.0"), Decimal("24.5")),
+    Tier("THICK", Decimal("7.0"), Decimal("24.5")),
 ]
 
 BPS = [0, 500, 1000, 1500, 2000, 2500, 3000]
@@ -149,12 +149,12 @@ def report() -> None:
 
 
 def _sol_name(tier: Tier, bps: int) -> str:
-    prefix = "S" if tier.name == "SMALL" else "L"
-    return f"{prefix}_{bps // 100}"  # e.g. S_0, S_5, L_30 (bps/100 = percent)
+    prefix = "THIN" if tier.name == "THIN" else "THICK"
+    return f"{prefix}_{bps // 100}"  # e.g. THIN_0, THIN_5, THICK_30 (bps/100 = percent)
 
 
 def emit_solidity() -> None:
-    """Emit the SMALL/LARGE constant declarations + dispatchers for CreatorVaultCurveConstants."""
+    """Emit the THIN/THICK constant declarations + dispatchers for CreatorVaultCurveConstants."""
     for tier in TIERS:
         if tier.name == "DEFAULT":
             continue

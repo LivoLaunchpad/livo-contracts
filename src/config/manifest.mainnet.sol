@@ -73,6 +73,55 @@ library DeploymentsMainnet {
         c[5] = VAULT_CURVE_30;
     }
 
+    // --- Liquidity tiers (THIN + THICK) ---
+    /// @notice THIN/THICK V4 graduators, one per (tier x hook fee). The DEFAULT tier reuses
+    ///         `GRADUATOR_UNIV4` / `GRADUATOR_UNIV4_0P5`. Update after deploying with
+    ///         `DeployTierLiquiditySystem`.
+    address internal constant GRADUATOR_UNIV4_THIN = address(0);
+    address internal constant GRADUATOR_UNIV4_THIN_0P5 = address(0);
+    address internal constant GRADUATOR_UNIV4_THICK = address(0);
+    address internal constant GRADUATOR_UNIV4_THICK_0P5 = address(0);
+
+    /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
+    ///         base curve plus six vault curves (5%..30%). Update after deploying with
+    ///         `DeployTierLiquiditySystem`. Venue-agnostic — shared by the V2 and V4 factories.
+    address internal constant THIN_CURVE_BASE = address(0);
+    address internal constant THIN_VAULT_CURVE_5 = address(0);
+    address internal constant THIN_VAULT_CURVE_10 = address(0);
+    address internal constant THIN_VAULT_CURVE_15 = address(0);
+    address internal constant THIN_VAULT_CURVE_20 = address(0);
+    address internal constant THIN_VAULT_CURVE_25 = address(0);
+    address internal constant THIN_VAULT_CURVE_30 = address(0);
+
+    /// @notice THICK-tier bonding curves. Same layout as the THIN tier above.
+    address internal constant THICK_CURVE_BASE = address(0);
+    address internal constant THICK_VAULT_CURVE_5 = address(0);
+    address internal constant THICK_VAULT_CURVE_10 = address(0);
+    address internal constant THICK_VAULT_CURVE_15 = address(0);
+    address internal constant THICK_VAULT_CURVE_20 = address(0);
+    address internal constant THICK_VAULT_CURVE_25 = address(0);
+    address internal constant THICK_VAULT_CURVE_30 = address(0);
+
+    /// @notice The six THIN-tier vault curves as the `address[6]` the factory tier config expects.
+    function thinVaultCurves() internal pure returns (address[6] memory c) {
+        c[0] = THIN_VAULT_CURVE_5;
+        c[1] = THIN_VAULT_CURVE_10;
+        c[2] = THIN_VAULT_CURVE_15;
+        c[3] = THIN_VAULT_CURVE_20;
+        c[4] = THIN_VAULT_CURVE_25;
+        c[5] = THIN_VAULT_CURVE_30;
+    }
+
+    /// @notice The six THICK-tier vault curves as the `address[6]` the factory tier config expects.
+    function thickVaultCurves() internal pure returns (address[6] memory c) {
+        c[0] = THICK_VAULT_CURVE_5;
+        c[1] = THICK_VAULT_CURVE_10;
+        c[2] = THICK_VAULT_CURVE_15;
+        c[3] = THICK_VAULT_CURVE_20;
+        c[4] = THICK_VAULT_CURVE_25;
+        c[5] = THICK_VAULT_CURVE_30;
+    }
+
     // --- Accounts ---
     address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
     address internal constant LIVO_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;

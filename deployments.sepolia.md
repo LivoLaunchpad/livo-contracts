@@ -34,6 +34,24 @@
 | Creator-vault curve 20%                      | `0x35DC2fbD3ad6917C51658d1891859A6e9DaAc16e` |
 | Creator-vault curve 25%                      | `0x321A86a8b27Ff81dcdb3C5d51FF0a2936f5c2c68` |
 | Creator-vault curve 30%                      | `0x590e303AaaAdE7634Ec4d9d16bD135b4790FA42b` |
+| LivoGraduatorUniV4 THIN                      | _(not deployed)_                             |
+| LivoGraduatorUniV4 THIN (0.5%)               | _(not deployed)_                             |
+| LivoGraduatorUniV4 THICK                     | _(not deployed)_                             |
+| LivoGraduatorUniV4 THICK (0.5%)              | _(not deployed)_                             |
+| THIN-tier curve base                         | _(not deployed)_                             |
+| THIN-tier curve 5%                           | _(not deployed)_                             |
+| THIN-tier curve 10%                          | _(not deployed)_                             |
+| THIN-tier curve 15%                          | _(not deployed)_                             |
+| THIN-tier curve 20%                          | _(not deployed)_                             |
+| THIN-tier curve 25%                          | _(not deployed)_                             |
+| THIN-tier curve 30%                          | _(not deployed)_                             |
+| THICK-tier curve base                        | _(not deployed)_                             |
+| THICK-tier curve 5%                          | _(not deployed)_                             |
+| THICK-tier curve 10%                         | _(not deployed)_                             |
+| THICK-tier curve 15%                         | _(not deployed)_                             |
+| THICK-tier curve 20%                         | _(not deployed)_                             |
+| THICK-tier curve 25%                         | _(not deployed)_                             |
+| THICK-tier curve 30%                         | _(not deployed)_                             |
 
 ## Accounts
 

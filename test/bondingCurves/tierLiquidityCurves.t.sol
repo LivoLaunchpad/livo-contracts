@@ -39,14 +39,14 @@ contract TierLiquidityCurvesTest is Test {
     uint256[7] BPS = [uint256(0), 500, 1000, 1500, 2000, 2500, 3000];
 
     function _tiers() internal pure returns (LiquidityTier[3] memory) {
-        return [LiquidityTier.SMALL, LiquidityTier.DEFAULT, LiquidityTier.LARGE];
+        return [LiquidityTier.THIN, LiquidityTier.DEFAULT, LiquidityTier.THICK];
     }
 
     /// @dev Per-tier graduation marketcap target (ETH). Scales 1:2:4 with LP depth.
     function _tierMcap(LiquidityTier tier) internal pure returns (uint256) {
-        if (tier == LiquidityTier.SMALL) return 6.125 ether;
+        if (tier == LiquidityTier.THIN) return 6.125 ether;
         if (tier == LiquidityTier.DEFAULT) return 12.25 ether;
-        return 24.5 ether; // LARGE
+        return 24.5 ether; // THICK
     }
 
     /// @dev Deploys the curve for a (tier, bps). DEFAULT+no-vault is the hardcoded base curve; every
@@ -131,7 +131,7 @@ contract TierLiquidityCurvesTest is Test {
     }
 
     /// @dev Safety: within [0, maxEthReserves] no (tier, bps) curve overflows/reverts on a buy. Bounds to
-    ///      EACH curve's own maxEthReserves — the LARGE tier legitimately reaches ~7.3 ETH reserves.
+    ///      EACH curve's own maxEthReserves — the THICK tier legitimately reaches ~7.3 ETH reserves.
     function test_fuzz_eachTierEachVault_buyDoesNotRevertInRange(
         uint256 tierIdx,
         uint256 bpsIdx,

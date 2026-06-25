@@ -24,13 +24,13 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         uint16 lpFeeBps;
     }
 
-    /// @notice Constructor-only bundle of the SMALL/LARGE tier V4 graduators (one per tier x hook fee).
+    /// @notice Constructor-only bundle of the THIN/THICK tier V4 graduators (one per tier x hook fee).
     ///         The DEFAULT-tier pair is `GRADUATOR` (100 bps, abstract) + `GRADUATOR_0P5` (50 bps).
     struct TierGraduators {
-        address small; // 100 bps hook
-        address small0p5; // 50 bps hook
-        address large; // 100 bps hook
-        address large0p5; // 50 bps hook
+        address thin; // 100 bps hook
+        address thin0p5; // 50 bps hook
+        address thick; // 100 bps hook
+        address thick0p5; // 50 bps hook
     }
 
     /// @notice Constructor-only bundle of all the V4 tier additions (curves + graduators), grouped into
@@ -44,12 +44,12 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         in the abstract base as `GRADUATOR`.
     address public immutable GRADUATOR_0P5;
 
-    /// @notice SMALL/LARGE tier graduators, one per (tier x hook fee). Each initializes its pool at the
+    /// @notice THIN/THICK tier graduators, one per (tier x hook fee). Each initializes its pool at the
     ///         tier-specific graduation price. Selected by `_resolveGraduator(lpFeeBps, tier)`.
-    address public immutable GRADUATOR_SMALL; // 100 bps hook
-    address public immutable GRADUATOR_SMALL_0P5; // 50 bps hook
-    address public immutable GRADUATOR_LARGE; // 100 bps hook
-    address public immutable GRADUATOR_LARGE_0P5; // 50 bps hook
+    address public immutable GRADUATOR_THIN; // 100 bps hook
+    address public immutable GRADUATOR_THIN_0P5; // 50 bps hook
+    address public immutable GRADUATOR_THICK; // 100 bps hook
+    address public immutable GRADUATOR_THICK_0P5; // 50 bps hook
 
     /// @notice Pre-graduation launchpad LP fee for V4 tokens (bps), charged on every bonding-curve trade
     ///         and split treasury/creator by `V4_LAUNCHPAD_TREASURY_SHARE_BPS`. Fixed at 1% for every V4
@@ -86,10 +86,10 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         )
     {
         GRADUATOR_0P5 = graduator0p5;
-        GRADUATOR_SMALL = v4Tier.graduators.small;
-        GRADUATOR_SMALL_0P5 = v4Tier.graduators.small0p5;
-        GRADUATOR_LARGE = v4Tier.graduators.large;
-        GRADUATOR_LARGE_0P5 = v4Tier.graduators.large0p5;
+        GRADUATOR_THIN = v4Tier.graduators.thin;
+        GRADUATOR_THIN_0P5 = v4Tier.graduators.thin0p5;
+        GRADUATOR_THICK = v4Tier.graduators.thick;
+        GRADUATOR_THICK_0P5 = v4Tier.graduators.thick0p5;
     }
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
@@ -212,8 +212,8 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     function _resolveGraduator(uint16 lpFeeBps, LiquidityTier tier) internal view returns (address) {
         bool is100 = lpFeeBps == 100;
         if (tier == LiquidityTier.DEFAULT) return is100 ? address(GRADUATOR) : GRADUATOR_0P5;
-        if (tier == LiquidityTier.SMALL) return is100 ? GRADUATOR_SMALL : GRADUATOR_SMALL_0P5;
-        return is100 ? GRADUATOR_LARGE : GRADUATOR_LARGE_0P5; // LARGE
+        if (tier == LiquidityTier.THIN) return is100 ? GRADUATOR_THIN : GRADUATOR_THIN_0P5;
+        return is100 ? GRADUATOR_THICK : GRADUATOR_THICK_0P5; // THICK
     }
 
     /// @dev Pre-graduation launchpad LP fee, fixed at `V4_LAUNCHPAD_LP_FEE_BPS` (1%) for every V4 token

@@ -17,7 +17,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 /// @notice Graduation price-continuity matrix across BOTH venues (Uniswap V2 + V4), all three liquidity
-///         tiers {SMALL, DEFAULT, LARGE}, all seven creator-vault levels {no-vault + 5%..30%}, AND all
+///         tiers {THIN, DEFAULT, THICK}, all seven creator-vault levels {no-vault + 5%..30%}, AND all
 ///         four token flavors {plain, tax, sniper-protected, tax+sniper}.
 ///
 ///         The single invariant under test, for every cell:
@@ -64,54 +64,54 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
 
     // ───────────────────── vault sweep (plain token, all 7 vault levels) ─────────────────────
 
-    function test_priceContinuity_v2_small() public {
-        _sweepVaults(false, LiquidityTier.SMALL);
+    function test_priceContinuity_v2_thin() public {
+        _sweepVaults(false, LiquidityTier.THIN);
     }
 
     function test_priceContinuity_v2_default() public {
         _sweepVaults(false, LiquidityTier.DEFAULT);
     }
 
-    function test_priceContinuity_v2_large() public {
-        _sweepVaults(false, LiquidityTier.LARGE);
+    function test_priceContinuity_v2_thick() public {
+        _sweepVaults(false, LiquidityTier.THICK);
     }
 
-    function test_priceContinuity_v4_small() public {
-        _sweepVaults(true, LiquidityTier.SMALL);
+    function test_priceContinuity_v4_thin() public {
+        _sweepVaults(true, LiquidityTier.THIN);
     }
 
     function test_priceContinuity_v4_default() public {
         _sweepVaults(true, LiquidityTier.DEFAULT);
     }
 
-    function test_priceContinuity_v4_large() public {
-        _sweepVaults(true, LiquidityTier.LARGE);
+    function test_priceContinuity_v4_thick() public {
+        _sweepVaults(true, LiquidityTier.THICK);
     }
 
     // ─────────────── flavor sweep (tax / sniper / tax+sniper, no-vault) ───────────────
 
-    function test_priceContinuity_flavors_v2_small() public {
-        _sweepFlavors(false, LiquidityTier.SMALL);
+    function test_priceContinuity_flavors_v2_thin() public {
+        _sweepFlavors(false, LiquidityTier.THIN);
     }
 
     function test_priceContinuity_flavors_v2_default() public {
         _sweepFlavors(false, LiquidityTier.DEFAULT);
     }
 
-    function test_priceContinuity_flavors_v2_large() public {
-        _sweepFlavors(false, LiquidityTier.LARGE);
+    function test_priceContinuity_flavors_v2_thick() public {
+        _sweepFlavors(false, LiquidityTier.THICK);
     }
 
-    function test_priceContinuity_flavors_v4_small() public {
-        _sweepFlavors(true, LiquidityTier.SMALL);
+    function test_priceContinuity_flavors_v4_thin() public {
+        _sweepFlavors(true, LiquidityTier.THIN);
     }
 
     function test_priceContinuity_flavors_v4_default() public {
         _sweepFlavors(true, LiquidityTier.DEFAULT);
     }
 
-    function test_priceContinuity_flavors_v4_large() public {
-        _sweepFlavors(true, LiquidityTier.LARGE);
+    function test_priceContinuity_flavors_v4_thick() public {
+        _sweepFlavors(true, LiquidityTier.THICK);
     }
 
     // ───────────────────────── sweeps ─────────────────────────
@@ -258,9 +258,9 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     }
 
     function _tierName(LiquidityTier tier) internal pure returns (string memory) {
-        if (tier == LiquidityTier.SMALL) return "SMALL";
+        if (tier == LiquidityTier.THIN) return "THIN";
         if (tier == LiquidityTier.DEFAULT) return "DEFAULT";
-        return "LARGE";
+        return "THICK";
     }
 
     function _flavorName(Flavor f) internal pure returns (string memory) {
@@ -270,7 +270,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         return "tax+sniper";
     }
 
-    /// @dev "[V4 SMALL 1500bps tax] " prefix so a looped assertion names the exact failing cell.
+    /// @dev "[V4 THIN 1500bps tax] " prefix so a looped assertion names the exact failing cell.
     function _ctx(bool isV4, LiquidityTier tier, uint256 bps, Flavor f) internal pure returns (string memory) {
         return
             string.concat(
