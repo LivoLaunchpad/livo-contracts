@@ -5,6 +5,7 @@ import {
     LaunchpadBaseTestsWithUniv2Graduator,
     LaunchpadBaseTestsWithUniv4GraduatorTaxableToken
 } from "test/launchpad/base.t.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {TokenState} from "src/types/tokenData.sol";
@@ -108,7 +109,8 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
     /// @dev cap applies to aggregate — a single recipient holding 100% shares can receive up to the full cap
     function test_createToken_capAppliesToAggregate_singleRecipientCanHitFullCap() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(maxTokens, 0, _toCfgs(_emptyTaxCfg()));
+        uint256 totalEthNeeded =
+            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_emptyTaxCfg()));
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
@@ -246,7 +248,8 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
     /// @dev quoteBuyOnDeploy returns correct ETH that yields exactly tokenAmount
     function test_quoteBuyOnDeploy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_emptyTaxCfg()));
+        uint256 totalEthNeeded =
+            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_emptyTaxCfg()));
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
@@ -263,7 +266,8 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
     function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(maxTokens, 0, _toCfgs(_emptyTaxCfg()));
+        uint256 totalEthNeeded =
+            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_emptyTaxCfg()));
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
@@ -281,8 +285,9 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
     ///      token amount.
     function test_quoteBuyOnDeploy_graduationAnchoredTax_quoteIsTight() public {
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
-        uint256 totalEthNeeded =
-            factoryV2.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_taxCfg(400, 0, uint32(14 days), false)));
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(400, 0, uint32(14 days), false))
+        );
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoTaxTokenV2));
 
@@ -380,8 +385,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     /// @dev quoteBuyOnDeploy returns correct ETH that yields exactly tokenAmount
     function test_quoteBuyOnDeploy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        uint256 totalEthNeeded =
-            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100());
+        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100()
+        );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
@@ -408,8 +414,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     function test_quoteBuyOnDeploy_roundTrip_withBuyTax() public {
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
         uint16 buyTax = 300; // 3%; with the 100 bps V4 LP fee the deploy-buy fee is 400 bps
-        uint256 totalEthNeeded =
-            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days))), _univ4Cfg100());
+        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days))), _univ4Cfg100()
+        );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
@@ -435,8 +442,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     ///      decay under-quotes and the exact-ETH-in deploy buy receives fewer than `tokenAmount`.
     function test_quoteBuyOnDeploy_roundTrip_withDecayTax() public {
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
-        uint256 totalEthNeeded =
-            factoryTax.quoteBuyOnDeploy(tokenAmount, 0, _decayCfg(1000, 0, 20 minutes, true), _univ4Cfg100());
+        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, tokenAmount, 0, _decayCfg(1000, 0, 20 minutes, true), _univ4Cfg100()
+        );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
         ILivoFactory.TokenSetup memory setup =
@@ -460,8 +468,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
     /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
     function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
         uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded =
-            factoryTax.quoteBuyOnDeploy(maxTokens, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100());
+        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100()
+        );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
@@ -488,7 +497,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
         uint16 buyTax = 400;
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            tokenAmount, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days), false)), _univ4Cfg100()
+            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days), false)), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
@@ -517,7 +526,7 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;
         uint16 buyTax = 400;
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            maxTokens, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days), false)), _univ4Cfg100()
+            LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days), false)), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));

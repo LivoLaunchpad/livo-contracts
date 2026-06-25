@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
@@ -134,16 +135,19 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                d.tokenImpl,
-                d.tokenSniperImpl,
-                d.taxTokenImpl,
-                d.taxTokenSniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: d.tokenImpl,
+                    antiSniper: d.tokenSniperImpl,
+                    tax: d.taxTokenImpl,
+                    taxAntiSniper: d.taxTokenSniperImpl
+                }),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (new impl)    |", factoryV4Impl);

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
@@ -52,7 +53,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
         vm.prank(creator);
-        token = factoryV4Unified.createToken(setup, _emptyTaxCfg(), cfg, _noSs(), _emptyAntiSniperCfg(), vaults);
+        token =
+            factoryV4Unified.createToken(setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), vaults);
     }
 
     /// @dev Creates a token and returns the (single) deployed vault address by scanning logs.
@@ -235,7 +237,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.recordLogs();
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            setup, _emptyTaxCfg(), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days))
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days))
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
         address vault;
@@ -260,7 +262,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
             setup,
-            _taxCfg(300, 300, uint32(7 days)),
+            _toCfgs(_taxCfg(300, 300, uint32(7 days))),
             _noSs(),
             _emptyAntiSniperCfg(),
             _one(_vault(vaultOwner, 2000, 0, 1 days))
@@ -376,8 +378,10 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
 
-        uint256 ethVaultAware = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 3000, _toCfgs(_emptyTaxCfg()), cfg);
-        uint256 ethBaseOnly = factoryV4Unified.quoteBuyOnDeploy(tokenAmount, 0, _toCfgs(_emptyTaxCfg()), cfg);
+        uint256 ethVaultAware =
+            factoryV4Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 3000, _toCfgs(_emptyTaxCfg()), cfg);
+        uint256 ethBaseOnly =
+            factoryV4Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_emptyTaxCfg()), cfg);
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 
@@ -391,7 +395,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.deal(creator, ethVaultAware);
         vm.prank(creator);
         address token = factoryV4Unified.createToken{value: ethVaultAware}(
-            setup, _emptyTaxCfg(), cfg, _ss(creator), _emptyAntiSniperCfg(), vaults
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _ss(creator), _emptyAntiSniperCfg(), vaults
         );
 
         // deployer (sole supply-share recipient) receives ~tokenAmount, never less than quoted

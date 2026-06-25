@@ -44,8 +44,8 @@ library DeploymentsSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x8dDE6f09A8156707989E224385e3F9e4d2fA610b;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x0fa794db9F677d95E91E92E1EC2a73cFb1AB65a8;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x7f4192203f10ad4A2E3BED201DdAa1A929bBcc6c;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x7323b1f2193b09204e4dc396449706466BeF8ae5;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -72,6 +72,55 @@ library DeploymentsSepolia {
         c[3] = VAULT_CURVE_20;
         c[4] = VAULT_CURVE_25;
         c[5] = VAULT_CURVE_30;
+    }
+
+    // --- Liquidity tiers (THIN + THICK) ---
+    /// @notice THIN/THICK V4 graduators, one per (tier x hook fee). The DEFAULT tier reuses
+    ///         `GRADUATOR_UNIV4` / `GRADUATOR_UNIV4_0P5`. Update after deploying with
+    ///         `DeployTierLiquiditySystem`.
+    address internal constant GRADUATOR_UNIV4_THIN = 0x3aCef6907506b23e3F130A967c65a32fE8F942C6;
+    address internal constant GRADUATOR_UNIV4_THIN_0P5 = 0x65A533bA8F1DDf7b5EE77DC7Ee00A38460E2d6A8;
+    address internal constant GRADUATOR_UNIV4_THICK = 0x0208a9A39aC1de3a4D0008fC0171699940328413;
+    address internal constant GRADUATOR_UNIV4_THICK_0P5 = 0x7D99ad6DE1619cA29D40e2422824F05ce6735264;
+
+    /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
+    ///         base curve plus six vault curves (5%..30%). Update after deploying with
+    ///         `DeployTierLiquiditySystem`. Venue-agnostic — shared by the V2 and V4 factories.
+    address internal constant THIN_CURVE_BASE = 0x2A4376B5C5293A1b06EfEd22d13bBcEc65A18253;
+    address internal constant THIN_VAULT_CURVE_5 = 0x09EDeD7976E9753b5DD1523b605ed4070289d104;
+    address internal constant THIN_VAULT_CURVE_10 = 0xF59D0EdafF263631319cE97eb7db8D476A2C9Eb8;
+    address internal constant THIN_VAULT_CURVE_15 = 0x6929eCE99bef7f56874c090226C3C12c894DF49c;
+    address internal constant THIN_VAULT_CURVE_20 = 0x7d36732C99Cdee38247007a0B7410b2a0804C818;
+    address internal constant THIN_VAULT_CURVE_25 = 0x787b0f779Db4a9DC8aA65f3e39FeC63828C1f6B4;
+    address internal constant THIN_VAULT_CURVE_30 = 0xA43290B1EC1aad35aA1470Fe07a7F29Ad3Ea0186;
+
+    /// @notice THICK-tier bonding curves. Same layout as the THIN tier above.
+    address internal constant THICK_CURVE_BASE = 0xb8A440a782405d04D7Ae5cBB3145a446F6CfeB0f;
+    address internal constant THICK_VAULT_CURVE_5 = 0x5BE84cDdeff10A36CAF189C8Ad1e61922b140439;
+    address internal constant THICK_VAULT_CURVE_10 = 0x2f29cEFf2a3FceFcdb664E1314160754792148e9;
+    address internal constant THICK_VAULT_CURVE_15 = 0x207b44C1Cc8031B6fE5924Ce6049A5C0280C54d3;
+    address internal constant THICK_VAULT_CURVE_20 = 0x042A437a0bA3013481922761fd1B8f4f0a646982;
+    address internal constant THICK_VAULT_CURVE_25 = 0x0f539fF2C2e49853c314262e09B44A3af7B77f90;
+    address internal constant THICK_VAULT_CURVE_30 = 0x42250CF9cBE2667f98FFF5Fc7400F5F83BE2788F;
+
+    /// @notice The six THIN-tier vault curves as the `address[6]` the factory tier config expects.
+    function thinVaultCurves() internal pure returns (address[6] memory c) {
+        c[0] = THIN_VAULT_CURVE_5;
+        c[1] = THIN_VAULT_CURVE_10;
+        c[2] = THIN_VAULT_CURVE_15;
+        c[3] = THIN_VAULT_CURVE_20;
+        c[4] = THIN_VAULT_CURVE_25;
+        c[5] = THIN_VAULT_CURVE_30;
+    }
+
+    /// @notice The six THICK-tier vault curves as the `address[6]` the factory tier config expects.
+    function thickVaultCurves() internal pure returns (address[6] memory c) {
+        c[0] = THICK_VAULT_CURVE_5;
+        c[1] = THICK_VAULT_CURVE_10;
+        c[2] = THICK_VAULT_CURVE_15;
+        c[3] = THICK_VAULT_CURVE_20;
+        c[4] = THICK_VAULT_CURVE_25;
+        c[5] = THICK_VAULT_CURVE_30;
     }
 
     // --- Accounts ---

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
@@ -110,6 +111,10 @@ contract DeployLaunchpadV2Stack is Script {
 
     /// @dev Foundry's deterministic deployment proxy (CREATE2 deployer used by `new X{salt: ...}`)
     address internal constant FOUNDRY_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
+    /// @dev DEFAULT-tier graduation price for the V4 graduators (12.25 ETH mcap). From
+    ///      `simulations/script/uniswapV4Settings.py 12250000000`. THIN/THICK tiers use their own.
+    uint160 internal constant DEFAULT_GRAD_SQRT_PRICE_X96 = 715832709642994126662528799866880;
 
     /// @dev Vanity suffix for the launchpad address: 0x1110 (same as v1).
     ///      4 hex chars = 16 bits -> mask 0xFFFF, ~65k attempts on average.
@@ -315,14 +320,24 @@ contract DeployLaunchpadV2Stack is Script {
 
         fresh.graduatorV4 = address(
             new LivoGraduatorUniswapV4(
-                fresh.launchpad, d.univ4PoolManager, d.univ4PositionManager, d.permit2, d.swapHook
+                fresh.launchpad,
+                d.univ4PoolManager,
+                d.univ4PositionManager,
+                d.permit2,
+                d.swapHook,
+                DEFAULT_GRAD_SQRT_PRICE_X96
             )
         );
         console.log("| LivoGraduatorUniswapV4                        |", fresh.graduatorV4);
 
         fresh.graduatorV4_0p5 = address(
             new LivoGraduatorUniswapV4(
-                fresh.launchpad, d.univ4PoolManager, d.univ4PositionManager, d.permit2, d.swapHook0p5
+                fresh.launchpad,
+                d.univ4PoolManager,
+                d.univ4PositionManager,
+                d.permit2,
+                d.swapHook0p5,
+                DEFAULT_GRAD_SQRT_PRICE_X96
             )
         );
         console.log("| LivoGraduatorUniswapV4 (0p5 hook)             |", fresh.graduatorV4_0p5);
@@ -352,15 +367,18 @@ contract DeployLaunchpadV2Stack is Script {
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 fresh.launchpad,
-                fresh.tokenImpl,
-                fresh.tokenSniperImpl,
-                fresh.taxTokenV2Impl,
-                fresh.taxTokenV2SniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: fresh.tokenImpl,
+                    antiSniper: fresh.tokenSniperImpl,
+                    tax: fresh.taxTokenV2Impl,
+                    taxAntiSniper: fresh.taxTokenV2SniperImpl
+                }),
                 d.bondingCurve,
                 fresh.graduatorV2,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.tierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
@@ -368,16 +386,19 @@ contract DeployLaunchpadV2Stack is Script {
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 fresh.launchpad,
-                fresh.tokenImpl,
-                fresh.tokenSniperImpl,
-                fresh.taxTokenV4Impl,
-                fresh.taxTokenV4SniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: fresh.tokenImpl,
+                    antiSniper: fresh.tokenSniperImpl,
+                    tax: fresh.taxTokenV4Impl,
+                    taxAntiSniper: fresh.taxTokenV4SniperImpl
+                }),
                 d.bondingCurve,
                 fresh.graduatorV4,
                 fresh.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);

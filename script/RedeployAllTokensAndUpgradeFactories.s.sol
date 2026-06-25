@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
@@ -188,15 +189,18 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                fresh.tokenImpl,
-                fresh.tokenSniperImpl,
-                fresh.taxTokenV2Impl,
-                fresh.taxTokenV2SniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: fresh.tokenImpl,
+                    antiSniper: fresh.tokenSniperImpl,
+                    tax: fresh.taxTokenV2Impl,
+                    taxAntiSniper: fresh.taxTokenV2SniperImpl
+                }),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.tierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
@@ -204,16 +208,19 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                fresh.tokenImpl,
-                fresh.tokenSniperImpl,
-                fresh.taxTokenV4Impl,
-                fresh.taxTokenV4SniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: fresh.tokenImpl,
+                    antiSniper: fresh.tokenSniperImpl,
+                    tax: fresh.taxTokenV4Impl,
+                    taxAntiSniper: fresh.taxTokenV4SniperImpl
+                }),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);

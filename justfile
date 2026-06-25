@@ -124,6 +124,16 @@ deploy-swap-hook-sepolia:
 deploy-swap-hook-mainnet:
     forge script DeployLivoSwapHook --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
+# Deploys the SMALL + LARGE liquidity-tier system (14 bonding curves + 4 V4 graduators).
+# After broadcast, paste the logged addresses into the {SMALL,LARGE}_* and GRADUATOR_UNIV4_{SMALL,LARGE}*
+# slots in src/config/manifest.{sepolia,mainnet}.sol, run `just export-deployments`, and only THEN
+# upgrade the unified factories (`RedeployUnifiedFactoriesOnly`) so they pick the tier config up.
+deploy-tiers-sepolia:
+    forge script DeployTierLiquiditySystem --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+
+deploy-tiers-mainnet:
+    forge script DeployTierLiquiditySystem --rpc-url mainnet --verify --account livo.dev --slow --broadcast
+
 # Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
 export-deployments:

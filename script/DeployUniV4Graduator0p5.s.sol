@@ -38,8 +38,10 @@ contract DeployUniV4Graduator0p5 is Script {
         console.log("Hook (50 bps):   %s", d.hook);
 
         vm.startBroadcast();
-        LivoGraduatorUniswapV4 graduator =
-            new LivoGraduatorUniswapV4(d.launchpad, d.poolManager, d.positionManager, d.permit2, d.hook);
+        // DEFAULT-tier graduation price (12.25 ETH mcap), from uniswapV4Settings.py 12250000000.
+        LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
+            d.launchpad, d.poolManager, d.positionManager, d.permit2, d.hook, 715832709642994126662528799866880
+        );
         vm.stopBroadcast();
 
         require(graduator.HOOK_ADDRESS() == d.hook, "graduator hook mismatch");

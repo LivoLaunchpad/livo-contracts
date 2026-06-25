@@ -8,24 +8,31 @@
         "internalType": "address"
       },
       {
-        "name": "tokenImplBase",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenImplAntiSniper",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenImplTax",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenImplTaxAntiSniper",
-        "type": "address",
-        "internalType": "address"
+        "name": "impls",
+        "type": "tuple",
+        "internalType": "struct ILivoFactory.TokenImpls",
+        "components": [
+          {
+            "name": "base",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "antiSniper",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "tax",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "taxAntiSniper",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
       },
       {
         "name": "bondingCurve",
@@ -51,6 +58,47 @@
         "name": "vaultBondingCurves",
         "type": "address[6]",
         "internalType": "address[6]"
+      },
+      {
+        "name": "tierConfig",
+        "type": "tuple",
+        "internalType": "struct ILivoFactory.LiquidityTierConfig",
+        "components": [
+          {
+            "name": "thin",
+            "type": "tuple",
+            "internalType": "struct ILivoFactory.TierCurves",
+            "components": [
+              {
+                "name": "base",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "vaults",
+                "type": "address[6]",
+                "internalType": "address[6]"
+              }
+            ]
+          },
+          {
+            "name": "thick",
+            "type": "tuple",
+            "internalType": "struct ILivoFactory.TierCurves",
+            "components": [
+              {
+                "name": "base",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "vaults",
+                "type": "address[6]",
+                "internalType": "address[6]"
+              }
+            ]
+          }
+        ]
       }
     ],
     "stateMutability": "nonpayable"
@@ -213,6 +261,188 @@
   },
   {
     "type": "function",
+    "name": "THICK_CURVE_BASE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THICK_VAULT_CURVE_10",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THICK_VAULT_CURVE_15",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THICK_VAULT_CURVE_20",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THICK_VAULT_CURVE_25",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THICK_VAULT_CURVE_30",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THICK_VAULT_CURVE_5",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_CURVE_BASE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_10",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_15",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_20",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_25",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_30",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "THIN_VAULT_CURVE_5",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ILivoBondingCurve"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "TOKEN_IMPL_ANTISNIPER",
     "inputs": [],
     "outputs": [
@@ -353,6 +583,182 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createToken",
+    "inputs": [
+      {
+        "name": "tokenSetup",
+        "type": "tuple",
+        "internalType": "struct ILivoFactory.TokenSetup",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "feeShares",
+            "type": "tuple[]",
+            "internalType": "struct ILivoFactory.FeeShare[]",
+            "components": [
+              {
+                "name": "account",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "shares",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "directFeesEnabled",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          },
+          {
+            "name": "liquidityTier",
+            "type": "uint8",
+            "internalType": "enum LiquidityTier"
+          }
+        ]
+      },
+      {
+        "name": "taxConfigs",
+        "type": "tuple",
+        "internalType": "struct TaxConfigs",
+        "components": [
+          {
+            "name": "buyTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDurationSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "startTaxFromLaunch",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "buyTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sellTaxDecayStartBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "taxDecayDuration",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "buyOnDeployShares",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.SupplyShare[]",
+        "components": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "shares",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "antiSniperConfigs",
+        "type": "tuple",
+        "internalType": "struct AntiSniperConfigs",
+        "components": [
+          {
+            "name": "maxBuyPerTxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "maxWalletBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "protectionWindowSeconds",
+            "type": "uint40",
+            "internalType": "uint40"
+          },
+          {
+            "name": "whitelist",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
+      },
+      {
+        "name": "creatorVaults",
+        "type": "tuple[]",
+        "internalType": "struct ILivoFactory.CreatorVault[]",
+        "components": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "supplyBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "cliffSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vestingSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "payable"
   },
   {
     "type": "function",
@@ -521,6 +927,11 @@
                 "internalType": "bool"
               }
             ]
+          },
+          {
+            "name": "liquidityTier",
+            "type": "uint8",
+            "internalType": "enum LiquidityTier"
           }
         ]
       },
@@ -548,177 +959,6 @@
             "name": "startTaxFromLaunch",
             "type": "bool",
             "internalType": "bool"
-          }
-        ]
-      },
-      {
-        "name": "buyOnDeployShares",
-        "type": "tuple[]",
-        "internalType": "struct ILivoFactory.SupplyShare[]",
-        "components": [
-          {
-            "name": "account",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "shares",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      },
-      {
-        "name": "antiSniperConfigs",
-        "type": "tuple",
-        "internalType": "struct AntiSniperConfigs",
-        "components": [
-          {
-            "name": "maxBuyPerTxBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "maxWalletBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "protectionWindowSeconds",
-            "type": "uint40",
-            "internalType": "uint40"
-          },
-          {
-            "name": "whitelist",
-            "type": "address[]",
-            "internalType": "address[]"
-          }
-        ]
-      },
-      {
-        "name": "creatorVaults",
-        "type": "tuple[]",
-        "internalType": "struct ILivoFactory.CreatorVault[]",
-        "components": [
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "supplyBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "cliffSeconds",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "vestingSeconds",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "createToken",
-    "inputs": [
-      {
-        "name": "tokenSetup",
-        "type": "tuple",
-        "internalType": "struct ILivoFactory.TokenSetup",
-        "components": [
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "symbol",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "salt",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "feeShares",
-            "type": "tuple[]",
-            "internalType": "struct ILivoFactory.FeeShare[]",
-            "components": [
-              {
-                "name": "account",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "shares",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "directFeesEnabled",
-                "type": "bool",
-                "internalType": "bool"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "name": "taxConfigs",
-        "type": "tuple",
-        "internalType": "struct TaxConfigs",
-        "components": [
-          {
-            "name": "buyTaxBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "sellTaxBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "taxDurationSeconds",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "startTaxFromLaunch",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "buyTaxDecayStartBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "sellTaxDecayStartBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "taxDecayDuration",
-            "type": "uint32",
-            "internalType": "uint32"
           }
         ]
       },
@@ -975,6 +1215,11 @@
     "type": "function",
     "name": "quoteBuyOnDeploy",
     "inputs": [
+      {
+        "name": "liquidityTier",
+        "type": "uint8",
+        "internalType": "enum LiquidityTier"
+      },
       {
         "name": "tokenAmount",
         "type": "uint256",

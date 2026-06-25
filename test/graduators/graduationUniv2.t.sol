@@ -10,6 +10,7 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
