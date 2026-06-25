@@ -78,30 +78,30 @@ library DeploymentsSepolia {
     /// @notice THIN/THICK V4 graduators, one per (tier x hook fee). The DEFAULT tier reuses
     ///         `GRADUATOR_UNIV4` / `GRADUATOR_UNIV4_0P5`. Update after deploying with
     ///         `DeployTierLiquiditySystem`.
-    address internal constant GRADUATOR_UNIV4_THIN = address(0);
-    address internal constant GRADUATOR_UNIV4_THIN_0P5 = address(0);
-    address internal constant GRADUATOR_UNIV4_THICK = address(0);
-    address internal constant GRADUATOR_UNIV4_THICK_0P5 = address(0);
+    address internal constant GRADUATOR_UNIV4_THIN = 0x3aCef6907506b23e3F130A967c65a32fE8F942C6;
+    address internal constant GRADUATOR_UNIV4_THIN_0P5 = 0x65A533bA8F1DDf7b5EE77DC7Ee00A38460E2d6A8;
+    address internal constant GRADUATOR_UNIV4_THICK = 0x0208a9A39aC1de3a4D0008fC0171699940328413;
+    address internal constant GRADUATOR_UNIV4_THICK_0P5 = 0x7D99ad6DE1619cA29D40e2422824F05ce6735264;
 
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with
     ///         `DeployTierLiquiditySystem`. Venue-agnostic — shared by the V2 and V4 factories.
-    address internal constant THIN_CURVE_BASE = address(0);
-    address internal constant THIN_VAULT_CURVE_5 = address(0);
-    address internal constant THIN_VAULT_CURVE_10 = address(0);
-    address internal constant THIN_VAULT_CURVE_15 = address(0);
-    address internal constant THIN_VAULT_CURVE_20 = address(0);
-    address internal constant THIN_VAULT_CURVE_25 = address(0);
-    address internal constant THIN_VAULT_CURVE_30 = address(0);
+    address internal constant THIN_CURVE_BASE = 0x2A4376B5C5293A1b06EfEd22d13bBcEc65A18253;
+    address internal constant THIN_VAULT_CURVE_5 = 0x09EDeD7976E9753b5DD1523b605ed4070289d104;
+    address internal constant THIN_VAULT_CURVE_10 = 0xF59D0EdafF263631319cE97eb7db8D476A2C9Eb8;
+    address internal constant THIN_VAULT_CURVE_15 = 0x6929eCE99bef7f56874c090226C3C12c894DF49c;
+    address internal constant THIN_VAULT_CURVE_20 = 0x7d36732C99Cdee38247007a0B7410b2a0804C818;
+    address internal constant THIN_VAULT_CURVE_25 = 0x787b0f779Db4a9DC8aA65f3e39FeC63828C1f6B4;
+    address internal constant THIN_VAULT_CURVE_30 = 0xA43290B1EC1aad35aA1470Fe07a7F29Ad3Ea0186;
 
     /// @notice THICK-tier bonding curves. Same layout as the THIN tier above.
-    address internal constant THICK_CURVE_BASE = address(0);
-    address internal constant THICK_VAULT_CURVE_5 = address(0);
-    address internal constant THICK_VAULT_CURVE_10 = address(0);
-    address internal constant THICK_VAULT_CURVE_15 = address(0);
-    address internal constant THICK_VAULT_CURVE_20 = address(0);
-    address internal constant THICK_VAULT_CURVE_25 = address(0);
-    address internal constant THICK_VAULT_CURVE_30 = address(0);
+    address internal constant THICK_CURVE_BASE = 0xb8A440a782405d04D7Ae5cBB3145a446F6CfeB0f;
+    address internal constant THICK_VAULT_CURVE_5 = 0x5BE84cDdeff10A36CAF189C8Ad1e61922b140439;
+    address internal constant THICK_VAULT_CURVE_10 = 0x2f29cEFf2a3FceFcdb664E1314160754792148e9;
+    address internal constant THICK_VAULT_CURVE_15 = 0x207b44C1Cc8031B6fE5924Ce6049A5C0280C54d3;
+    address internal constant THICK_VAULT_CURVE_20 = 0x042A437a0bA3013481922761fd1B8f4f0a646982;
+    address internal constant THICK_VAULT_CURVE_25 = 0x0f539fF2C2e49853c314262e09B44A3af7B77f90;
+    address internal constant THICK_VAULT_CURVE_30 = 0x42250CF9cBE2667f98FFF5Fc7400F5F83BE2788F;
 
     /// @notice The six THIN-tier vault curves as the `address[6]` the factory tier config expects.
     function thinVaultCurves() internal pure returns (address[6] memory c) {
