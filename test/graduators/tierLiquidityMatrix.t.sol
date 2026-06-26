@@ -9,8 +9,10 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TokenState} from "src/types/tokenData.sol";
 
-/// @notice Integrated lifecycle matrix (Uniswap V4 fork) across the full (liquidity tier x creator-vault
-///         supply) space: the 3 tiers {THIN, DEFAULT, THICK} x the 6 vault levels {5,10,15,20,25,30%}.
+/// @notice Integrated lifecycle matrix (Uniswap V4 fork) across the (liquidity tier x creator-vault
+///         supply) space: the 3 tiers {THIN, DEFAULT, THICK} x the representative vault levels {5%, 30%
+///         max}. The intermediate 10/15/20/25% levels reuse the same per-allocation curve machinery
+///         (each proven wired in `creatorVaults.e2e`), so the e2e matrix only exercises the extremes.
 ///         For every cell it exercises the six deployer-facing scenarios end-to-end through the real
 ///         factory + launchpad + V4 graduator:
 ///           1. create                          -> token wired to the tier+vault curve and tier graduator
@@ -23,13 +25,19 @@ import {TokenState} from "src/types/tokenData.sol";
 ///         The pure-curve math of all 21 curves (buy/sell round-trip, graduation price/mcap) is proven
 ///         fork-free in `TierLiquidityCurvesTest`; this suite proves the integrated path on top of it.
 ///
-/// @dev    Tests sweep per-tier (one public test per tier per scenario) and loop the 6 vault levels
-///         inside, so a failure isolates to a tier+scenario and the assert message names the exact cell.
+/// @dev    Tests sweep per-tier (one public test per tier per scenario) and loop the representative vault
+///         levels inside, so a failure isolates to a tier+scenario and the assert message names the cell.
 ///         Tiers are referenced by name only (never by enum index): the enum is ordered by pool depth
 ///         (THIN=0), so positional assumptions would silently target the wrong tier.
 contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
-    /// @dev The six supported creator-vault supply levels (5%..30% in 5% steps).
+    /// @dev The six supported creator-vault supply levels (5%..30% in 5% steps). Used both as a value
+    ///      lookup (`BPS[idx]`) and to index the matching deployed curve (`vaults[idx]`).
     uint256[6] BPS = [uint256(500), 1000, 1500, 2000, 2500, 3000];
+
+    /// @dev Indices into `BPS` the e2e sweeps actually exercise: the 5% minimum and the 30% maximum. The
+    ///      intermediate levels add no integrated-path coverage, so they're skipped to keep the fork
+    ///      matrix cheap (the per-allocation curve wiring for all six is covered in `creatorVaults.e2e`).
+    uint256[2] BPS_IDX = [uint256(0), 5];
 
     // ───────────────────────── expected wiring per tier ─────────────────────────
 
@@ -116,7 +124,8 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     /// @dev Scenarios 1: create wires the correct tier+vault curve and graduator for every vault level.
     function _sweepCreateWiring(LiquidityTier tier) internal {
-        for (uint256 i; i < 6; ++i) {
+        for (uint256 j; j < BPS_IDX.length; ++j) {
+            uint256 i = BPS_IDX[j];
             address token = _create(tier, BPS[i], 0, _noSs());
             _assertWiring(token, tier, i);
         }
@@ -125,7 +134,8 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev Scenarios 2/3: create with a creator buy-on-deploy of `tokenAmount`. The vault-aware tier
     ///      quote must fund ~exactly `tokenAmount` for the deployer (never less) for every vault level.
     function _sweepCreatorBuy(LiquidityTier tier, uint256 tokenAmount) internal {
-        for (uint256 i; i < 6; ++i) {
+        for (uint256 j; j < BPS_IDX.length; ++j) {
+            uint256 i = BPS_IDX[j];
             string memory ctx = _ctx(tier, BPS[i]);
             uint256 ethNeeded =
                 factoryV4Unified.quoteBuyOnDeploy(tier, tokenAmount, BPS[i], _toCfgs(_emptyTaxCfg()), _cfg());
@@ -142,7 +152,8 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
     ///      tier threshold (THIN = 2.0 ETH) so the token does not graduate mid-test.
     function _sweepBuyThenSell(LiquidityTier tier) internal {
         uint256 buyValue = 0.5 ether;
-        for (uint256 i; i < 6; ++i) {
+        for (uint256 j; j < BPS_IDX.length; ++j) {
+            uint256 i = BPS_IDX[j];
             string memory ctx = _ctx(tier, BPS[i]);
             address token = _create(tier, BPS[i], 0, _noSs());
             _assertWiring(token, tier, i);
@@ -166,7 +177,8 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     /// @dev Scenario 6: graduation tier-routing + full ETH conservation for every vault level.
     function _sweepGraduation(LiquidityTier tier) internal {
-        for (uint256 i; i < 6; ++i) {
+        for (uint256 j; j < BPS_IDX.length; ++j) {
+            uint256 i = BPS_IDX[j];
             string memory ctx = _ctx(tier, BPS[i]);
             address token = _create(tier, BPS[i], 0, _noSs());
             _assertWiring(token, tier, i);

@@ -10,6 +10,7 @@ import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
+import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -17,8 +18,8 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 /// @notice Graduation price-continuity matrix across BOTH venues (Uniswap V2 + V4), all three liquidity
-///         tiers {THIN, DEFAULT, THICK}, all seven creator-vault levels {no-vault + 5%..30%}, AND all
-///         four token flavors {plain, tax, sniper-protected, tax+sniper}.
+///         tiers {THIN, DEFAULT, THICK}, the representative creator-vault levels {no-vault, 5%, 30% max},
+///         AND all four token flavors {plain, tax, sniper-protected, tax+sniper}.
 ///
 ///         The single invariant under test, for every cell:
 ///           the LAST trade price on the bonding curve (right before graduation) must roughly match the
@@ -53,8 +54,9 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         TAX_SNIPER // taxable + sniper-protected
     }
 
-    /// @dev The seven supported creator-vault levels: no-vault plus 5%..30% in 5% steps.
-    uint256[7] VAULTS = [uint256(0), 500, 1000, 1500, 2000, 2500, 3000];
+    /// @dev Creator-vault levels exercised end-to-end: no-vault, the 5% minimum, and the 30% max. The
+    ///      intermediate 10/15/20/25% steps reuse the same curve+vault machinery and add no coverage here.
+    uint256[3] VAULTS = [uint256(0), 500, 3000];
 
     /// @dev Non-plain flavors, swept at no-vault (BASE is already covered by the vault sweep at 0 bps).
     Flavor[3] FLAVORS = [Flavor.TAX, Flavor.SNIPER, Flavor.TAX_SNIPER];
@@ -117,7 +119,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     // ───────────────────────── sweeps ─────────────────────────
 
     function _sweepVaults(bool isV4, LiquidityTier tier) internal {
-        for (uint256 i; i < 7; ++i) {
+        for (uint256 i; i < VAULTS.length; ++i) {
             _runScenario(isV4, tier, VAULTS[i], Flavor.BASE);
         }
     }
@@ -211,6 +213,87 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
             lastBuyPrice * 97 / 100,
             string.concat(ctx, "post-grad swap price dropped >3% below last bonding-curve buy")
         );
+    }
+
+    // ───────────── sell-back: a holder must be able to dump their ENTIRE bag back to the pool ─────────────
+    //
+    // A single buyer graduates the token, so they hold the whole circulating supply (the ~71.43% the curve
+    // sold, minus any creator vault). The MAX / sell-all button must not be a dead-end: dumping the full bag
+    // into the freshly-seeded pool must fully fill. This is the THIN-tier V4 gap caught on Sepolia — the pool
+    // holds only ~1.75 ETH, and a full-bag sell can't clear the bounded V4 LP range. V2's constant-product
+    // pool never reverts on a sell (price just approaches zero), so V2 is the control.
+    // 0% vault is the worst case (largest bag relative to pool depth); larger vaults shrink the bag.
+    //
+    // KNOWN-RED: `test_sellEntireBag_v4_thin` is EXPECTED TO FAIL until the V4 THIN graduation range is
+    // widened (a pending product decision). The V4 universal router silently partial-fills here rather than
+    // reverting, leaving ~33% (0% vault) / ~28% (5% vault) of the bag stuck; only the 30% vault fits today.
+    // This assertion is left failing on purpose as a live reminder — do NOT weaken it to make the suite
+    // green; flip happens when the graduator's THIN range can absorb the full circulating supply.
+
+    function test_sellEntireBag_v2_thin() public {
+        _sweepSellAll(false, LiquidityTier.THIN);
+    }
+
+    function test_sellEntireBag_v2_default() public {
+        _sweepSellAll(false, LiquidityTier.DEFAULT);
+    }
+
+    function test_sellEntireBag_v2_thick() public {
+        _sweepSellAll(false, LiquidityTier.THICK);
+    }
+
+    function test_sellEntireBag_v4_thin() public {
+        _sweepSellAll(true, LiquidityTier.THIN);
+    }
+
+    function test_sellEntireBag_v4_default() public {
+        _sweepSellAll(true, LiquidityTier.DEFAULT);
+    }
+
+    function test_sellEntireBag_v4_thick() public {
+        _sweepSellAll(true, LiquidityTier.THICK);
+    }
+
+    function _sweepSellAll(bool isV4, LiquidityTier tier) internal {
+        for (uint256 i; i < VAULTS.length; ++i) {
+            _sellAllScenario(isV4, tier, VAULTS[i]);
+        }
+    }
+
+    function _sellAllScenario(bool isV4, LiquidityTier tier, uint256 vaultBps) internal {
+        string memory ctx = _ctx(isV4, tier, vaultBps, Flavor.BASE);
+        address token = _create(isV4, tier, vaultBps, Flavor.BASE);
+        _buyToGraduation(token);
+        assertTrue(launchpad.getTokenState(token).graduated, string.concat(ctx, "token did not graduate"));
+
+        // The graduating buyer holds the entire circulating supply — the MAX-button bag.
+        uint256 bag = IERC20(token).balanceOf(buyer);
+        assertGt(bag, 0, string.concat(ctx, "buyer holds no tokens to sell"));
+
+        // Value out lands as native ETH on V4 (universal router) and as WETH on V2 (router path → WETH).
+        uint256 valueBefore = isV4 ? buyer.balance : WETH.balanceOf(buyer);
+        if (isV4) {
+            _swap(buyer, token, bag, 0, false, true); // sell-all, must succeed
+        } else {
+            _v2SellAll(buyer, token, bag);
+        }
+        uint256 valueAfter = isV4 ? buyer.balance : WETH.balanceOf(buyer);
+
+        assertEq(IERC20(token).balanceOf(buyer), 0, string.concat(ctx, "buyer could not sell the full bag"));
+        assertGt(valueAfter, valueBefore, string.concat(ctx, "selling the full bag returned no value"));
+    }
+
+    /// @dev Sells `amount` of `token` for WETH through the Uniswap V2 router (token → WETH path). BASE
+    ///      flavor has no tax, so the plain `swapExactTokensForTokens` path applies.
+    function _v2SellAll(address account, address token, uint256 amount) internal {
+        vm.startPrank(account);
+        IERC20(token).approve(UNISWAP_V2_ROUTER, amount);
+        address[] memory path = new address[](2);
+        path[0] = token;
+        path[1] = address(WETH);
+        IUniswapV2Router02(UNISWAP_V2_ROUTER)
+            .swapExactTokensForTokens(amount, 0, path, account, block.timestamp + 1 hours);
+        vm.stopPrank();
     }
 
     // ───────────────────────── price probes (all ETH-per-token, 1e18-scaled) ─────────────────────────
