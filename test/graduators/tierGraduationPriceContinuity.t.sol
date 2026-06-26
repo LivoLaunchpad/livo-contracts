@@ -152,6 +152,67 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         );
     }
 
+    // ───────────── first-SWAP price continuity (real post-grad swap, not slot0) ─────────────
+    //
+    // The sweeps above read the pool's opening price from slot0, which the graduator hardcodes at
+    // `initialize()` — so they can only ever confirm the configured init price, never a first swap that
+    // executes off it (e.g. liquidity minted in the wrong tick range). This sweep does a REAL post-grad
+    // swap the same size as the last bonding-curve buy and asserts the swap price did not drop below it:
+    // only buys happened, so price must not go down across graduation. This is the THIN-tier gap that let
+    // the Sepolia price drop through.
+
+    function test_swapNoPriceDrop_v4_thin() public {
+        _swapNoDropScenario(LiquidityTier.THIN);
+    }
+
+    function test_swapNoPriceDrop_v4_default() public {
+        _swapNoDropScenario(LiquidityTier.DEFAULT);
+    }
+
+    function test_swapNoPriceDrop_v4_thick() public {
+        _swapNoDropScenario(LiquidityTier.THICK);
+    }
+
+    function _swapNoDropScenario(LiquidityTier tier) internal {
+        string memory ctx = _ctx(true, tier, 0, Flavor.BASE);
+        address token = _create(true, tier, 0, Flavor.BASE);
+        ILivoBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
+        uint256 threshold = curve.ethGraduationThreshold();
+        uint256 buyFeeBps = _currentBuyFeeBps(token);
+
+        vm.deal(buyer, 100 ether);
+
+        // 1. Buy up to ~0.005 ETH (net) below the threshold, without graduating.
+        uint256 lastNet = 0.005 ether;
+        uint256 firstGross = ((threshold - lastNet) * 10_000) / (10_000 - buyFeeBps);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: firstGross}(token, 0, DEADLINE);
+        assertFalse(launchpad.getTokenState(token).graduated, string.concat(ctx, "graduated too early"));
+
+        // 2. Last bonding-curve buy: fills exactly to the threshold and graduates. Capture its price.
+        uint256 ethReserves = launchpad.getTokenState(token).ethCollected;
+        uint256 lastGross = ((threshold - ethReserves) * 10_000) / (10_000 - buyFeeBps);
+        uint256 ethBefore = buyer.balance;
+        uint256 tokBefore = IERC20(token).balanceOf(buyer);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: lastGross}(token, 0, DEADLINE);
+        assertTrue(launchpad.getTokenState(token).graduated, string.concat(ctx, "did not graduate"));
+        uint256 lastBuyPrice = (ethBefore - buyer.balance) * 1e18 / (IERC20(token).balanceOf(buyer) - tokBefore);
+
+        // 3. First post-graduation swap, same ETH size. Capture its effective price.
+        ethBefore = buyer.balance;
+        tokBefore = IERC20(token).balanceOf(buyer);
+        _swap(buyer, token, lastGross, 0, true, true);
+        uint256 swapPrice = (ethBefore - buyer.balance) * 1e18 / (IERC20(token).balanceOf(buyer) - tokBefore);
+
+        // INVARIANT: only buys happened, so the first pool swap must not be cheaper than the last curve buy.
+        assertGe(
+            swapPrice,
+            lastBuyPrice * 97 / 100,
+            string.concat(ctx, "post-grad swap price dropped >3% below last bonding-curve buy")
+        );
+    }
+
     // ───────────────────────── price probes (all ETH-per-token, 1e18-scaled) ─────────────────────────
 
     /// @dev ETH-per-token the curve charges for the final sliver of ETH reaching the graduation
