@@ -400,6 +400,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         );
 
         LAUNCHPAD.launchToken(token, bondingCurve);
+        emit BondingCurveAssigned(token, address(bondingCurve));
 
         // Deploy + fund the vaults BEFORE the deployer buy so the factory ends the tx holding no
         // tokens. The factory→vault transfers are exempt from sniper caps (`from == tokenFactory`).

@@ -62,6 +62,8 @@ contract ConstantProductBondingCurveConfigurable is ILivoBondingCurve {
         E0 = e0;
         _GRADUATION_THRESHOLD = graduationThreshold;
         _MAX_EXCESS_OVER_THRESHOLD = maxExcessOverThreshold_;
+        // emit the constructor args (not the immutables) to sidestep reading immutables during construction
+        emit LivoBondingCurveDeployed(k, t0, e0, graduationThreshold, maxExcessOverThreshold_);
     }
 
     /// @notice Returns the ETH reserves threshold at which graduation can be triggered

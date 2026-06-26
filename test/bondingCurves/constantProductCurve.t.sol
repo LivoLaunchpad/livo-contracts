@@ -22,6 +22,15 @@ contract ConstantProductBondingCurveTest is Test {
         curve = new ConstantProductBondingCurve();
     }
 
+    function test_constructor_emitsLivoBondingCurveDeployed() public {
+        // no indexed fields; check the data payload (K/T0/E0 + graduation window)
+        vm.expectEmit(false, false, false, true);
+        emit ILivoBondingCurve.LivoBondingCurveDeployed(
+            curve.K(), curve.T0(), curve.E0(), GRADUATION_THRESHOLD, GRADUATION_MAX_EXCESS
+        );
+        new ConstantProductBondingCurve();
+    }
+
     function _uniswapV2EstimatedPrice(uint256 tokenReserves, uint256 ethReserves) internal pure returns (uint256) {
         if (tokenReserves == 0 || ethReserves == 0) return 0;
         return (ethReserves * 1e18) / tokenReserves;

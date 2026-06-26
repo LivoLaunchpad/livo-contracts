@@ -100,6 +100,12 @@ interface ILivoFactory {
         address feeHandler
     );
 
+    /// @notice Emitted once per token at creation, recording the bonding curve it was launched on.
+    ///         The curve is otherwise only in launchpad storage (`tokenConfigs[token].bondingCurve`)
+    ///         and is not carried by any other event. Indexed on both fields so subscribers can
+    ///         filter by token or by curve (e.g. "all tokens on curve X").
+    event BondingCurveAssigned(address indexed token, address indexed bondingCurve);
+
     event BuyOnDeploy(
         address indexed token,
         address indexed buyer,

@@ -12,6 +12,16 @@ interface ILivoBondingCurve {
         uint256 maxExcessOverThreshold;
     }
 
+    /// @notice Emitted once from the constructor of every bonding-curve deployment. Carries the full
+    ///         curve shape (`k`, `t0`, `e0`) and the graduation window so an indexer can reconstruct
+    ///         token/eth reserves at any eth reserves `e` via `t = k / (e + e0) - t0`. The emitter
+    ///         (the curve contract itself) is the log's `address`, so no curve field is included.
+    /// @dev    Named with the `Livo` prefix so it carries a unique signature/topic and can be
+    ///         wildcard-indexed (indexed from ANY emitting contract, no static address list needed).
+    event LivoBondingCurveDeployed(
+        uint256 k, uint256 t0, uint256 e0, uint256 ethGraduationThreshold, uint256 maxExcessOverThreshold
+    );
+
     /// @notice Returns the graduation configuration
     function getGraduationConfig() external view returns (GraduationConfig memory);
 
