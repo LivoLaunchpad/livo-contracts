@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
+import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -12,21 +13,26 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
-/// @title Deploy the THIN + THICK liquidity-tier system
+/// @title Deploy the liquidity-tier system (DEFAULT redeploy + THIN + THICK)
 /// @notice Deploys the net-new on-chain pieces the deployer-selectable liquidity tiers need:
-///         1. The THIN and THICK tier bonding curves — each a no-vault base curve plus six vault
-///            curves (5%..30%), 14 `ConstantProductBondingCurveConfigurable` instances total. The
-///            DEFAULT tier reuses the already-deployed base curve + six vault curves.
+///         1. The DEFAULT, THIN and THICK tier bonding curves — each a no-vault base curve plus six
+///            vault curves (5%..30%), 21 curve instances total. The DEFAULT tier curves are now
+///            REDEPLOYED too (not reused): the originally-deployed instances predate the
+///            `LivoBondingCurveDeployed` constructor event, so they are re-created here to emit it for
+///            the indexer. DEFAULT's base is the hardcoded `ConstantProductBondingCurve`
+///            (manifest slot `BONDING_CURVE`); its six vault curves are `ConstantProductBondingCurveConfigurable`
+///            (`VAULT_CURVE_5..30`). THIN/THICK are all `ConstantProductBondingCurveConfigurable`.
 ///         2. The four THIN/THICK Uniswap V4 graduators (one per tier x hook fee: 100 / 50 bps).
 ///            The DEFAULT graduators (`GRADUATOR_UNIV4`, `GRADUATOR_UNIV4_0P5`) are reused as-is.
 ///
-///         Curves are venue-agnostic: the same 14 addresses feed both the V2 and V4 factory tier
+///         Curves are venue-agnostic: the same addresses feed both the V2 and V4 factory tier
 ///         configs (V2 needs no tier graduators — its depth is set entirely by the curve).
 ///
 ///         After running, paste the printed addresses into `src/config/manifest.{mainnet,sepolia}.sol`
-///         (the `GRADUATOR_UNIV4_{THIN,THICK}*` and `{THIN,THICK}_*_CURVE_*` slots), run
-///         `just export-deployments`, and only THEN upgrade the unified factories so they pick the
-///         tier config up (`RedeployUnifiedFactoriesOnly`, or a `Redeploy*Tokens*` variant).
+///         (the `BONDING_CURVE` + `VAULT_CURVE_*`, the `GRADUATOR_UNIV4_{THIN,THICK}*`, and the
+///         `{THIN,THICK}_*_CURVE_*` slots), run `just export-deployments`, and only THEN upgrade the
+///         unified factories so they pick the new curves/tier config up (`RedeployUnifiedFactoriesOnly`,
+///         or a `Redeploy*Tokens*` variant).
 ///
 /// @dev    Run with:
 ///         forge script DeployTierLiquiditySystem --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
@@ -48,7 +54,7 @@ contract DeployTierLiquiditySystem is Script {
     function run() public {
         Deps memory d = _resolveDeps();
 
-        console.log("=== Deploy Livo liquidity-tier system (THIN + THICK) ===");
+        console.log("=== Deploy Livo liquidity-tier system (DEFAULT + THIN + THICK) ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("");
@@ -58,6 +64,7 @@ contract DeployTierLiquiditySystem is Script {
 
         vm.startBroadcast();
 
+        address[7] memory def = _deployDefaultCurves(bpsList);
         address[7] memory thin = _deployTierCurves(LiquidityTier.THIN, bpsList);
         address[7] memory thick = _deployTierCurves(LiquidityTier.THICK, bpsList);
 
@@ -73,6 +80,7 @@ contract DeployTierLiquiditySystem is Script {
 
         console.log("=== Deployed. Paste into src/config/manifest.<chain>.sol ===");
         console.log("");
+        _printDefaultCurves(def);
         _printTierCurves("THIN", thin);
         _printTierCurves("THICK", thick);
         console.log("GRADUATOR_UNIV4_THIN    ", gradSmall);
@@ -81,6 +89,21 @@ contract DeployTierLiquiditySystem is Script {
         console.log("GRADUATOR_UNIV4_THICK_0P5", gradLarge0p5);
         console.log("");
         console.log("Next: update the manifest, `just export-deployments`, then RedeployUnifiedFactoriesOnly.");
+    }
+
+    /// @dev Redeploys the DEFAULT-tier curves so they emit `LivoBondingCurveDeployed` (the originally
+    ///      deployed instances predate that event). Index 0 is the hardcoded `ConstantProductBondingCurve`
+    ///      base (manifest slot `BONDING_CURVE`); 1..6 are the 5%..30% configurable vault curves
+    ///      (`VAULT_CURVE_5..30`). DEFAULT has no `(DEFAULT, 0)` entry in `CreatorVaultCurveConstants`
+    ///      (its base is the hardcoded curve, not a configurable instance), so index 0 is special-cased.
+    function _deployDefaultCurves(uint256[7] memory bpsList) internal returns (address[7] memory curves) {
+        (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(LiquidityTier.DEFAULT);
+        curves[0] = address(new ConstantProductBondingCurve());
+        for (uint256 i = 1; i < 7; ++i) {
+            (uint256 k, uint256 t0, uint256 e0) =
+                CreatorVaultCurveConstants.paramsFor(LiquidityTier.DEFAULT, bpsList[i]);
+            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
+        }
     }
 
     /// @dev Deploys a tier's seven curves: index 0 is the no-vault base, 1..6 are the 5%..30% vaults.
@@ -104,6 +127,22 @@ contract DeployTierLiquiditySystem is Script {
         );
         require(graduator.HOOK_ADDRESS() == hook, "graduator hook mismatch");
         return address(graduator);
+    }
+
+    /// @dev DEFAULT curves print under their (un-prefixed) manifest slot names: `BONDING_CURVE` for the
+    ///      base and `VAULT_CURVE_5..30` for the vault curves.
+    function _printDefaultCurves(address[7] memory c) internal pure {
+        string[7] memory slot;
+        slot[0] = "BONDING_CURVE ";
+        slot[1] = "VAULT_CURVE_5 ";
+        slot[2] = "VAULT_CURVE_10";
+        slot[3] = "VAULT_CURVE_15";
+        slot[4] = "VAULT_CURVE_20";
+        slot[5] = "VAULT_CURVE_25";
+        slot[6] = "VAULT_CURVE_30";
+        for (uint256 i = 0; i < 7; ++i) {
+            console.log(slot[i], c[i]);
+        }
     }
 
     function _printTierCurves(string memory tier, address[7] memory c) internal pure {
