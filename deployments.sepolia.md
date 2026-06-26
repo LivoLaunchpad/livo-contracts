@@ -24,7 +24,7 @@
 | LivoFactoryUniV2Unified (proxy)              | `0x87Dd69F8d294fA9cd704fccd38d36d6197F80868` |
 | LivoFactoryUniV2Unified (impl)               | `0x7f4192203f10ad4A2E3BED201DdAa1A929bBcc6c` |
 | LivoFactoryUniV4Unified (proxy)              | `0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b` |
-| LivoFactoryUniV4Unified (impl)               | `0x7323b1f2193b09204e4dc396449706466BeF8ae5` |
+| LivoFactoryUniV4Unified (impl)               | `0xe17Abbd962Ab88FCeC2867e665da6C2d5a20430f` |
 | LivoCreatorVaultFactory (proxy)              | `0x804ad45394FCF755350d924f712EC463E5E3147D` |
 | LivoCreatorVaultFactory (impl)               | `0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47` |
 | LivoCreatorVault (impl)                      | `0xe5aF8d840963060302cf5021630d6dBF41a9e07b` |
