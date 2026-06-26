@@ -7,7 +7,7 @@
 | Contract                                     | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
 | LivoLaunchpad                                | `0x0f82BE05B136266203FcAD79A951bDbBB4f31110` |
-| ConstantProductBondingCurve                  | `0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5` |
+| ConstantProductBondingCurve                  | `0x523C474aB6C177B3A4eF9aeF226998eC3f35ae27` |
 | LivoGraduatorUniswapV2                       | `0xdf2A4F12Af6Cce0588678FdA7ce69D5Edc7d0897` |
 | LivoGraduatorUniswapV4                       | `0x130C39e08Ac899b992c69B56C7364DD9d1800026` |
 | LivoGraduatorUniswapV4 (0.5% hook)           | `0x11b2037D69F9851DD740730c8A8084EB97AB20c6` |
@@ -28,30 +28,30 @@
 | LivoCreatorVaultFactory (proxy)              | `0x804ad45394FCF755350d924f712EC463E5E3147D` |
 | LivoCreatorVaultFactory (impl)               | `0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47` |
 | LivoCreatorVault (impl)                      | `0xe5aF8d840963060302cf5021630d6dBF41a9e07b` |
-| Creator-vault curve 5%                       | `0xDAB2D2a31E5d659f99E3AC786884793223bafBB4` |
-| Creator-vault curve 10%                      | `0xAB6161195d96A824c9cef14B1cd43455ec3cE9DA` |
-| Creator-vault curve 15%                      | `0x5aB30fB5453845B10239A569Cdb8199B3214339e` |
-| Creator-vault curve 20%                      | `0x35DC2fbD3ad6917C51658d1891859A6e9DaAc16e` |
-| Creator-vault curve 25%                      | `0x321A86a8b27Ff81dcdb3C5d51FF0a2936f5c2c68` |
-| Creator-vault curve 30%                      | `0x590e303AaaAdE7634Ec4d9d16bD135b4790FA42b` |
-| LivoGraduatorUniV4 THIN                      | `0x3aCef6907506b23e3F130A967c65a32fE8F942C6` |
-| LivoGraduatorUniV4 THIN (0.5%)               | `0x65A533bA8F1DDf7b5EE77DC7Ee00A38460E2d6A8` |
-| LivoGraduatorUniV4 THICK                     | `0x0208a9A39aC1de3a4D0008fC0171699940328413` |
-| LivoGraduatorUniV4 THICK (0.5%)              | `0x7D99ad6DE1619cA29D40e2422824F05ce6735264` |
-| THIN-tier curve base                         | `0x2A4376B5C5293A1b06EfEd22d13bBcEc65A18253` |
-| THIN-tier curve 5%                           | `0x09EDeD7976E9753b5DD1523b605ed4070289d104` |
-| THIN-tier curve 10%                          | `0xF59D0EdafF263631319cE97eb7db8D476A2C9Eb8` |
-| THIN-tier curve 15%                          | `0x6929eCE99bef7f56874c090226C3C12c894DF49c` |
-| THIN-tier curve 20%                          | `0x7d36732C99Cdee38247007a0B7410b2a0804C818` |
-| THIN-tier curve 25%                          | `0x787b0f779Db4a9DC8aA65f3e39FeC63828C1f6B4` |
-| THIN-tier curve 30%                          | `0xA43290B1EC1aad35aA1470Fe07a7F29Ad3Ea0186` |
-| THICK-tier curve base                        | `0xb8A440a782405d04D7Ae5cBB3145a446F6CfeB0f` |
-| THICK-tier curve 5%                          | `0x5BE84cDdeff10A36CAF189C8Ad1e61922b140439` |
-| THICK-tier curve 10%                         | `0x2f29cEFf2a3FceFcdb664E1314160754792148e9` |
-| THICK-tier curve 15%                         | `0x207b44C1Cc8031B6fE5924Ce6049A5C0280C54d3` |
-| THICK-tier curve 20%                         | `0x042A437a0bA3013481922761fd1B8f4f0a646982` |
-| THICK-tier curve 25%                         | `0x0f539fF2C2e49853c314262e09B44A3af7B77f90` |
-| THICK-tier curve 30%                         | `0x42250CF9cBE2667f98FFF5Fc7400F5F83BE2788F` |
+| Creator-vault curve 5%                       | `0x52E9f8C868dC93FC8f96Bd011919e792081fb994` |
+| Creator-vault curve 10%                      | `0xCfC997822F83fb5e097169D3ece200dC341CD4b2` |
+| Creator-vault curve 15%                      | `0x45494272d20566D6455551dd5B394aADF27B280E` |
+| Creator-vault curve 20%                      | `0x2a20a84be4843DB150cac3E540a0a233e2aB2F43` |
+| Creator-vault curve 25%                      | `0x47E194606A3c43751A3DE9680D163688114d0eB9` |
+| Creator-vault curve 30%                      | `0x0776c476F519cDB8c75d9b3bCd1165003812e028` |
+| LivoGraduatorUniV4 THIN                      | `0x61A0f807CD67BAa7960732fbF5Db7F6f67F64021` |
+| LivoGraduatorUniV4 THIN (0.5%)               | `0xb26f2d12f8fD10238eEBCa7B9eBa1c372C0f0286` |
+| LivoGraduatorUniV4 THICK                     | `0xD8E48E3eE80f1448689DB671CFc7c414d89BE1Fe` |
+| LivoGraduatorUniV4 THICK (0.5%)              | `0xEf40A51e5FB1c61AFb4eF5dd062013B16A2183f0` |
+| THIN-tier curve base                         | `0xe8f6083315eEC90e61D06e50163f8ce187DDb55b` |
+| THIN-tier curve 5%                           | `0xE7eb1d5d0E9EA8B0C9BD31D165B53Db16860ed07` |
+| THIN-tier curve 10%                          | `0xBB6a4e318cd5D8BA74405E52A1257589186b52bb` |
+| THIN-tier curve 15%                          | `0x46A66a1b305e10901D811306F5450bb51B67ab28` |
+| THIN-tier curve 20%                          | `0x9b179058A1a6Fa021f7172d05663Be394EbD9DA6` |
+| THIN-tier curve 25%                          | `0x3204f943FCf33E306F6F28E5F433Aa7851474cF2` |
+| THIN-tier curve 30%                          | `0xDe542942392BA7CB5c6e83f5d4467A9cfd4Ae1aF` |
+| THICK-tier curve base                        | `0x171D6cDCc4c695d1D32A687A395385B7439965d9` |
+| THICK-tier curve 5%                          | `0xC1F0f507a050B58edF32e073f6F6A862E59C9082` |
+| THICK-tier curve 10%                         | `0x8eD41e5357C71E87cd8cf942394600bA1AF9C2bE` |
+| THICK-tier curve 15%                         | `0x06E90E159fdA3b639CD5f9c09CCABefFE9cadc11` |
+| THICK-tier curve 20%                         | `0x33863bCAc9c43de66C7fB00F4E43bf6F6c42E9e3` |
+| THICK-tier curve 25%                         | `0xc5103e505c05AaAFf0ee4e8Fc927eD9371352727` |
+| THICK-tier curve 30%                         | `0x9E28f3902fBC209D88d34B729dA3BcfE5877412F` |
 
 ## Accounts
 
