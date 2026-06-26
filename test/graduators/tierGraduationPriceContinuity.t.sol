@@ -219,16 +219,16 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     //
     // A single buyer graduates the token, so they hold the whole circulating supply (the ~71.43% the curve
     // sold, minus any creator vault). The MAX / sell-all button must not be a dead-end: dumping the full bag
-    // into the freshly-seeded pool must fully fill. This is the THIN-tier V4 gap caught on Sepolia — the pool
-    // holds only ~1.75 ETH, and a full-bag sell can't clear the bounded V4 LP range. V2's constant-product
+    // into the freshly-seeded pool must fully fill. This was the THIN-tier V4 gap caught on Sepolia — the pool
+    // holds only ~1.75 ETH, and a full-bag sell couldn't clear the bounded V4 LP range. V2's constant-product
     // pool never reverts on a sell (price just approaches zero), so V2 is the control.
     // 0% vault is the worst case (largest bag relative to pool depth); larger vaults shrink the bag.
     //
-    // KNOWN-RED: `test_sellEntireBag_v4_thin` is EXPECTED TO FAIL until the V4 THIN graduation range is
-    // widened (a pending product decision). The V4 universal router silently partial-fills here rather than
-    // reverting, leaving ~33% (0% vault) / ~28% (5% vault) of the bag stuck; only the 30% vault fits today.
-    // This assertion is left failing on purpose as a live reminder — do NOT weaken it to make the suite
-    // green; flip happens when the graduator's THIN range can absorb the full circulating supply.
+    // FIXED: the THIN graduator now mints its primary range up to `TICK_UPPER_THIN` (212000 vs the 203600
+    // DEFAULT/THICK use). THIN graduates at the highest tick yet seeds the shallowest pool, so it needs the
+    // widest sell-side range; the tier-specific upper lets the full bag round-trip back into the pool while
+    // leaving ~all ETH recoverable. DEFAULT/THICK keep 203600 — a single shared range can't satisfy both
+    // "sell everything" and "recover all ETH" because the bag is equal across tiers but the pool ETH is not.
 
     function test_sellEntireBag_v2_thin() public {
         _sweepSellAll(false, LiquidityTier.THIN);

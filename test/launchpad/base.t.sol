@@ -23,6 +23,7 @@ import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
@@ -366,7 +367,8 @@ contract LaunchpadBaseTests is Test {
             positionManagerAddress,
             permit2Address,
             TEST_HOOK_ADDRESS,
-            715832709642994126662528799866880 // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
+            715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER
         );
 
         livoTokenSniper = new LivoTokenSniperProtected();
@@ -387,7 +389,8 @@ contract LaunchpadBaseTests is Test {
             positionManagerAddress,
             permit2Address,
             TEST_HOOK_ADDRESS,
-            1012340326367404053977557838594048 // THIN graduation sqrtPriceX96 (6.125 ETH mcap)
+            1012340326367404053977557838594048, // THIN graduation sqrtPriceX96 (6.125 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER_THIN
         );
         graduatorV4Thick = new LivoGraduatorUniswapV4(
             address(launchpad),
@@ -395,7 +398,8 @@ contract LaunchpadBaseTests is Test {
             positionManagerAddress,
             permit2Address,
             TEST_HOOK_ADDRESS,
-            506170163183702026988778919297024 // THICK graduation sqrtPriceX96 (24.5 ETH mcap)
+            506170163183702026988778919297024, // THICK graduation sqrtPriceX96 (24.5 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER
         );
 
         address factoryV2Impl = address(

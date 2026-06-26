@@ -7,6 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
@@ -91,7 +92,8 @@ contract LaunchpadInvariants is Test {
             positionManagerAddress,
             permit2Address,
             TEST_HOOK_ADDRESS,
-            715832709642994126662528799866880 // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
+            715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER
         );
 
         // The unified factories take both base and sniper-protected token impls. The invariant

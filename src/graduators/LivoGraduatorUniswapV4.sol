@@ -53,6 +53,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     ///      506170163183702026988778919297024 (24.5 ETH mcap).
     uint160 immutable SQRT_PRICEX96_GRADUATION;
 
+    /// @notice The upper tick of the primary liquidity range (tier-specific). Thinner tiers graduate at a
+    ///         higher tick with a shallower pool, so they need a higher upper tick to let a holder sell
+    ///         their full bag back into the pool.
+    int24 immutable TICK_UPPER;
+
     /// @notice The sqrtX96 price at the high tick, i.e., the minimum token price denominated in ETH
     /// @dev Derived from the high-tick in constructor
     uint160 immutable SQRT_PRICEX96_UPPER_TICK;
@@ -66,6 +71,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice The lower tick of the secondary ETH-only position. Tier-specific (derived from the
     ///         graduation price), so the minted position range matches `SQRT_LOWER_2` exactly.
     int24 immutable TICK_LOWER_SECONDARY;
+    /// @notice The upper tick of the secondary ETH-only position. Tier-specific (a fixed offset below
+    ///         `TICK_UPPER`), so the minted position range matches `SQRT_UPPER_2` exactly.
+    int24 immutable TICK_UPPER_SECONDARY;
     /// @notice The sqrtX96 price at the lower tick of the secondary ETH-only liquidity position
     uint160 immutable SQRT_LOWER_2;
     /// @notice The sqrtX96 price at the upper tick of the secondary ETH-only liquidity position
@@ -93,13 +101,18 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     ///        initialized at this price; liquidity is sized from it. The graduation tick (and hence the
     ///        secondary single-sided ETH position) is derived on-chain from it, so it is robust to how
     ///        `simulations/script/uniswapV4Settings.py` rounds the tick.
+    /// @param _tickUpper The upper tick of the primary liquidity range (tier-specific, spacing-aligned).
+    ///        Thinner tiers graduate higher with a shallower pool and need a higher upper tick so a holder
+    ///        can sell their full bag back into the pool. Use `UniswapV4PoolConstants.TICK_UPPER` for the
+    ///        DEFAULT/THICK tiers and `TICK_UPPER_THIN` for the THIN tier.
     constructor(
         address _launchpad,
         address _poolManager,
         address _positionManager,
         address _permit2,
         address _hook,
-        uint160 _sqrtPriceGraduation
+        uint160 _sqrtPriceGraduation,
+        int24 _tickUpper
     ) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
@@ -116,22 +129,26 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // is entirely ETH (the pool's current tick is below it). Graduation ticks are positive in the
         // supported range, so integer division floors.
         int24 tickLower2 = (gradTick / spacing + 1) * spacing;
-        // Sanity: the price must sit inside the main liquidity range and leave room for the secondary
-        // position below its upper bound.
+        // The secondary position's upper tick sits a fixed offset below the primary upper tick.
+        int24 tickUpper2 = _tickUpper - UniswapV4PoolConstants.TICK_UPPER_2_OFFSET;
+        // Sanity: the upper tick must be spacing-aligned, and the price must sit inside the main range and
+        // leave room for the secondary position below its upper bound (this also enforces gradTick < upper).
         require(
-            gradTick > UniswapV4PoolConstants.TICK_LOWER && tickLower2 < UniswapV4PoolConstants.TICK_UPPER_2,
+            _tickUpper % spacing == 0 && gradTick > UniswapV4PoolConstants.TICK_LOWER && tickLower2 < tickUpper2,
             InvalidGraduationPrice()
         );
         SQRT_PRICEX96_GRADUATION = _sqrtPriceGraduation;
+        TICK_UPPER = _tickUpper;
 
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(UniswapV4PoolConstants.TICK_LOWER));
-        SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(UniswapV4PoolConstants.TICK_UPPER));
+        SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(_tickUpper));
 
         // secondary eth liquidity position, just above the (tier-specific) graduation tick. The minted
-        // tick range MUST match the sqrt prices used to size its liquidity, so the lower tick is stored.
+        // tick range MUST match the sqrt prices used to size its liquidity, so the ticks are stored.
         TICK_LOWER_SECONDARY = tickLower2;
+        TICK_UPPER_SECONDARY = tickUpper2;
         SQRT_LOWER_2 = uint160(TickMath.getSqrtPriceAtTick(tickLower2));
-        SQRT_UPPER_2 = uint160(TickMath.getSqrtPriceAtTick(UniswapV4PoolConstants.TICK_UPPER_2));
+        SQRT_UPPER_2 = uint160(TickMath.getSqrtPriceAtTick(tickUpper2));
     }
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
@@ -252,22 +269,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         );
 
         _addLiquidity(
-            pool,
-            UniswapV4PoolConstants.TICK_LOWER,
-            UniswapV4PoolConstants.TICK_UPPER,
-            liquidity1,
-            ethForLiquidity,
-            tokenAmount,
-            address(this)
+            pool, UniswapV4PoolConstants.TICK_LOWER, TICK_UPPER, liquidity1, ethForLiquidity, tokenAmount, address(this)
         );
 
         uint256 remainingEth = ethForLiquidity - (ethBalanceBefore - address(this).balance);
         liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
 
         if (liquidity2 > 0) {
-            _addLiquidity(
-                pool, TICK_LOWER_SECONDARY, UniswapV4PoolConstants.TICK_UPPER_2, liquidity2, remainingEth, 0, treasury
-            );
+            _addLiquidity(pool, TICK_LOWER_SECONDARY, TICK_UPPER_SECONDARY, liquidity2, remainingEth, 0, treasury);
         }
     }
 

@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script} from "lib/forge-std/src/Script.sol";
 import {console} from "lib/forge-std/src/console.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
@@ -40,7 +41,13 @@ contract DeployUniV4Graduator0p5 is Script {
         vm.startBroadcast();
         // DEFAULT-tier graduation price (12.25 ETH mcap), from uniswapV4Settings.py 12250000000.
         LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
-            d.launchpad, d.poolManager, d.positionManager, d.permit2, d.hook, 715832709642994126662528799866880
+            d.launchpad,
+            d.poolManager,
+            d.positionManager,
+            d.permit2,
+            d.hook,
+            715832709642994126662528799866880,
+            UniswapV4PoolConstants.TICK_UPPER
         );
         vm.stopBroadcast();
 

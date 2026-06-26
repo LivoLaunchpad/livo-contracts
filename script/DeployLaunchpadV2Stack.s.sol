@@ -8,6 +8,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoQuoter} from "src/LivoQuoter.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
@@ -325,7 +326,8 @@ contract DeployLaunchpadV2Stack is Script {
                 d.univ4PositionManager,
                 d.permit2,
                 d.swapHook,
-                DEFAULT_GRAD_SQRT_PRICE_X96
+                DEFAULT_GRAD_SQRT_PRICE_X96,
+                UniswapV4PoolConstants.TICK_UPPER
             )
         );
         console.log("| LivoGraduatorUniswapV4                        |", fresh.graduatorV4);
@@ -337,7 +339,8 @@ contract DeployLaunchpadV2Stack is Script {
                 d.univ4PositionManager,
                 d.permit2,
                 d.swapHook0p5,
-                DEFAULT_GRAD_SQRT_PRICE_X96
+                DEFAULT_GRAD_SQRT_PRICE_X96,
+                UniswapV4PoolConstants.TICK_UPPER
             )
         );
         console.log("| LivoGraduatorUniswapV4 (0p5 hook)             |", fresh.graduatorV4_0p5);

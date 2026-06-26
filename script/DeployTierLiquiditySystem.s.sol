@@ -6,6 +6,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
@@ -60,10 +61,13 @@ contract DeployTierLiquiditySystem is Script {
         address[7] memory thin = _deployTierCurves(LiquidityTier.THIN, bpsList);
         address[7] memory thick = _deployTierCurves(LiquidityTier.THICK, bpsList);
 
-        address gradSmall = _deployGraduator(d, d.hook100, THIN_GRAD_SQRT_PRICE_X96);
-        address gradSmall0p5 = _deployGraduator(d, d.hook50, THIN_GRAD_SQRT_PRICE_X96);
-        address gradLarge = _deployGraduator(d, d.hook100, THICK_GRAD_SQRT_PRICE_X96);
-        address gradLarge0p5 = _deployGraduator(d, d.hook50, THICK_GRAD_SQRT_PRICE_X96);
+        address gradSmall =
+            _deployGraduator(d, d.hook100, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
+        address gradSmall0p5 =
+            _deployGraduator(d, d.hook50, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
+        address gradLarge = _deployGraduator(d, d.hook100, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
+        address gradLarge0p5 =
+            _deployGraduator(d, d.hook50, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
 
         vm.stopBroadcast();
 
@@ -91,9 +95,12 @@ contract DeployTierLiquiditySystem is Script {
         }
     }
 
-    function _deployGraduator(Deps memory d, address hook, uint160 sqrtPriceGraduation) internal returns (address) {
+    function _deployGraduator(Deps memory d, address hook, uint160 sqrtPriceGraduation, int24 tickUpper)
+        internal
+        returns (address)
+    {
         LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
-            d.launchpad, d.poolManager, d.positionManager, d.permit2, hook, sqrtPriceGraduation
+            d.launchpad, d.poolManager, d.positionManager, d.permit2, hook, sqrtPriceGraduation, tickUpper
         );
         require(graduator.HOOK_ADDRESS() == hook, "graduator hook mismatch");
         return address(graduator);

@@ -17,10 +17,19 @@ library UniswapV4PoolConstants {
     // so tokens/ETH (eth price of one token).
     // Thus, the max token price is found at the low tick, and the min token price at the high tick
 
-    /// @notice The upper boundary of the liquidity range when the position is created (minimum token price in ETH)
+    /// @notice DEFAULT/THICK upper boundary of the primary liquidity range (minimum token price in ETH)
+    /// @dev Per-tier overridable via the graduator constructor; see `TICK_UPPER_THIN`. Thinner tiers
+    ///      graduate at a higher tick with a shallower pool, so they need a higher upper tick to let a
+    ///      holder sell their full bag back into the pool (otherwise the sell-side range runs dry).
     /// @dev High tick: 203600 -> 2088220564709554551739049874292736 -> 694694034.078335 tokens per ETH
     /// @dev Ticks need to be multiples of TICK_SPACING
     int24 internal constant TICK_UPPER = 203600;
+
+    /// @notice THIN-tier upper boundary of the primary liquidity range.
+    /// @dev THIN graduates at the highest tick (6.125 ETH mcap) yet seeds the shallowest pool (~1.75 ETH),
+    ///      so its sell-side range must be the widest to absorb the full circulating supply when a holder
+    ///      dumps their entire bag. Tuned so the bag just reaches this tick: all tokens sold, ~all ETH out.
+    int24 internal constant TICK_UPPER_THIN = 212000;
 
     /// @notice The lower boundary of the liquidity range when the position is created (maximum token price in ETH)
     /// @dev Low tick: -7000 -> sqrtX96price: 55832119482513121612260179968 -> 0.49660268342258984 tokens per ETH
@@ -33,8 +42,8 @@ library UniswapV4PoolConstants {
     /// @notice Second position lower tick (single-sided ETH, concentrated right below the graduation price)
     int24 internal constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING;
 
-    /// @notice Second position upper tick (single-sided ETH)
-    /// @dev This secondary position covers roughly a -67% drop from graduation price. After that, only the main position would be active
+    /// @notice Tick distance from the primary upper tick down to the secondary ETH-only position's upper tick.
+    /// @dev The secondary position covers roughly a -67% drop from graduation price. After that, only the main position would be active
     /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
-    int24 internal constant TICK_UPPER_2 = TICK_UPPER - (51 * TICK_SPACING);
+    int24 internal constant TICK_UPPER_2_OFFSET = 51 * TICK_SPACING;
 }
