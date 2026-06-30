@@ -24,6 +24,7 @@ from rich.table import Table
 GRAPHQL_URL = "https://indexer.livo.trade/v1/graphql"
 JSONRPC_BATCH_SIZE = 100
 HTTP_TIMEOUT = 30
+MIN_BALANCE_WEI = 10**15  # 0.001 ETH
 
 QUERY = """
 query MyQuery {
@@ -110,7 +111,7 @@ def main() -> int:
     unfunded = [
         (addr, balances[addr], accrued_by_addr[addr])
         for addr in addresses
-        if balances[addr] == 0
+        if balances[addr] < MIN_BALANCE_WEI
     ]
     unfunded.sort(key=lambda x: x[2], reverse=True)
 
@@ -118,7 +119,7 @@ def main() -> int:
         console.print("[green]OK: no unfunded creators with pending claims.[/green]")
         return 0
 
-    table = Table(title=f"Unfunded creators (balance = 0 ETH): {len(unfunded)}")
+    table = Table(title=f"Unfunded creators (balance < 0.001 ETH): {len(unfunded)}")
     table.add_column("creator", style="cyan", no_wrap=True)
     table.add_column("balance (ETH)", justify="right")
     table.add_column("accrued (ETH)", justify="right", style="green")
@@ -127,7 +128,7 @@ def main() -> int:
     console.print(table)
 
     raise RuntimeError(
-        f"{len(unfunded)} creator(s) have pending ETH claims but a 0 ETH balance — fund them or investigate."
+        f"{len(unfunded)} creator(s) have pending ETH claims but a balance below 0.001 ETH — fund them or investigate."
     )
 
 
