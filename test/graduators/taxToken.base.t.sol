@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";

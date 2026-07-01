@@ -6,6 +6,7 @@ import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @notice Factory-layer tests for the linear tax-decay add-on: validation (caps + sentinel
 ///         consistency) and dispatch (a decay-only token — no long-term static tax — still routes to

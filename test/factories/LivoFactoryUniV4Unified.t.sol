@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
@@ -277,7 +278,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         factoryV4Unified.createToken(
             setup,
-            _taxCfg(450, 450, uint32(14 days)),
+            _toCfgs(_taxCfg(450, 450, uint32(14 days))),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -299,7 +300,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         emit ILivoFactory.LpFeeBpsSet(address(0), 50);
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            setup, _emptyTaxCfg(), cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
         );
 
         // The pre-graduation LP fee the launchpad reads each trade is 1%, not the 0.5% hook fee.
@@ -320,7 +321,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
             setup,
-            _taxCfg(0, 451, uint32(14 days)),
+            _toCfgs(_taxCfg(0, 451, uint32(14 days))),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -339,7 +340,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
             setup,
-            _taxCfg(401, 0, uint32(14 days)),
+            _toCfgs(_taxCfg(401, 0, uint32(14 days))),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),

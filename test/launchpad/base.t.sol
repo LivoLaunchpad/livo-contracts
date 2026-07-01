@@ -23,6 +23,8 @@ import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
@@ -48,7 +50,16 @@ contract LaunchpadBaseTests is Test {
 
     /// @notice Creator-vault infrastructure (deployed in `setUp`), shared with vault tests.
     LivoCreatorVaultFactory public creatorVaultFactory;
-    address[6] public vaultCurves; // [5%, 10%, 15%, 20%, 25%, 30%]
+    address[6] public vaultCurves; // [5%, 10%, 15%, 20%, 25%, 30%] DEFAULT-tier vault curves
+
+    /// @notice THIN/THICK tier V4 graduators (single hook in tests). Deployed in `setUp`.
+    LivoGraduatorUniswapV4 public graduatorV4Thin;
+    LivoGraduatorUniswapV4 public graduatorV4Thick;
+
+    /// @notice THIN/THICK tier curves (no-vault base + 6 vault curves each), built in `setUp`.
+    ///         Stored so subclasses (e.g. factory-upgrade tests) can rebuild a factory with them.
+    ILivoFactory.TierCurves internal thinCurves;
+    ILivoFactory.TierCurves internal thickCurves;
 
     ILivoGraduator public graduator;
 
@@ -284,8 +295,42 @@ contract LaunchpadBaseTests is Test {
         uint256[6] memory bpsList = [uint256(500), 1000, 1500, 2000, 2500, 3000];
         for (uint256 i = 0; i < 6; ++i) {
             (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsForBps(bpsList[i]);
-            vaultCurves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0));
+            vaultCurves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, 3.75 ether, 0.05 ether));
         }
+    }
+
+    /// @dev Deploys a non-default liquidity tier's seven configurable curves (no-vault base + the six
+    ///      vault curves), reading constants + threshold from `CreatorVaultCurveConstants`.
+    function _deployTierCurves(LiquidityTier tier) internal returns (ILivoFactory.TierCurves memory tc) {
+        (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(tier);
+        (uint256 k0, uint256 t00, uint256 e00) = CreatorVaultCurveConstants.paramsFor(tier, 0);
+        tc.base = address(new ConstantProductBondingCurveConfigurable(k0, t00, e00, threshold, maxExcess));
+        uint256[6] memory bpsList = [uint256(500), 1000, 1500, 2000, 2500, 3000];
+        for (uint256 i = 0; i < 6; ++i) {
+            (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsFor(tier, bpsList[i]);
+            tc.vaults[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
+        }
+    }
+
+    /// @dev The V4 tier-graduators struct used by `setUp` (and reusable by subclasses). Tests use a
+    ///      single hook, so the 100/50-bps slots reuse the same per-tier graduator instance.
+    function _v4TierGraduators() internal view returns (LivoFactoryUniV4Unified.TierGraduators memory) {
+        return LivoFactoryUniV4Unified.TierGraduators({
+            thin: address(graduatorV4Thin),
+            thin0p5: address(graduatorV4Thin),
+            thick: address(graduatorV4Thick),
+            thick0p5: address(graduatorV4Thick)
+        });
+    }
+
+    /// @dev THIN+THICK curve bundle for the factory constructors.
+    function _tierConfig() internal view returns (ILivoFactory.LiquidityTierConfig memory) {
+        return ILivoFactory.LiquidityTierConfig({thin: thinCurves, thick: thickCurves});
+    }
+
+    /// @dev Full V4 tier config (curves + graduators) for the V4 factory constructor.
+    function _v4TierConfig() internal view returns (LivoFactoryUniV4Unified.V4TierConfig memory) {
+        return LivoFactoryUniV4Unified.V4TierConfig({curves: _tierConfig(), graduators: _v4TierGraduators()});
     }
 
     function setUp() public virtual {
@@ -317,7 +362,13 @@ contract LaunchpadBaseTests is Test {
         feeHandler = new LivoMasterFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
+            address(launchpad),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            TEST_HOOK_ADDRESS,
+            715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER
         );
 
         livoTokenSniper = new LivoTokenSniperProtected();
@@ -328,18 +379,44 @@ contract LaunchpadBaseTests is Test {
         // Creator-vault infrastructure: vault factory (UUPS proxy) + the six allocation-specific curves.
         creatorVaultFactory = _deployCreatorVaultInfra();
 
+        // Non-default liquidity tiers: deploy the THIN/THICK curves + their V4 graduators. Tests use a
+        // single hook, so the 100/50-bps graduator slots reuse the same per-tier graduator instance.
+        thinCurves = _deployTierCurves(LiquidityTier.THIN);
+        thickCurves = _deployTierCurves(LiquidityTier.THICK);
+        graduatorV4Thin = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            TEST_HOOK_ADDRESS,
+            1012340326367404053977557838594048, // THIN graduation sqrtPriceX96 (6.125 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER_THIN
+        );
+        graduatorV4Thick = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            TEST_HOOK_ADDRESS,
+            506170163183702026988778919297024, // THICK graduation sqrtPriceX96 (24.5 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER
+        );
+
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 address(launchpad),
-                address(livoToken),
-                address(livoTokenSniper),
-                address(livoTaxTokenV2),
-                address(livoTaxTokenV2Sniper),
+                ILivoFactory.TokenImpls({
+                    base: address(livoToken),
+                    antiSniper: address(livoTokenSniper),
+                    tax: address(livoTaxTokenV2),
+                    taxAntiSniper: address(livoTaxTokenV2Sniper)
+                }),
                 address(bondingCurve),
                 address(graduatorV2),
                 address(feeHandler),
                 address(creatorVaultFactory),
-                vaultCurves
+                vaultCurves,
+                _tierConfig()
             )
         );
         factoryV2Unified = LivoFactoryUniV2Unified(
@@ -349,16 +426,19 @@ contract LaunchpadBaseTests is Test {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 address(launchpad),
-                address(livoToken),
-                address(livoTokenSniper),
-                address(livoTaxToken),
-                address(livoTaxTokenSniper),
+                ILivoFactory.TokenImpls({
+                    base: address(livoToken),
+                    antiSniper: address(livoTokenSniper),
+                    tax: address(livoTaxToken),
+                    taxAntiSniper: address(livoTaxTokenSniper)
+                }),
                 address(bondingCurve),
                 address(graduatorV4),
                 address(graduatorV4),
                 address(feeHandler),
                 address(creatorVaultFactory),
-                vaultCurves
+                vaultCurves,
+                _v4TierConfig()
             )
         );
         factoryV4Unified = LivoFactoryUniV4Unified(

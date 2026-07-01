@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
 /// @title CreatorVaultScriptConfig
 /// @notice Script-only helper that resolves the two creator-vault constructor args the unified
@@ -26,6 +28,58 @@ library CreatorVaultScriptConfig {
     function curvesFor() internal view returns (address[6] memory) {
         if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) return DeploymentsMainnet.vaultBondingCurves();
         if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) return DeploymentsSepolia.vaultBondingCurves();
+        revert("CreatorVaultScriptConfig: unsupported chain");
+    }
+
+    /// @notice THIN + THICK tier curve sets (no-vault base + six vault curves each) for the active chain.
+    /// @dev Reads the manifest tier slots populated by `DeployTierLiquiditySystem`. Until that script
+    ///      has run and the manifest is refreshed these resolve to `address(0)` — the factory
+    ///      constructor doesn't validate them and they're only read when a token actually selects the
+    ///      THIN/THICK tier, so an early factory deploy/upgrade won't revert. You MUST deploy the tier
+    ///      system and refresh the manifest before THIN/THICK tokens can be created.
+    function tierConfigFor() internal view returns (ILivoFactory.LiquidityTierConfig memory tierConfig) {
+        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
+            tierConfig.thin = ILivoFactory.TierCurves({
+                base: DeploymentsMainnet.THIN_CURVE_BASE, vaults: DeploymentsMainnet.thinVaultCurves()
+            });
+            tierConfig.thick = ILivoFactory.TierCurves({
+                base: DeploymentsMainnet.THICK_CURVE_BASE, vaults: DeploymentsMainnet.thickVaultCurves()
+            });
+            return tierConfig;
+        }
+        if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
+            tierConfig.thin = ILivoFactory.TierCurves({
+                base: DeploymentsSepolia.THIN_CURVE_BASE, vaults: DeploymentsSepolia.thinVaultCurves()
+            });
+            tierConfig.thick = ILivoFactory.TierCurves({
+                base: DeploymentsSepolia.THICK_CURVE_BASE, vaults: DeploymentsSepolia.thickVaultCurves()
+            });
+            return tierConfig;
+        }
+        revert("CreatorVaultScriptConfig: unsupported chain");
+    }
+
+    /// @notice The full V4 tier config (curves + per-tier graduators) for the active chain. See `tierConfigFor`.
+    function v4TierConfigFor() internal view returns (LivoFactoryUniV4Unified.V4TierConfig memory v4Tier) {
+        v4Tier.curves = tierConfigFor();
+        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
+            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+                thin: DeploymentsMainnet.GRADUATOR_UNIV4_THIN,
+                thin0p5: DeploymentsMainnet.GRADUATOR_UNIV4_THIN_0P5,
+                thick: DeploymentsMainnet.GRADUATOR_UNIV4_THICK,
+                thick0p5: DeploymentsMainnet.GRADUATOR_UNIV4_THICK_0P5
+            });
+            return v4Tier;
+        }
+        if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
+            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+                thin: DeploymentsSepolia.GRADUATOR_UNIV4_THIN,
+                thin0p5: DeploymentsSepolia.GRADUATOR_UNIV4_THIN_0P5,
+                thick: DeploymentsSepolia.GRADUATOR_UNIV4_THICK,
+                thick0p5: DeploymentsSepolia.GRADUATOR_UNIV4_THICK_0P5
+            });
+            return v4Tier;
+        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 }

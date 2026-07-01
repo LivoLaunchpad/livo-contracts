@@ -48,6 +48,20 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(token, expected);
     }
 
+    /// @dev A no-vault token resolves to the base `BONDING_CURVE`; BondingCurveAssigned carries it.
+    function test_createToken_emitsBondingCurveAssigned() public {
+        address impl = factoryV2Unified.previewTokenImplementation(
+            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
+        );
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
+        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
+
+        vm.expectEmit(true, true, false, false);
+        emit ILivoFactory.BondingCurveAssigned(expected, address(factoryV2Unified.BONDING_CURVE()));
+        vm.prank(creator);
+        factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+    }
+
     function test_createToken_dispatchMatchesPreview_antiSniper() public {
         address impl = factoryV2Unified.previewTokenImplementation(
             _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()

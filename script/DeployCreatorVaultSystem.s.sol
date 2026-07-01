@@ -47,7 +47,7 @@ contract DeployCreatorVaultSystem is Script {
         address[6] memory curves;
         for (uint256 i = 0; i < 6; ++i) {
             (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsForBps(bpsList[i]);
-            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0));
+            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, 3.75 ether, 0.05 ether));
             console.log("| VAULT_CURVE bps", bpsList[i], curves[i]);
         }
 

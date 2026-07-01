@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
@@ -150,15 +151,18 @@ contract RedeployUnifiedFactoriesOnly is Script {
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                d.tokenImpl,
-                d.tokenSniperImpl,
-                d.taxTokenV2Impl,
-                d.taxTokenV2SniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: d.tokenImpl,
+                    antiSniper: d.tokenSniperImpl,
+                    tax: d.taxTokenV2Impl,
+                    taxAntiSniper: d.taxTokenV2SniperImpl
+                }),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.tierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV2Unified (new impl)            |", factoryV2Impl);
@@ -166,16 +170,19 @@ contract RedeployUnifiedFactoriesOnly is Script {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                d.tokenImpl,
-                d.tokenSniperImpl,
-                d.taxTokenV4Impl,
-                d.taxTokenV4SniperImpl,
+                ILivoFactory.TokenImpls({
+                    base: d.tokenImpl,
+                    antiSniper: d.tokenSniperImpl,
+                    tax: d.taxTokenV4Impl,
+                    taxAntiSniper: d.taxTokenV4SniperImpl
+                }),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
-                CreatorVaultScriptConfig.curvesFor()
+                CreatorVaultScriptConfig.curvesFor(),
+                CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
         console.log("| LivoFactoryUniV4Unified (new impl)            |", factoryV4Impl);
