@@ -7,9 +7,11 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
@@ -85,45 +87,61 @@ contract LaunchpadInvariants is Test {
         feeHandler = new LivoMasterFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
+            address(launchpad),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            TEST_HOOK_ADDRESS,
+            715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
+            UniswapV4PoolConstants.TICK_UPPER
         );
 
         // The unified factories take both base and sniper-protected token impls. The invariant
         // helper only ever uses the base path (no anti-sniper, no tax), so we pass `tokenImplementation`
         // for both slots — sniper impls are never cloned in this suite.
         // Creator-vault infra is unused in this suite, so the vault factory / curves are left zero.
+        // Creator-vault + non-default-tier curves are unused in this suite (only the DEFAULT base path
+        // is exercised), so they are left zero.
         address[6] memory emptyVaultCurves;
+        ILivoFactory.LiquidityTierConfig memory emptyTierConfig;
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 address(launchpad),
-                address(tokenImplementation),
-                address(tokenImplementation),
-                address(tokenImplementation),
-                address(tokenImplementation),
+                ILivoFactory.TokenImpls({
+                    base: address(tokenImplementation),
+                    antiSniper: address(tokenImplementation),
+                    tax: address(tokenImplementation),
+                    taxAntiSniper: address(tokenImplementation)
+                }),
                 address(bondingCurve),
                 address(graduatorV2),
                 address(feeHandler),
                 address(0),
-                emptyVaultCurves
+                emptyVaultCurves,
+                emptyTierConfig
             )
         );
         factoryV2 = LivoFactoryUniV2Unified(
             address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
         );
 
+        LivoFactoryUniV4Unified.V4TierConfig memory emptyV4Tier;
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 address(launchpad),
-                address(tokenImplementation),
-                address(tokenImplementation),
-                address(tokenImplementation),
-                address(tokenImplementation),
+                ILivoFactory.TokenImpls({
+                    base: address(tokenImplementation),
+                    antiSniper: address(tokenImplementation),
+                    tax: address(tokenImplementation),
+                    taxAntiSniper: address(tokenImplementation)
+                }),
                 address(bondingCurve),
                 address(graduatorV4),
                 address(graduatorV4),
                 address(feeHandler),
                 address(0),
-                emptyVaultCurves
+                emptyVaultCurves,
+                emptyV4Tier
             )
         );
         factoryV4 = LivoFactoryUniV4Unified(

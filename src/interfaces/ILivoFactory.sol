@@ -1,8 +1,37 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
+
 interface ILivoFactory {
     ////////////////// Structs //////////////////////
+
+    /// @notice Constructor-only bundle of the configurable bonding curves for a single liquidity tier:
+    ///         the no-vault (0%) curve plus the six vault curves (5%,10%,15%,20%,25%,30%). Passed to
+    ///         the factory constructor for the THIN and THICK tiers (DEFAULT reuses the deployed base
+    ///         curve + the six existing vault curves).
+    struct TierCurves {
+        address base;
+        address[6] vaults;
+    }
+
+    /// @notice Constructor-only bundle of the THIN + THICK tier curve sets. Grouped into one struct
+    ///         (rather than two `TierCurves` params) to keep the factory constructors' parameter count
+    ///         — and thus their ABI-decode stack depth — within limits without `via_ir`.
+    struct LiquidityTierConfig {
+        TierCurves thin;
+        TierCurves thick;
+    }
+
+    /// @notice Constructor-only bundle of the four token implementations the factory clones. Grouped
+    ///         into one struct to keep the factory constructors' parameter count within the ABI-decode
+    ///         stack limit without `via_ir`.
+    struct TokenImpls {
+        address base;
+        address antiSniper;
+        address tax;
+        address taxAntiSniper;
+    }
 
     /// @notice A single fee-receiver entry: account + shares in basis points (sum must == 10 000).
     /// @dev If `directFeesEnabled` is true, fees for this account are forwarded automatically on every
@@ -33,14 +62,30 @@ interface ILivoFactory {
         uint256 vestingSeconds;
     }
 
-    /// @notice Token-identity bundle for the struct-based `createToken` overload. Groups the inputs
-    ///         that define the token itself (name, symbol, deterministic salt) and its fee receivers.
-    ///         `feeShares` must be non-empty — every token has at least one receiver.
+    /// @notice Token-identity bundle for the tier-less (tmp) struct-based `createToken` overload and the
+    ///         legacy positional overload. Groups the inputs that define the token itself (name, symbol,
+    ///         deterministic salt) and its fee receivers. `feeShares` must be non-empty — every token has
+    ///         at least one receiver. Tokens created through this struct always use `LiquidityTier.DEFAULT`.
+    /// @dev TEMPORARY: kept tier-less so existing frontends keep their `createToken` ABI while the
+    ///      liquidity-tier UI is not ready. Once the frontend adopts tiers, this struct is removed and
+    ///      `TokenSetupTiered` becomes the only setup struct.
     struct TokenSetup {
         string name;
         string symbol;
         bytes32 salt;
         FeeShare[] feeShares;
+    }
+
+    /// @notice Token-identity bundle for the tiered struct-based `createToken` overload. Same fields as
+    ///         `TokenSetup` plus `liquidityTier`, which selects the post-graduation pool depth (and the
+    ///         tier-specific bonding curve + graduation marketcap).
+    /// @dev `liquidityTier`'s zero value is `LiquidityTier.THIN`, so set it explicitly.
+    struct TokenSetupTiered {
+        string name;
+        string symbol;
+        bytes32 salt;
+        FeeShare[] feeShares;
+        LiquidityTier liquidityTier;
     }
 
     ////////////////// Events //////////////////////
@@ -54,6 +99,12 @@ interface ILivoFactory {
         address graduator,
         address feeHandler
     );
+
+    /// @notice Emitted once per token at creation, recording the bonding curve it was launched on.
+    ///         The curve is otherwise only in launchpad storage (`tokenConfigs[token].bondingCurve`)
+    ///         and is not carried by any other event. Indexed on both fields so subscribers can
+    ///         filter by token or by curve (e.g. "all tokens on curve X").
+    event BondingCurveAssigned(address indexed token, address indexed bondingCurve);
 
     event BuyOnDeploy(
         address indexed token,

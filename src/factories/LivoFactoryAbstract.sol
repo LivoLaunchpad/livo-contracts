@@ -15,6 +15,7 @@ import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoCreatorVaultFactory} from "src/interfaces/ILivoCreatorVaultFactory.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     ILivoTaxableToken,
     ILivoTaxableTokenSniperProtected,
@@ -75,15 +76,36 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @notice Factory that deploys the per-token creator-vault clones.
     ILivoCreatorVaultFactory public immutable CREATOR_VAULT_FACTORY;
 
-    /// @notice Bonding curves used when creator vaults lock 5%/10%/15%/20%/25%/30% of supply.
+    /// @notice DEFAULT-tier bonding curves used when creator vaults lock 5%/10%/15%/20%/25%/30% of supply.
     ///         Each keeps every graduation invariant identical to `BONDING_CURVE`; only the starting
-    ///         market cap is relaxed. Selected by the total locked allocation (see `_resolveBondingCurve`).
+    ///         market cap is relaxed. Selected by `(tier, totalBps)` in `_resolveBondingCurve`.
     ILivoBondingCurve public immutable VAULT_CURVE_5;
     ILivoBondingCurve public immutable VAULT_CURVE_10;
     ILivoBondingCurve public immutable VAULT_CURVE_15;
     ILivoBondingCurve public immutable VAULT_CURVE_20;
     ILivoBondingCurve public immutable VAULT_CURVE_25;
     ILivoBondingCurve public immutable VAULT_CURVE_30;
+
+    /// @notice THIN-tier curves (1.75 ETH liquidity, 6.125 ETH graduation mcap): the no-vault curve
+    ///         plus the six vault curves. Same graduation invariants as the rest of the tier; only the
+    ///         starting market cap is relaxed as supply is locked.
+    ILivoBondingCurve public immutable THIN_CURVE_BASE;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_5;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_10;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_15;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_20;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_25;
+    ILivoBondingCurve public immutable THIN_VAULT_CURVE_30;
+
+    /// @notice THICK-tier curves (7.0 ETH liquidity, 24.5 ETH graduation mcap): the no-vault curve
+    ///         plus the six vault curves.
+    ILivoBondingCurve public immutable THICK_CURVE_BASE;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_5;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_10;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_15;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_20;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_25;
+    ILivoBondingCurve public immutable THICK_VAULT_CURVE_30;
 
     /// @notice Cap on the aggregate fee a swapper pays (LP fee + tax), in basis points. Fixed at 5%.
     ///         Enforced per call by `_validateTotalFee`. The tax headroom is venue-dependent because
@@ -116,28 +138,27 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///         work transparently behind the UUPS proxy. To change any of them, deploy a new impl
     ///         with different constructor args and call `upgradeTo` on the proxy.
     /// @param creatorVaultFactory Factory that deploys creator-vault clones
-    /// @param vaultBondingCurves The six allocation-specific bonding curves, ordered
+    /// @param vaultBondingCurves The six DEFAULT-tier allocation-specific bonding curves, ordered
     ///        [5%, 10%, 15%, 20%, 25%, 30%]
+    /// @param tierConfig The THIN + THICK tier curve sets (`thin`/`thick`, each `base` + `vaults`).
     constructor(
         address launchpad,
-        address tokenImplBase,
-        address tokenImplAntiSniper,
-        address tokenImplTax,
-        address tokenImplTaxAntiSniper,
+        TokenImpls memory impls,
         address bondingCurve,
         address graduator,
         address masterFeeHandler,
         address creatorVaultFactory,
-        address[6] memory vaultBondingCurves
+        address[6] memory vaultBondingCurves,
+        LiquidityTierConfig memory tierConfig
     ) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
         MASTER_FEE_HANDLER = ILivoMasterFeeHandler(masterFeeHandler);
-        TOKEN_IMPL_BASE = tokenImplBase;
-        TOKEN_IMPL_ANTISNIPER = tokenImplAntiSniper;
-        TOKEN_IMPL_TAX = tokenImplTax;
-        TOKEN_IMPL_TAX_ANTISNIPER = tokenImplTaxAntiSniper;
+        TOKEN_IMPL_BASE = impls.base;
+        TOKEN_IMPL_ANTISNIPER = impls.antiSniper;
+        TOKEN_IMPL_TAX = impls.tax;
+        TOKEN_IMPL_TAX_ANTISNIPER = impls.taxAntiSniper;
         CREATOR_VAULT_FACTORY = ILivoCreatorVaultFactory(creatorVaultFactory);
         VAULT_CURVE_5 = ILivoBondingCurve(vaultBondingCurves[0]);
         VAULT_CURVE_10 = ILivoBondingCurve(vaultBondingCurves[1]);
@@ -145,6 +166,22 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         VAULT_CURVE_20 = ILivoBondingCurve(vaultBondingCurves[3]);
         VAULT_CURVE_25 = ILivoBondingCurve(vaultBondingCurves[4]);
         VAULT_CURVE_30 = ILivoBondingCurve(vaultBondingCurves[5]);
+
+        THIN_CURVE_BASE = ILivoBondingCurve(tierConfig.thin.base);
+        THIN_VAULT_CURVE_5 = ILivoBondingCurve(tierConfig.thin.vaults[0]);
+        THIN_VAULT_CURVE_10 = ILivoBondingCurve(tierConfig.thin.vaults[1]);
+        THIN_VAULT_CURVE_15 = ILivoBondingCurve(tierConfig.thin.vaults[2]);
+        THIN_VAULT_CURVE_20 = ILivoBondingCurve(tierConfig.thin.vaults[3]);
+        THIN_VAULT_CURVE_25 = ILivoBondingCurve(tierConfig.thin.vaults[4]);
+        THIN_VAULT_CURVE_30 = ILivoBondingCurve(tierConfig.thin.vaults[5]);
+
+        THICK_CURVE_BASE = ILivoBondingCurve(tierConfig.thick.base);
+        THICK_VAULT_CURVE_5 = ILivoBondingCurve(tierConfig.thick.vaults[0]);
+        THICK_VAULT_CURVE_10 = ILivoBondingCurve(tierConfig.thick.vaults[1]);
+        THICK_VAULT_CURVE_15 = ILivoBondingCurve(tierConfig.thick.vaults[2]);
+        THICK_VAULT_CURVE_20 = ILivoBondingCurve(tierConfig.thick.vaults[3]);
+        THICK_VAULT_CURVE_25 = ILivoBondingCurve(tierConfig.thick.vaults[4]);
+        THICK_VAULT_CURVE_30 = ILivoBondingCurve(tierConfig.thick.vaults[5]);
         _disableInitializers();
     }
 
@@ -172,17 +209,18 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount` under it. Reverts
     ///      (`InvalidCreatorVault`) on a `totalLockedInVaultsBps` no vault array could sum to; a
     ///      `buyFeeBps >= BASIS_POINTS` reverts on the subtraction below (nonsensical input).
-    function _quoteBuyOnDeploy(uint256 tokenAmount, uint256 totalLockedInVaultsBps, uint256 buyFeeBps)
-        internal
-        view
-        returns (uint256 totalEthNeeded)
-    {
+    function _quoteBuyOnDeploy(
+        LiquidityTier tier,
+        uint256 tokenAmount,
+        uint256 totalLockedInVaultsBps,
+        uint256 buyFeeBps
+    ) internal view returns (uint256 totalEthNeeded) {
         require(
             totalLockedInVaultsBps <= MAX_CREATOR_VAULT_TOTAL_BPS
                 && totalLockedInVaultsBps % CREATOR_VAULT_BPS_STEP == 0,
             InvalidCreatorVault()
         );
-        (uint256 ethForReserves,) = _resolveBondingCurve(totalLockedInVaultsBps).buyExactTokens(0, tokenAmount);
+        (uint256 ethForReserves,) = _resolveBondingCurve(tier, totalLockedInVaultsBps).buyExactTokens(0, tokenAmount);
         uint256 denom = BASIS_POINTS - buyFeeBps;
         totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
     }
@@ -332,6 +370,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      (~100–250 gas/deploy).
     function _createToken(
         TokenSetup memory tokenSetup,
+        LiquidityTier liquidityTier,
         address tokenOwner,
         address graduator,
         SupplyShare[] calldata buyOnDeployShares,
@@ -347,7 +386,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         // is minted to this factory by the token initializer; everything else (`TOTAL_SUPPLY -
         // vaultAllocation`) is minted to the launchpad and sold on the resolved curve.
         (uint256 totalLockedInVaultsBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
-        ILivoBondingCurve bondingCurve = _resolveBondingCurve(totalLockedInVaultsBps);
+        ILivoBondingCurve bondingCurve = _resolveBondingCurve(liquidityTier, totalLockedInVaultsBps);
 
         token = _dispatchAndInitialize(
             tokenSetup.name,
@@ -361,6 +400,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         );
 
         LAUNCHPAD.launchToken(token, bondingCurve);
+        emit BondingCurveAssigned(token, address(bondingCurve));
 
         // Deploy + fund the vaults BEFORE the deployer buy so the factory ends the tx holding no
         // tokens. The factory→vault transfers are exempt from sniper caps (`from == tokenFactory`).
@@ -400,19 +440,37 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         vaultAllocation = TOTAL_SUPPLY * totalBps / BASIS_POINTS;
     }
 
-    /// @dev Maps a total locked allocation (in bps) to the matching bonding curve. `totalBps == 0`
-    ///      uses the base curve; otherwise it is guaranteed by `_validateCreatorVaults` to be a
-    ///      multiple of 500 in [500, 3000]. The final `== 3000` check and `else` revert make this a
-    ///      total function rather than relying on that upstream invariant, so any unexpected value
-    ///      fails loudly instead of silently defaulting to `VAULT_CURVE_30`.
-    function _resolveBondingCurve(uint256 totalBps) internal view returns (ILivoBondingCurve) {
-        if (totalBps == 0) return BONDING_CURVE;
-        if (totalBps == 500) return VAULT_CURVE_5;
-        if (totalBps == 1000) return VAULT_CURVE_10;
-        if (totalBps == 1500) return VAULT_CURVE_15;
-        if (totalBps == 2000) return VAULT_CURVE_20;
-        if (totalBps == 2500) return VAULT_CURVE_25;
-        if (totalBps == 3000) return VAULT_CURVE_30;
+    /// @dev Maps a `(liquidity tier, total locked allocation)` pair to the matching bonding curve.
+    ///      `totalBps == 0` uses the tier's no-vault curve (the deployed base curve for DEFAULT);
+    ///      otherwise it is guaranteed by `_validateCreatorVaults` to be a multiple of 500 in
+    ///      [500, 3000]. The explicit final branches + `else` revert make this a total function, so any
+    ///      unexpected value fails loudly instead of silently defaulting to a curve.
+    function _resolveBondingCurve(LiquidityTier tier, uint256 totalBps) internal view returns (ILivoBondingCurve) {
+        if (tier == LiquidityTier.DEFAULT) {
+            if (totalBps == 0) return BONDING_CURVE;
+            if (totalBps == 500) return VAULT_CURVE_5;
+            if (totalBps == 1000) return VAULT_CURVE_10;
+            if (totalBps == 1500) return VAULT_CURVE_15;
+            if (totalBps == 2000) return VAULT_CURVE_20;
+            if (totalBps == 2500) return VAULT_CURVE_25;
+            if (totalBps == 3000) return VAULT_CURVE_30;
+        } else if (tier == LiquidityTier.THIN) {
+            if (totalBps == 0) return THIN_CURVE_BASE;
+            if (totalBps == 500) return THIN_VAULT_CURVE_5;
+            if (totalBps == 1000) return THIN_VAULT_CURVE_10;
+            if (totalBps == 1500) return THIN_VAULT_CURVE_15;
+            if (totalBps == 2000) return THIN_VAULT_CURVE_20;
+            if (totalBps == 2500) return THIN_VAULT_CURVE_25;
+            if (totalBps == 3000) return THIN_VAULT_CURVE_30;
+        } else if (tier == LiquidityTier.THICK) {
+            if (totalBps == 0) return THICK_CURVE_BASE;
+            if (totalBps == 500) return THICK_VAULT_CURVE_5;
+            if (totalBps == 1000) return THICK_VAULT_CURVE_10;
+            if (totalBps == 1500) return THICK_VAULT_CURVE_15;
+            if (totalBps == 2000) return THICK_VAULT_CURVE_20;
+            if (totalBps == 2500) return THICK_VAULT_CURVE_25;
+            if (totalBps == 3000) return THICK_VAULT_CURVE_30;
+        }
         revert InvalidCreatorVault();
     }
 

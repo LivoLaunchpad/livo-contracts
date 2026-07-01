@@ -22,6 +22,15 @@ def parse_args() -> argparse.Namespace:
         type=positive_integer,
         help="Target graduation price in wei per token (integer >= 10000)",
     )
+    parser.add_argument(
+        "--tick-upper",
+        type=int,
+        default=203600,
+        help=(
+            "Primary range upper tick (tier-specific). DEFAULT/THICK use 203600; the THIN tier uses a "
+            "higher tick (e.g. 212000) so a holder can sell their full bag back into the shallower pool."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -46,7 +55,7 @@ def main() -> None:
 
     # Primary position range
     tick_lower = -7000
-    tick_upper = 203600
+    tick_upper = args.tick_upper
 
     graduation_wei_per_token = args.graduation_wei_per_token
 
