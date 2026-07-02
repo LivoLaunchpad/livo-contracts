@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 /// @title Deployment Address Constants for Ethereum Mainnet
 /// @notice Centralized constants for protocol infrastructure addresses on Ethereum Mainnet
 /// @dev These addresses are network-specific and must be updated for other chains
-library DeploymentAddressesMainnet {
+library DeploymentAddressesEthereumMainnet {
     /// @notice Blockchain ID for Ethereum Mainnet
     uint256 public constant BLOCKCHAIN_ID = 1;
 
@@ -53,7 +53,7 @@ library DeploymentAddressesMainnet {
 
 /// @title Deployment Address Constants for Sepolia Testnet
 /// @notice Centralized constants for protocol infrastructure addresses on Sepolia Testnet
-library DeploymentAddressesSepolia {
+library DeploymentAddressesEthereumSepolia {
     /// @notice Blockchain ID for Sepolia Testnet
     uint256 public constant BLOCKCHAIN_ID = 11155111;
 
@@ -92,5 +92,90 @@ library DeploymentAddressesSepolia {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice Livo Treasury
+    address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+}
+
+/// @title Deployment Address Constants for Robinhood Chain Mainnet (chain id 4663)
+/// @notice Centralized constants for protocol infrastructure addresses on Robinhood Chain.
+/// @dev Robinhood Chain is an Arbitrum L2 with native ETH. Uniswap V4 + V2 are officially
+///      deployed (verified on-chain). The V2 factory uses the CANONICAL UniswapV2 pair init
+///      code hash (verified by predicting an existing pair). Permit2 is at the canonical address.
+library DeploymentAddressesRobinhoodMainnet {
+    /// @notice Blockchain ID for Robinhood Chain Mainnet
+    uint256 public constant BLOCKCHAIN_ID = 4663;
+
+    /// @notice Uniswap V4 Pool Manager contract
+    address public constant UNIV4_POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+
+    /// @notice Uniswap V4 Position Manager contract
+    address public constant UNIV4_POSITION_MANAGER = 0x58daec3116aae6D93017bAAea7749052E8a04fA7;
+
+    /// @notice Uniswap V4 Universal Router contract
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0x8876789976dEcBfCbBbe364623C63652db8C0904;
+
+    /// @notice Permit2 contract (canonical address)
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    /// @notice Wrapped Ether (WETH) token contract
+    address public constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+
+    /// @notice Uniswap V2 Router contract
+    address public constant UNIV2_ROUTER = 0x89e5DB8B5aA49aA85AC63f691524311AEB649eba;
+
+    /// @notice Uniswap V2 Factory contract
+    address public constant UNIV2_FACTORY = 0x8bcEaA40B9AcdfAedF85AdF4FF01F5Ad6517937f;
+
+    /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
+    /// @dev Robinhood's official V2 factory uses the CANONICAL UniswapV2 pair init code hash
+    ///      (same as Ethereum mainnet). Verified by predicting an existing pair created by this
+    ///      factory and matching `getPair()`.
+    bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
+        0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+
+    /// @notice Dead address used for burning LP tokens
+    address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
+    address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+}
+
+/// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
+/// @notice Centralized constants for protocol infrastructure addresses on Robinhood Chain Testnet.
+/// @dev Uniswap V4 + Permit2 are deployed; the V4 set below is the one whose PositionManager
+///      reports this chain's canonical WETH. Uniswap V2 is NOT deployed on the testnet, so the V2
+///      router/factory are zero — a from-scratch deploy must skip the V2 graduator + V2 factory here.
+library DeploymentAddressesRobinhoodTestnet {
+    /// @notice Blockchain ID for Robinhood Chain Testnet
+    uint256 public constant BLOCKCHAIN_ID = 46630;
+
+    /// @notice Uniswap V4 Pool Manager contract
+    address public constant UNIV4_POOL_MANAGER = 0x552815eF68E6eb418A3d65D0AA1043d93204F612;
+
+    /// @notice Uniswap V4 Position Manager contract
+    address public constant UNIV4_POSITION_MANAGER = 0x00EB6902D1e3be1A8C667041f9E75b77B7Ad3ba6;
+
+    /// @notice Uniswap V4 Universal Router contract
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0xE28c0e44F4016b073db20cF28971CAc6ce3664D3;
+
+    /// @notice Permit2 contract (canonical address)
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    /// @notice Wrapped Ether (WETH) token contract
+    address public constant WETH = 0x7943e237c7F95DA44E0301572D358911207852Fa;
+
+    /// @notice Uniswap V2 Router — NOT deployed on Robinhood testnet (V2 graduation unavailable)
+    address public constant UNIV2_ROUTER = address(0);
+
+    /// @notice Uniswap V2 Factory — NOT deployed on Robinhood testnet (V2 graduation unavailable)
+    address public constant UNIV2_FACTORY = address(0);
+
+    /// @notice Placeholder (canonical) hash — unused while UNIV2_ROUTER/FACTORY are zero.
+    bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
+        0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+
+    /// @notice Dead address used for burning LP tokens
+    address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }

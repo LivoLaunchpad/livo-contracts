@@ -14,7 +14,7 @@ import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
@@ -32,9 +32,9 @@ contract LaunchpadInvariants is Test {
 
     InvariantsHelperLaunchpad public helper;
 
-    address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-    address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
-    address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
+    address constant poolManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
+    address constant positionManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER;
+    address constant permit2Address = DeploymentAddressesEthereumMainnet.PERMIT2;
 
     // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
     address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
@@ -58,7 +58,7 @@ contract LaunchpadInvariants is Test {
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
     // Uniswap V2 router address on mainnet
-    address constant UNISWAP_V2_ROUTER = DeploymentAddressesMainnet.UNIV2_ROUTER;
+    address constant UNISWAP_V2_ROUTER = DeploymentAddressesEthereumMainnet.UNIV2_ROUTER;
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
@@ -79,7 +79,7 @@ contract LaunchpadInvariants is Test {
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(
-            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH
+            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS

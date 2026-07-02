@@ -8,8 +8,8 @@ import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/Constan
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
-import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
@@ -27,7 +27,8 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 contract DeployCreatorVaultSystem is Script {
     function run() public {
         require(
-            block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID || block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID,
+            block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID
+                || block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID,
             "Unsupported chain"
         );
 

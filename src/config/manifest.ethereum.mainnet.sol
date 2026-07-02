@@ -6,8 +6,8 @@ pragma solidity 0.8.28;
 /// @dev External infrastructure (Uniswap V2/V4, Permit2, WETH) lives in
 ///      `src/config/DeploymentAddresses.sol`. Treasury also lives there since it is
 ///      consumed by core contracts at deploy time. Update this file on every redeploy
-///      and run `just export-deployments` to refresh `deployments.mainnet.md`.
-library DeploymentsMainnet {
+///      and run `just export-deployments` to refresh `deployments.ethereum.mainnet.md`.
+library DeploymentsEthereumMainnet {
     uint256 internal constant BLOCKCHAIN_ID = 1;
 
     // --- Core ---

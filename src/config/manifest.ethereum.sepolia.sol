@@ -7,8 +7,8 @@ pragma solidity 0.8.28;
 ///      `src/config/DeploymentAddresses.sol`. Treasury (sepolia: dev EOA) also lives
 ///      there since it is consumed by core contracts at deploy time. Update this file
 ///      on every redeploy and run `just export-deployments` to refresh
-///      `deployments.sepolia.md`.
-library DeploymentsSepolia {
+///      `deployments.ethereum.sepolia.md`.
+library DeploymentsEthereumSepolia {
     uint256 internal constant BLOCKCHAIN_ID = 11155111;
 
     // --- Core ---

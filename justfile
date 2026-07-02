@@ -53,8 +53,25 @@ lean-invariants:
 error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
-taxtokenaddresses:
-    sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+# Repoint the two taxable-token impls' compile-time `DeploymentAddresses` import at a chain.
+# Both impls bake chain constants (V2 router / WETH / V4 pool manager) and gate on `block.chainid`,
+# so run the recipe matching your target chain BEFORE building or deploying to it. Idempotent —
+# rewrites from whatever chain is currently set. The committed default is Ethereum mainnet.
+_taxtoken lib:
+    sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
+        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+
+taxtoken-mainnet:
+    @just _taxtoken DeploymentAddressesEthereumMainnet
+
+taxtoken-sepolia:
+    @just _taxtoken DeploymentAddressesEthereumSepolia
+
+taxtoken-robinhood:
+    @just _taxtoken DeploymentAddressesRobinhoodMainnet
+
+taxtoken-robintest:
+    @just _taxtoken DeploymentAddressesRobinhoodTestnet
 
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>
@@ -103,21 +120,22 @@ livodev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
 #   tiswallet1 = 0xd6fa895fABA3FE48410e9A00504BB556C89dd2E6
 #   tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
-deploy-sepolia: taxtokenaddresses
+deploy-sepolia: taxtoken-sepolia
     # Hook address is logged in deployment output (LivoSwapHook row)
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 # Re-deploys the four token implementations and all six factories (V2/V4/TaxToken + sniper-protected
 # variants) against the existing Livo core, then whitelists them on the launchpad.
-deploy-sepolia-factories: taxtokenaddresses
+deploy-sepolia-factories: taxtoken-sepolia
     forge script DeploymentsFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 deploy-mainnet-factories:
     forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
-# Mines a valid hook salt and deploys LivoSwapHook (50 bps LP fee build).
-# After broadcast, paste the deployed address into src/config/manifest.{sepolia,mainnet}.sol
-# and run `just export-deployments`.
+# Mines a valid hook salt and deploys LivoSwapHook with whatever fee the current build bakes
+# (`LP_FEE_BPS` constant in src/hooks/LivoSwapHook.sol: 100 = 1%, edit to 50 for the 0.5% variant and
+# rebuild). After broadcast, paste the deployed address into src/config/manifest.<chain>.sol and
+# run `just export-deployments`.
 deploy-swap-hook-sepolia:
     forge script DeployLivoSwapHook --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
@@ -133,6 +151,36 @@ deploy-tiers-sepolia:
 
 deploy-tiers-mainnet:
     forge script DeployTierLiquiditySystem --rpc-url mainnet --verify --account livo.dev --slow --broadcast
+
+# ##################### Full-stack deploy (launchpad v2, from scratch, TWO parts) #######################
+# The 1% and 0.5% swap hooks bake their fee as a `constant`, so each needs its OWN build (so its bytecode
+# matches the audited mainnet hook Uniswap verifies against). The from-scratch deploy is therefore two
+# passes, see script/DeployFullStack.s.sol + DeployFullStackPart2.s.sol. Needs ROBINHOOD_RPC_URL /
+# ROBINHOOD_TESTNET_RPC_URL exported (public RPCs are in foundry.toml).
+#
+#   PART 1 — committed LivoSwapHook (LP_FEE_BPS = 100 = 1%):
+#     just deploy-robinhood-part1                 (or deploy-robinhood-testnet-part1)
+#   then paste the printed addresses into src/config/manifest.robinhood.<net>.sol + `just export-deployments`.
+#
+#   PART 2 — set LivoSwapHook `LP_FEE_BPS` to 50 (0.5%) and rebuild first:
+#     just deploy-robinhood-part2                 (or deploy-robinhood-testnet-part2)
+#   then paste + export, and REVERT LP_FEE_BPS back to 100 so the committed source stays the 1% hook.
+
+deploy-robinhood-part1: taxtoken-robinhood
+    forge script DeployFullStack --rpc-url robinhood --account livo.dev --slow --broadcast \
+        --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/
+
+deploy-robinhood-part2: taxtoken-robinhood
+    forge script DeployFullStackPart2 --rpc-url robinhood --account livo.dev --slow --broadcast \
+        --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/
+
+deploy-robinhood-testnet-part1: taxtoken-robintest
+    forge script DeployFullStack --rpc-url robinhood_testnet --account livo.dev --slow --broadcast \
+        --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
+
+deploy-robinhood-testnet-part2: taxtoken-robintest
+    forge script DeployFullStackPart2 --rpc-url robinhood_testnet --account livo.dev --slow --broadcast \
+        --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
 
 # Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.

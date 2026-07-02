@@ -42,8 +42,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     ///         Required to predict the CREATE2 pair address without deploying the pair upfront.
     /// @dev Per-chain value: must match `keccak256(type(<factory's pair>).creationCode)` exactly.
     ///      Mainnet (stock UniswapV2 factory) is `0x96e8ac42...`. The Sepolia factory wired in
-    ///      `DeploymentAddressesSepolia` is a fork with different pair bytecode, so its hash
-    ///      differs from mainnet — see `DeploymentAddressesSepolia.UNIV2_PAIR_INIT_CODE_HASH`.
+    ///      `DeploymentAddressesEthereumSepolia` is a fork with different pair bytecode, so its hash
+    ///      differs from mainnet — see `DeploymentAddressesEthereumSepolia.UNIV2_PAIR_INIT_CODE_HASH`.
     ///      Wrong value here ⇒ `pair` is set to a non-existent CREATE2 address, taxes silently
     ///      stop accruing because the real pair is not recognized as the pair.
     bytes32 internal immutable PAIR_INIT_CODE_HASH;

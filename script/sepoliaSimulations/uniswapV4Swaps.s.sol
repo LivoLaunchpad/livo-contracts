@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {DeploymentAddressesSepolia} from "../../src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumSepolia} from "../../src/config/DeploymentAddresses.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -69,11 +69,14 @@ contract UniswapV4Swaps is Script {
     /// @notice Approves token spending for sell operations
     /// @param token The token to approve
     function approvals(address token) internal {
-        IERC20(token).approve(DeploymentAddressesSepolia.PERMIT2, type(uint256).max);
+        IERC20(token).approve(DeploymentAddressesEthereumSepolia.PERMIT2, type(uint256).max);
 
-        IPermit2(DeploymentAddressesSepolia.PERMIT2)
+        IPermit2(DeploymentAddressesEthereumSepolia.PERMIT2)
             .approve(
-                address(token), DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER, type(uint160).max, type(uint48).max
+                address(token),
+                DeploymentAddressesEthereumSepolia.UNIV4_UNIVERSAL_ROUTER,
+                type(uint160).max,
+                type(uint48).max
             );
     }
 
@@ -120,7 +123,7 @@ contract UniswapV4Swaps is Script {
         // Execute the swap
         uint256 deadline = type(uint256).max;
         uint256 valueToSend = isBuy ? amountIn : 0;
-        IUniversalRouter(DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER).execute{value: valueToSend}(
+        IUniversalRouter(DeploymentAddressesEthereumSepolia.UNIV4_UNIVERSAL_ROUTER).execute{value: valueToSend}(
             commands, inputs, deadline
         );
     }

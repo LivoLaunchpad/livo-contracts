@@ -27,7 +27,7 @@ import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 /// @notice Abstract base class for Uniswap V4 graduation tests

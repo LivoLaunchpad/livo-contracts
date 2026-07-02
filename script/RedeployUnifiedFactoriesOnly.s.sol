@@ -9,8 +9,8 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Redeploy BOTH unified factory implementations and upgrade their proxies — factories only
 /// @notice For changes that live in `LivoFactoryAbstract` / the concrete factories ONLY, leaving every
@@ -36,7 +36,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         reverts with `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
 ///
 ///         Token impls are NOT deployed here, so there is no `DeploymentAddresses` chain-guard to run
-///         (`just taxtokenaddresses` is unnecessary). Pre-flight only sanity-checks the proxies; the
+///         (`just taxtoken-sepolia` is unnecessary). Pre-flight only sanity-checks the proxies; the
 ///         fresh impls' `LAUNCHPAD()` is asserted against the manifest before and after the flip.
 ///
 ///         Post-broadcast: update `FACTORY_UNIV2_UNIFIED_IMPL` and `FACTORY_UNIV4_UNIFIED_IMPL` in
@@ -69,39 +69,39 @@ contract RedeployUnifiedFactoriesOnly is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsMainnet.LAUNCHPAD,
-                bondingCurve: DeploymentsMainnet.BONDING_CURVE,
-                graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
-                masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenV2Impl: DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV2SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
-                taxTokenV4Impl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
-                taxTokenV4SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
+                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
+                graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
+                tokenSniperImpl: DeploymentsEthereumMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenV2Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV2SniperImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
+                taxTokenV4Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_IMPL,
+                taxTokenV4SniperImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
             });
-        } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
+        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsSepolia.LAUNCHPAD,
-                bondingCurve: DeploymentsSepolia.BONDING_CURVE,
-                graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
-                masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenV2Impl: DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV2SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
-                taxTokenV4Impl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
-                taxTokenV4SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
+                bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
+                graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
+                tokenSniperImpl: DeploymentsEthereumSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
+                taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV2SniperImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
+                taxTokenV4Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_IMPL,
+                taxTokenV4SniperImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
             });
         } else {
             revert("Unsupported chain");
