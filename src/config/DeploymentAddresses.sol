@@ -135,15 +135,17 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-    /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
-    address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+    /// @notice Livo Treasury (same address as Ethereum mainnet)
+    address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
 /// @notice Centralized constants for protocol infrastructure addresses on Robinhood Chain Testnet.
 /// @dev Uniswap V4 + Permit2 are deployed; the V4 set below is the one whose PositionManager
-///      reports this chain's canonical WETH. Uniswap V2 is NOT deployed on the testnet, so the V2
-///      router/factory are zero — a from-scratch deploy must skip the V2 graduator + V2 factory here.
+///      reports this chain's canonical WETH. Uniswap V2 is NOT natively on the testnet, so Livo
+///      deployed a stock UniswapV2 instance (Factory + Router02) from Uniswap's CANONICAL creation
+///      bytecode (via `just deploy-univ2-robintest`); the pair init code hash is therefore the
+///      canonical mainnet value.
 library DeploymentAddressesRobinhoodTestnet {
     /// @notice Blockchain ID for Robinhood Chain Testnet
     uint256 public constant BLOCKCHAIN_ID = 46630;
@@ -163,13 +165,15 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @notice Wrapped Ether (WETH) token contract
     address public constant WETH = 0x7943e237c7F95DA44E0301572D358911207852Fa;
 
-    /// @notice Uniswap V2 Router — NOT deployed on Robinhood testnet (V2 graduation unavailable)
-    address public constant UNIV2_ROUTER = address(0);
+    /// @notice Uniswap V2 Router — Livo-deployed stock UniswapV2Router02 (canonical bytecode)
+    address public constant UNIV2_ROUTER = 0xfD550c5dC070Ea575A06A40f2e18304D85211663;
 
-    /// @notice Uniswap V2 Factory — NOT deployed on Robinhood testnet (V2 graduation unavailable)
-    address public constant UNIV2_FACTORY = address(0);
+    /// @notice Uniswap V2 Factory — Livo-deployed stock UniswapV2Factory (canonical bytecode)
+    address public constant UNIV2_FACTORY = 0x7766e3a6A8C98a76308CFb4040E330c3308F7C73;
 
-    /// @notice Placeholder (canonical) hash — unused while UNIV2_ROUTER/FACTORY are zero.
+    /// @notice keccak256 of the UniswapV2Pair creation code used by UNIV2_FACTORY.
+    /// @dev The factory was deployed from Uniswap's canonical bytecode, so this is the canonical
+    ///      mainnet value. Verified: keccak256 of the canonical UniswapV2Pair creation code.
     bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
         0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
 

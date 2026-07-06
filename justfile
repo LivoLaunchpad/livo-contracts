@@ -157,6 +157,8 @@ deploy-tiers-mainnet:
 # matches the audited mainnet hook Uniswap verifies against). The from-scratch deploy is therefore two
 # passes, see script/DeployFullStack.s.sol + DeployFullStackPart2.s.sol. Needs ROBINHOOD_RPC_URL /
 # ROBINHOOD_TESTNET_RPC_URL exported (public RPCs are in foundry.toml).
+# `--gas-estimate-multiplier 300` is required: Robinhood is an Arbitrum L2 and forge's default estimate
+# under-provisions contract-creation gas ("code storage out of gas"). Extra gas limit is refunded, not spent.
 #
 #   PART 1 — committed LivoSwapHook (LP_FEE_BPS = 100 = 1%):
 #     just deploy-robinhood-part1                 (or deploy-robinhood-testnet-part1)
@@ -167,20 +169,46 @@ deploy-tiers-mainnet:
 #   then paste + export, and REVERT LP_FEE_BPS back to 100 so the committed source stays the 1% hook.
 
 deploy-robinhood-part1: taxtoken-robinhood
-    forge script DeployFullStack --rpc-url robinhood --account livo.dev --slow --broadcast \
+    forge script DeployFullStack --rpc-url robinhood --account livo.dev --sender {{livodev}} --slow --broadcast --gas-estimate-multiplier 300 \
         --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/
 
 deploy-robinhood-part2: taxtoken-robinhood
-    forge script DeployFullStackPart2 --rpc-url robinhood --account livo.dev --slow --broadcast \
+    forge script DeployFullStackPart2 --rpc-url robinhood --account livo.dev --slow --broadcast --gas-estimate-multiplier 300 \
         --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/
 
 deploy-robinhood-testnet-part1: taxtoken-robintest
-    forge script DeployFullStack --rpc-url robinhood_testnet --account livo.dev --slow --broadcast \
+    forge script DeployFullStack --rpc-url robinhood_testnet --account livo.dev --sender {{livodev}} --slow --broadcast --gas-estimate-multiplier 300 \
         --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
 
 deploy-robinhood-testnet-part2: taxtoken-robintest
-    forge script DeployFullStackPart2 --rpc-url robinhood_testnet --account livo.dev --slow --broadcast \
+    forge script DeployFullStackPart2 --rpc-url robinhood_testnet --account livo.dev --slow --broadcast --gas-estimate-multiplier 300 \
         --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
+
+# Robinhood TESTNET has no Uniswap V2, so the V2 graduation path is skipped there
+# (hasV2 = UNIV2_ROUTER != address(0)). Deploy a stock V2 instance ONCE, then paste the
+# printed addresses into DeploymentAddressesRobinhoodTestnet (src/config/DeploymentAddresses.sol)
+# and rebuild — after that `deploy-robinhood-testnet-part1` wires the V2 graduator/factory/tax-impls.
+# Uses Uniswap's CANONICAL creation bytecode (pinned unpkg artifacts); the resulting pair init-code
+# hash equals the canonical 0x96e8ac42…845f already set as UNIV2_PAIR_INIT_CODE_HASH, so that constant
+# does NOT change. WETH is the chain's existing WETH; feeToSetter defaults to the testnet treasury.
+deploy-univ2-robintest feeToSetter="0xBa489180Ea6EEB25cA65f123a46F3115F388f181":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WETH=0x7943e237c7F95DA44E0301572D358911207852Fa
+    RPC=$ROBINHOOD_TESTNET_RPC_URL
+    FAC_CODE=$(curl -fsSL "https://unpkg.com/@uniswap/v2-core@1.0.1/build/UniswapV2Factory.json" | jq -r .bytecode)
+    FAC_ARGS=$(cast abi-encode "c(address)" {{feeToSetter}})
+    FAC=$(cast send --rpc-url $RPC --account livo.dev --json --create "0x${FAC_CODE}${FAC_ARGS:2}" | jq -r .contractAddress)
+    echo "UNIV2_FACTORY = $FAC"
+    RTR_CODE=$(curl -fsSL "https://unpkg.com/@uniswap/v2-periphery@1.1.0-beta.0/build/UniswapV2Router02.json" | jq -r .bytecode)
+    RTR_ARGS=$(cast abi-encode "c(address,address)" "$FAC" "$WETH")
+    RTR=$(cast send --rpc-url $RPC --account livo.dev --json --create "0x${RTR_CODE}${RTR_ARGS:2}" | jq -r .contractAddress)
+    echo "UNIV2_ROUTER  = $RTR"
+    echo
+    echo ">>> Paste into DeploymentAddressesRobinhoodTestnet, then rebuild:"
+    echo "    UNIV2_FACTORY = $FAC"
+    echo "    UNIV2_ROUTER  = $RTR"
+    echo "    UNIV2_PAIR_INIT_CODE_HASH stays 0x96e8ac42…845f (canonical, unchanged)"
 
 # Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
