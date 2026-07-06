@@ -15,9 +15,9 @@ library DeploymentsSepolia {
     address internal constant LAUNCHPAD = 0x0f82BE05B136266203FcAD79A951bDbBB4f31110;
     address internal constant BONDING_CURVE = 0x523C474aB6C177B3A4eF9aeF226998eC3f35ae27;
     address internal constant GRADUATOR_UNIV2 = 0xdf2A4F12Af6Cce0588678FdA7ce69D5Edc7d0897;
-    address internal constant GRADUATOR_UNIV4 = 0x130C39e08Ac899b992c69B56C7364DD9d1800026;
+    address internal constant GRADUATOR_UNIV4 = 0xd54a2f50Fc588698D965B9764F592C76c89Cab3f;
     /// @notice V4 graduator paired with the 50-bps `SWAP_HOOK_0P5` variant. Update after deploying.
-    address internal constant GRADUATOR_UNIV4_0P5 = 0x11b2037D69F9851DD740730c8A8084EB97AB20c6;
+    address internal constant GRADUATOR_UNIV4_0P5 = 0x67E92ad7d1BB9D380802217232Dd6116B88bfb91;
     address internal constant MASTER_FEE_HANDLER = 0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f;
 
     address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
@@ -44,8 +44,8 @@ library DeploymentsSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x7f4192203f10ad4A2E3BED201DdAa1A929bBcc6c;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xe17Abbd962Ab88FCeC2867e665da6C2d5a20430f;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xa35D37290ae26230a41F473311b5a69Ee4ef2Ab6;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x9adB869DD71eb953773f6E9AA3A713Ad8413aE78;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -78,10 +78,10 @@ library DeploymentsSepolia {
     /// @notice THIN/THICK V4 graduators, one per (tier x hook fee). The DEFAULT tier reuses
     ///         `GRADUATOR_UNIV4` / `GRADUATOR_UNIV4_0P5`. Update after deploying with
     ///         `DeployTierLiquiditySystem`.
-    address internal constant GRADUATOR_UNIV4_THIN = 0x61A0f807CD67BAa7960732fbF5Db7F6f67F64021;
-    address internal constant GRADUATOR_UNIV4_THIN_0P5 = 0xb26f2d12f8fD10238eEBCa7B9eBa1c372C0f0286;
-    address internal constant GRADUATOR_UNIV4_THICK = 0xD8E48E3eE80f1448689DB671CFc7c414d89BE1Fe;
-    address internal constant GRADUATOR_UNIV4_THICK_0P5 = 0xEf40A51e5FB1c61AFb4eF5dd062013B16A2183f0;
+    address internal constant GRADUATOR_UNIV4_THIN = 0x19c6FF2c85017c2A6D9Eb8da147631193e8E3FB6;
+    address internal constant GRADUATOR_UNIV4_THIN_0P5 = 0x5DcFBeD954968431bf1d85E99F18c6b4fC864bFA;
+    address internal constant GRADUATOR_UNIV4_THICK = 0xbD2b4b5633B90fBD5BAC5144c02101201aB0E84F;
+    address internal constant GRADUATOR_UNIV4_THICK_0P5 = 0xB476163a1fb3aBCD4fa3C9BF65eBA90C1Dc55A8d;
 
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with

@@ -139,6 +139,55 @@ deploy-tiers-mainnet:
 export-deployments:
     forge script ExportDeployments
 
+##################### ROLLBACK (unified factory proxies) #######################
+# Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
+# implementation — the 2nd-to-last on-chain `Upgraded` event, i.e. Etherscan's
+# "previous implementations". Broadcaster must be the proxy owner (livo.dev).
+# Guards refuse a bogus/incompatible target before any tx is sent; mainnet asks to confirm.
+# NOTE: rolling the V4 factory back also reverts which graduators new tokens use (the old
+# graduators are baked into the previous V4 impl as immutables; they still live on-chain).
+# The manifest is NOT auto-edited — if you keep the rollback, update FACTORY_UNIV{2,4}_UNIFIED_IMPL
+# in src/config/manifest.<chain>.sol and run `just export-deployments`.
+rollback-mainnet:
+    just _rollback-unified "$ETH_RPC_URL" 0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9 0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565
+
+rollback-sepolia:
+    just _rollback-unified "$SEPOLIA_RPC_URL" 0x87Dd69F8d294fA9cd704fccd38d36d6197F80868 0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b
+
+_rollback-unified rpc v2proxy v4proxy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${ETHERSCAN_API_KEY:?set ETHERSCAN_API_KEY}"
+    RPC='{{rpc}}'
+    CHAINID=$(cast chain-id --rpc-url "$RPC")
+    TOPIC=0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b
+    declare -a TARGETS=()
+    echo "Chain $CHAINID — discovering previous implementations (proxy : current -> previous):"
+    for PROXY in {{v2proxy}} {{v4proxy}}; do
+        LP=$(cast call --rpc-url "$RPC" "$PROXY" 'LAUNCHPAD()(address)')
+        RESP=$(curl -sf "https://api.etherscan.io/v2/api?chainid=$CHAINID&module=logs&action=getLogs&address=$PROXY&topic0=$TOPIC&fromBlock=0&toBlock=latest&apikey=$ETHERSCAN_API_KEY")
+        [ "$(echo "$RESP" | jq -r '.status')" = "1" ] || { echo "❌ $PROXY: etherscan getLogs: $(echo "$RESP" | jq -r '.message // .result')"; exit 1; }
+        N=$(echo "$RESP" | jq '.result | length')
+        [ "$N" -ge 2 ] || { echo "❌ $PROXY: only $N Upgraded events; no previous impl"; exit 1; }
+        PREV=$(echo "$RESP" | jq -r '.result[-2].topics[1]'); PREV="0x${PREV: -40}"
+        CURR=$(echo "$RESP" | jq -r '.result[-1].topics[1]'); CURR="0x${CURR: -40}"
+        [ "$(cast code --rpc-url "$RPC" "$PREV")" != "0x" ] || { echo "❌ prev impl $PREV has no bytecode"; exit 1; }
+        PLP=$(cast call --rpc-url "$RPC" "$PREV" 'LAUNCHPAD()(address)')
+        [ "${PLP,,}" = "${LP,,}" ] || { echo "❌ prev impl $PREV wired to $PLP, not proxy launchpad $LP — refusing"; exit 1; }
+        echo "  $PROXY : $CURR -> $PREV"
+        TARGETS+=("$PROXY=$PREV")
+    done
+    if [ "$CHAINID" = "1" ]; then
+        read -r -p "Broadcast these MAINNET rollbacks? type 'yes': " ok
+        [ "$ok" = "yes" ] || { echo "aborted"; exit 1; }
+    fi
+    for t in "${TARGETS[@]}"; do
+        PROXY="${t%%=*}"; PREV="${t##*=}"
+        cast send --rpc-url "$RPC" --account livo.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
+        echo "✔ $PROXY rolled back to $PREV"
+    done
+    echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.<chain>.sol and run 'just export-deployments'."
+
 create-token-v2 tokenName value="0":
     SALT=$(just next-salt {{factoryV2}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \

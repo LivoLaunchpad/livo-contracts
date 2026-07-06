@@ -87,7 +87,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /////////////////////// Events ///////////////////////
 
-    event PoolIdRegistered(address indexed token, bytes32 poolId);
+    event PoolIdRegistered(address indexed token, bytes32 poolId, address swapHookAddress);
 
     //////////////////////////////////////////////////////
 
@@ -176,7 +176,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // We return the address of the pool manager, which forbids token transfers to the pool until graduation
         // to prevent liquidity deposits & trades before being graduated
         emit PairInitialized(tokenAddress, address(UNIV4_POOL_MANAGER));
-        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(pool.toId()));
+        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(pool.toId()), HOOK_ADDRESS);
 
         return address(UNIV4_POOL_MANAGER);
     }
