@@ -9,8 +9,8 @@
 | LivoLaunchpad                                | `0xaA74Aa89590E3B50BE178eA970E490c173b61110` |
 | ConstantProductBondingCurve                  | `0xc8aDB35992054948333486621D1891D298f050Ad` |
 | LivoGraduatorUniswapV2                       | `0x042ed119F78b734407C6368A01D799C503df2E63` |
-| LivoGraduatorUniswapV4                       | `0x86eDfc50E65233ff3e5b26DeeD49578a157565d7` |
-| LivoGraduatorUniswapV4 (0.5% hook)           | `0xE5C38dA8e9BB8a1d2069419606e0f04dc8c57E43` |
+| LivoGraduatorUniswapV4                       | `0xcac38cA0DA6C27f2DE69Acc87A4C63f73B2d49A4` |
+| LivoGraduatorUniswapV4 (0.5% hook)           | `0x966a0FB457c9D38a537D510530A717079cB8d416` |
 | LivoMasterFeeHandler                         | `0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC` |
 | LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
 | LivoSwapHook (0.5%)                          | `0x068241d20c59980AbEAeDED990d2441F05f5C0Cc` |
@@ -22,9 +22,9 @@
 | LivoTaxableTokenUniV2 (impl)                 | `0x8DBdc48B8d9066983ad84be79B0382edCe390a04` |
 | LivoTaxableTokenUniV2SniperProtected (impl)  | `0xcF816bA12a24cD9CC3297A6Ff7528cb66ea7e388` |
 | LivoFactoryUniV2Unified (proxy)              | `0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9` |
-| LivoFactoryUniV2Unified (impl)               | `0xBb3303bF4dA06629B9D03A35998C330edB7c1905` |
+| LivoFactoryUniV2Unified (impl)               | `0x9c66633Bf5a9744f04c4716edd680cC962eE6fa7` |
 | LivoFactoryUniV4Unified (proxy)              | `0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565` |
-| LivoFactoryUniV4Unified (impl)               | `0x5eC54C3E5f6167a355Bf03DDf6B983738A6789F6` |
+| LivoFactoryUniV4Unified (impl)               | `0x610581fF47EFfF2F73A2251d31Ed6211fc526c91` |
 | LivoCreatorVaultFactory (proxy)              | `0xA06f07bf255cB63c694339F172f9459f3BF015E7` |
 | LivoCreatorVaultFactory (impl)               | `0x4b387716EbA7498Eb757467A876FAA98733A329e` |
 | LivoCreatorVault (impl)                      | `0xcad4C889e0897BF3fdeE367F402F728342651603` |
@@ -34,10 +34,10 @@
 | Creator-vault curve 20%                      | `0x00d2a5C35BC21CdB1c9E7650505f8a26E86dB592` |
 | Creator-vault curve 25%                      | `0xcc78F1D12AdA3F83f5A90840b937D6ed30acE6D2` |
 | Creator-vault curve 30%                      | `0x79f75FB3C316f873cFEC5D35a6Be7d6825A140D5` |
-| LivoGraduatorUniV4 THIN                      | `0x128Cb25d514511c0613d1b016ce7D8966553f551` |
-| LivoGraduatorUniV4 THIN (0.5%)               | `0xB140a4D912EeF48cB66092932B613807C444b1cA` |
-| LivoGraduatorUniV4 THICK                     | `0x75B8CA7298F4eece0E474B6c4D0827B83C3607Ac` |
-| LivoGraduatorUniV4 THICK (0.5%)              | `0x4e43217948094AdB6Db8D4B6788bafc2d4F5818c` |
+| LivoGraduatorUniV4 THIN                      | `0x580e2306EC530d74b7Ad5Da8A3fA31f8Ebbe39fF` |
+| LivoGraduatorUniV4 THIN (0.5%)               | `0x5c8e43bb035a412C5EE1B3AdfC16A33cBa62Dc59` |
+| LivoGraduatorUniV4 THICK                     | `0x5B1F8B2C562113F4F20B6E7eF1d24dB37839e3b6` |
+| LivoGraduatorUniV4 THICK (0.5%)              | `0x7e9249485462199201b8B763714b422511581A43` |
 | THIN-tier curve base                         | `0x1baDd69dCa006B79A95713B4e912e34cf98fe76B` |
 | THIN-tier curve 5%                           | `0x36Ae651E216d92b99A03ff6525951df3EC2B5DEa` |
 | THIN-tier curve 10%                          | `0xa3408533082e529D0Dbf740A2999E3c5f5d8dfc7` |
