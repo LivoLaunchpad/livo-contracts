@@ -4,9 +4,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
@@ -19,19 +16,17 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
 import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
-/// @title Redeploy all sniper-protected token implementations and upgrade both unified factory proxies
-/// @notice Single-broadcast deploy that:
-///         1. Deploys a fresh `LivoTokenSniperProtected` implementation.
-///         2. Deploys a fresh `LivoTaxableTokenUniV2SniperProtected` implementation.
-///         3. Deploys a fresh `LivoTaxableTokenUniV4SniperProtected` implementation.
-///         4. Deploys a fresh `LivoFactoryUniV2Unified` implementation wired to the new sniper
-///            impls (1) and (2) plus the unchanged non-sniper impls + bonding curve + V2 graduator
-///            + master fee handler + launchpad pulled from the per-chain manifest.
-///         5. Deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the new sniper
-///            impls (1) and (3) plus the unchanged non-sniper impls + bonding curve + V4 graduator
-///            + master fee handler + launchpad pulled from the per-chain manifest.
-///         6. Calls `upgradeToAndCall(newFactoryImpl, "")` on the V2 factory UUPS proxy.
-///         7. Calls `upgradeToAndCall(newFactoryImpl, "")` on the V4 factory UUPS proxy.
+/// @title Redeploy both unified factory implementations and upgrade their proxies
+/// @notice Anti-sniper protection is now a gated feature baked into the base + tax token impls, so
+///         there are no separate sniper implementations left to redeploy. This script now simply:
+///         1. Deploys a fresh `LivoFactoryUniV2Unified` implementation wired to the unchanged base +
+///            V2 tax impls + bonding curve + V2 graduator + master fee handler + launchpad pulled
+///            from the per-chain manifest.
+///         2. Deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the unchanged base +
+///            V4 tax impls + bonding curve + V4 graduator + master fee handler + launchpad pulled
+///            from the per-chain manifest.
+///         3. Calls `upgradeToAndCall(newFactoryImpl, "")` on the V2 factory UUPS proxy.
+///         4. Calls `upgradeToAndCall(newFactoryImpl, "")` on the V4 factory UUPS proxy.
 ///
 ///         The proxy addresses — and therefore the launchpad's `whitelistedFactories` entries — do
 ///         NOT change. No init data is passed; there are no new storage variables to populate.
@@ -43,11 +38,8 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run
 ///         `just taxtokenaddresses` before deploying to Sepolia).
 ///
-///         Post-broadcast: update these five address constants in `src/config/manifest.<chain>.sol`,
+///         Post-broadcast: update these two address constants in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`:
-///         - `TOKEN_SNIPER_PROTECTED_IMPL`
-///         - `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`
-///         - `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL`
 ///         - `FACTORY_UNIV2_UNIFIED_IMPL`
 ///         - `FACTORY_UNIV4_UNIFIED_IMPL`
 ///
@@ -75,9 +67,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
 
     /// @dev Addresses emitted by this script (for logging + manifest updates).
     struct FreshDeployments {
-        address tokenSniperImpl;
-        address taxTokenV2SniperImpl;
-        address taxTokenV4SniperImpl;
         address factoryV2Impl;
         address factoryV4Impl;
     }
@@ -156,7 +145,7 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
         require(ownerV4 != address(0), "V4 proxy not initialized");
         require(ownerV2 == ownerV4, "V2/V4 proxies have diverged owners - verify the manifest");
 
-        console.log("=== Livo Sniper Stack Redeploy ===");
+        console.log("=== Livo Factory Redeploy (base + tax impls reused from manifest) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required owner (V2/V4):  ", ownerV2);
@@ -169,24 +158,10 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
         console.log("| Contract Name                                  | Address |");
         console.log("| ---------------------------------------------- | --- |");
 
-        fresh.tokenSniperImpl = address(new LivoTokenSniperProtected());
-        console.log("| LivoTokenSniperProtected (new impl)           |", fresh.tokenSniperImpl);
-
-        fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
-        console.log("| LivoTaxableTokenUniV2SniperProtected (new)    |", fresh.taxTokenV2SniperImpl);
-
-        fresh.taxTokenV4SniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
-        console.log("| LivoTaxableTokenUniV4SniperProtected (new)    |", fresh.taxTokenV4SniperImpl);
-
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: fresh.tokenSniperImpl,
-                    tax: d.taxTokenV2Impl,
-                    taxAntiSniper: fresh.taxTokenV2SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -200,12 +175,7 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: fresh.tokenSniperImpl,
-                    tax: d.taxTokenImpl,
-                    taxAntiSniper: fresh.taxTokenV4SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,
@@ -229,9 +199,6 @@ contract RedeploySniperTokensAndUpgradeFactories is Script {
         console.log("=== Redeploy Complete ===");
         console.log("Proxy addresses are UNCHANGED - no launchpad whitelisting or integrator action needed.");
         console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
-        console.log("  TOKEN_SNIPER_PROTECTED_IMPL              :", fresh.tokenSniperImpl);
-        console.log("  TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL   :", fresh.taxTokenV2SniperImpl);
-        console.log("  TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL      :", fresh.taxTokenV4SniperImpl);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL               :", fresh.factoryV2Impl);
         console.log("  FACTORY_UNIV4_UNIFIED_IMPL               :", fresh.factoryV4Impl);
     }

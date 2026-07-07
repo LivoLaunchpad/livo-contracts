@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {Vm} from "forge-std/Vm.sol";
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";

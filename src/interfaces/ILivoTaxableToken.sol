@@ -70,10 +70,11 @@ interface ILivoTaxableToken is ILivoToken {
 }
 
 /// @title ILivoTaxableTokenSniperProtected
-/// @notice Extension of `ILivoTaxableToken` for tax-token variants that also enforce anti-sniper
-///         caps during the post-launch protection window.
-/// @dev Used by `LivoFactoryAbstract._initializeTaxToken` to dispatch into the 3-arg `initialize`
-///      overload through a venue-agnostic type.
+/// @notice Venue-agnostic dispatch shape for the 3-arg (tax + anti-sniper) `initialize` overload the
+///         taxable impls expose. Anti-sniper is a gated feature on the single taxable impl per venue —
+///         there is no longer a distinct sniper-protected contract — so this interface is just the
+///         typed entry `LivoFactoryAbstract._dispatchAndInitialize` uses to init a taxable clone that
+///         opted into protection.
 interface ILivoTaxableTokenSniperProtected is ILivoTaxableToken {
     function initialize(
         ILivoToken.InitializeParams memory params,

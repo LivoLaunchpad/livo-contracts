@@ -37,7 +37,7 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
 
         address impl = factoryV2.previewTokenImplementation(fees, supply, _toCfgs(taxCfg), noSniper);
         _assertCode(impl, "v2 tax impl code missing");
-        bytes32 salt = _nextValidSalt(address(factoryV2), impl);
+        bytes32 salt = _nextValidSalt(address(factoryV2), impl, creator);
 
         vm.prank(creator);
         address token = factoryV2.createToken("Sepolia Tax V2", "STV2", salt, fees, supply, taxCfg, noSniper);

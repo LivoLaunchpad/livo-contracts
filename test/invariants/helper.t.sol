@@ -55,10 +55,13 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 constant FAR_IN_FUTURE = 9758664012;
     uint256 internal _saltCounter;
 
-    function _nextValidSalt(address factory, address impl) internal returns (bytes32) {
+    /// @dev The factory namespaces the CREATE2 salt by the deployer (`keccak256(msg.sender, salt)`),
+    ///      so mining must predict against the same namespaced salt for the account that will deploy.
+    function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32) {
         for (uint256 i = _saltCounter;; i++) {
             bytes32 salt = bytes32(i);
-            address predicted = Clones.predictDeterministicAddress(impl, salt, factory);
+            address predicted =
+                Clones.predictDeterministicAddress(impl, keccak256(abi.encodePacked(deployer, salt)), factory);
             if (uint16(uint160(predicted)) == 0x1110) {
                 _saltCounter = i + 1;
                 return salt;
@@ -128,13 +131,13 @@ contract InvariantsHelperLaunchpad is Test {
         ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
         creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
         if (seed % 2 == 0) {
-            bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl);
+            bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl, currentActor);
             vm.prank(currentActor);
             token = factoryV2.createToken(
                 "TestToken", "TEST", salt, creatorFs, noSs, _emptyTaxCfg(), _emptyAntiSniperCfg()
             );
         } else {
-            bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl);
+            bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl, currentActor);
             vm.prank(currentActor);
             token = factoryV4.createToken(
                 "TestToken", "TEST", salt, creatorFs, noSs, false, _emptyTaxCfg(), _emptyAntiSniperCfg()

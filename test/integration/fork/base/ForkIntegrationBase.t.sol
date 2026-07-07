@@ -101,9 +101,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         require(forkCfg.factoryV2Unified != address(0), "missing v2 unified factory");
         require(forkCfg.factoryV4Unified != address(0), "missing v4 unified factory");
         require(forkCfg.tokenImpl != address(0), "missing token impl");
-        require(forkCfg.tokenSniperImpl != address(0), "missing sniper token impl");
         require(forkCfg.taxTokenImpl != address(0), "missing tax token impl");
-        require(forkCfg.taxTokenSniperImpl != address(0), "missing tax sniper token impl");
         require(forkCfg.weth != address(0), "missing WETH");
         require(forkCfg.uniV2Router != address(0), "missing UniV2 router");
         require(forkCfg.uniV2Factory != address(0), "missing UniV2 factory");
@@ -132,16 +130,13 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         assertEq(address(factoryV2.GRADUATOR()), forkCfg.graduatorV2, "v2 graduator mismatch");
         assertEq(address(factoryV2.MASTER_FEE_HANDLER()), forkCfg.masterFeeHandler, "v2 handler mismatch");
         assertEq(factoryV2.TOKEN_IMPL_BASE(), forkCfg.tokenImpl, "v2 base impl mismatch");
-        assertEq(factoryV2.TOKEN_IMPL_ANTISNIPER(), forkCfg.tokenSniperImpl, "v2 sniper impl mismatch");
 
         assertEq(address(factoryV4.LAUNCHPAD()), forkCfg.launchpad, "v4 launchpad mismatch");
         assertEq(address(factoryV4.BONDING_CURVE()), forkCfg.bondingCurve, "v4 curve mismatch");
         assertEq(address(factoryV4.GRADUATOR()), forkCfg.graduatorV4, "v4 graduator mismatch");
         assertEq(address(factoryV4.MASTER_FEE_HANDLER()), forkCfg.masterFeeHandler, "v4 handler mismatch");
         assertEq(factoryV4.TOKEN_IMPL_BASE(), forkCfg.tokenImpl, "v4 base impl mismatch");
-        assertEq(factoryV4.TOKEN_IMPL_ANTISNIPER(), forkCfg.tokenSniperImpl, "v4 sniper impl mismatch");
         assertEq(factoryV4.TOKEN_IMPL_TAX(), forkCfg.taxTokenImpl, "v4 tax impl mismatch");
-        assertEq(factoryV4.TOKEN_IMPL_TAX_ANTISNIPER(), forkCfg.taxTokenSniperImpl, "v4 tax sniper impl mismatch");
 
         assertEq(IUniswapV2Router(forkCfg.uniV2Router).WETH(), forkCfg.weth, "v2 router WETH mismatch");
         assertEq(IUniswapV2Router(forkCfg.uniV2Router).factory(), forkCfg.uniV2Factory, "v2 router factory mismatch");
@@ -299,10 +294,13 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         }
     }
 
-    function _nextValidSalt(address factory, address impl) internal returns (bytes32 salt) {
+    /// @dev The factory namespaces the CREATE2 salt by the deployer (`keccak256(msg.sender, salt)`),
+    ///      so mining/prediction must use the same namespaced salt for the deploying account.
+    function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32 salt) {
         for (uint256 i = _saltCounter;; ++i) {
             salt = bytes32(i);
-            address predicted = Clones.predictDeterministicAddress(impl, salt, factory);
+            address predicted =
+                Clones.predictDeterministicAddress(impl, keccak256(abi.encodePacked(deployer, salt)), factory);
             if (uint16(uint160(predicted)) == 0x1110 && predicted.code.length == 0) {
                 _saltCounter = i + 1;
                 return salt;
@@ -330,8 +328,10 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         input.fees = _feeShares(a, c.feeMode);
         (input.supply, input.ethValue) = _supplyShares(a, c.creatorBuyMode);
         input.impl = _previewImplementation(c, input.fees, input.supply);
-        input.salt = _nextValidSalt(_factory(c), input.impl);
-        input.expected = Clones.predictDeterministicAddress(input.impl, input.salt, _factory(c));
+        input.salt = _nextValidSalt(_factory(c), input.impl, a.creator);
+        input.expected = Clones.predictDeterministicAddress(
+            input.impl, keccak256(abi.encodePacked(a.creator, input.salt)), _factory(c)
+        );
     }
 
     function _createToken(ForkIntegrationCaseLib.IntegrationCase memory c, address creator, CreateInputs memory input)

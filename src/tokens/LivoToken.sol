@@ -9,8 +9,14 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
-contract LivoToken is ERC20, ILivoToken, Initializable {
+/// @dev Anti-sniper protection is folded into every token as a gated feature: `SniperProtection`
+///      supplies the caps + window logic, and the warm-slot `hasSniperProt` flag (packed into the
+///      `pair`/`graduated` slot the hot path already loads) gates it. Tokens that don't opt in pay
+///      no extra SLOAD and behave identically to a plain token — the caps code is present but never
+///      reached. Tax variants (`LivoTaxableToken*`) inherit this same gated feature.
+contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     /// @notice Version of the Livo stack this token belongs to
     string public constant override VERSION = "2.0";
 
@@ -28,12 +34,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     address public graduator;
 
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
-    /// @dev Packed with `graduated` so the hot-path read of both fields in `_update` costs a
-    ///      single SLOAD.
+    /// @dev Packed with `graduated` and `hasSniperProt` so the hot-path read of all three fields in
+    ///      `_update` costs a single SLOAD.
     address public pair;
 
     /// @notice Whether the token has graduated already or not
     bool public graduated;
+
+    /// @notice Whether anti-sniper protection is enabled for this token. Set once at initialization
+    ///         when an `AntiSniperConfigs` with a non-zero window is supplied. Packs into the `pair`
+    ///         slot so `_update` reads it for free while it already loads `pair`/`graduated`; gates the
+    ///         `SniperProtection` caps so non-opted-in tokens skip the check entirely.
+    bool public hasSniperProt;
 
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
@@ -117,6 +129,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _initializeLivoToken(params);
     }
 
+    /// @notice Initializes the token clone and enables anti-sniper protection.
+    /// @param params Shared token initialization parameters
+    /// @param antiSniperCfg Anti-sniper caps + window config (validated upstream in the factory)
+    function initialize(ILivoToken.InitializeParams memory params, AntiSniperConfigs memory antiSniperCfg)
+        external
+        virtual
+        initializer
+    {
+        _initializeLivoToken(params);
+        _initializeSniperProtectionGated(antiSniperCfg);
+    }
+
     /// @dev Internal initializer body; callable from child `initializer`-gated functions.
     /// @dev `params.graduator` is not explicitly checked for `address(0)`; the call to
     ///      `ILivoGraduator(params.graduator).initialize(address(this))` below would revert in
@@ -160,6 +184,15 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         // `launchTimestamp == 0` (the sniper-window early-return relies on it; see the `tokenFactory`
         // security note). Anchors the sniper window and the taxable variants' tax window.
         launchTimestamp = uint40(block.timestamp);
+    }
+
+    /// @dev Enables anti-sniper protection: validates + stores the caps and window, then flips the
+    ///      warm-slot `hasSniperProt` gate so `_update` / `maxTokenPurchase` enforce them. Must run
+    ///      AFTER `_initializeLivoToken` (which sets `launchTimestamp`, the window anchor). Shared by
+    ///      the base and taxable `initialize` overloads that opt a token into protection.
+    function _initializeSniperProtectionGated(AntiSniperConfigs memory antiSniperCfg) internal onlyInitializing {
+        _initializeSniperProtection(antiSniperCfg, launchTimestamp);
+        hasSniperProt = true;
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -242,9 +275,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: 0});
     }
 
-    /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
-    function maxTokenPurchase(address) external view virtual returns (uint256) {
-        return type(uint256).max;
+    /// @notice Largest amount `buyer` may purchase on the bonding curve right now. No cap unless the
+    ///         token opted into anti-sniper protection (`hasSniperProt`), in which case the per-tx /
+    ///         per-wallet caps apply during the protection window.
+    function maxTokenPurchase(address buyer) external view virtual returns (uint256) {
+        if (!hasSniperProt) return type(uint256).max;
+        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated);
     }
 
     /// @dev ERC20 interface compliance
@@ -266,6 +302,16 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     //////////////////////// internal functions ////////////////////////
 
     function _update(address from, address to, uint256 amount) internal virtual override {
+        // Anti-sniper caps, gated by the warm-slot flag (packed with `pair`/`graduated`, so this read
+        // is free). Only enforced pre-graduation; `hasSniperProt && !graduated` short-circuits for the
+        // common non-protected token AND for every post-graduation transfer (when the tax variants'
+        // `_update` re-enters here after splitting a taxed transfer).
+        if (hasSniperProt && !graduated) {
+            _checkSniperProtection(
+                from, to, amount, address(launchpad), tokenFactory, address(graduator), graduated, balanceOf(to)
+            );
+        }
+
         // this ensures tokens don't arrive to the pair before graduation
         // to avoid exploits/DOS related to liquidity addition at graduation
         if ((!graduated) && (to == pair)) {

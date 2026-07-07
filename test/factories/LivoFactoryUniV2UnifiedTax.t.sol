@@ -4,11 +4,9 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @notice Tax dispatch + tax-config validation tests for `LivoFactoryUniV2Unified`. Mirrors the
 ///         V4 unified tax tests. Locks in: (1) the four-cell dispatch matrix (tax × anti-sniper)
@@ -41,7 +39,7 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
         address impl =
             factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
+        address expected = _predictToken(address(factoryV2Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
@@ -54,7 +52,7 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
         address impl =
             factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _defaultAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
+        address expected = _predictToken(address(factoryV2Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token =
@@ -180,7 +178,7 @@ contract LivoFactoryUniV2UnifiedTaxTests is LaunchpadBaseTestsWithUniv2Graduator
         address token =
             factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), cfg, _defaultAntiSniperCfg());
 
-        assertEq(LivoTaxableTokenUniV2SniperProtected(payable(token)).owner(), address(0));
+        assertEq(LivoTaxableTokenUniV2(payable(token)).owner(), address(0));
     }
 
     function test_createToken_nonTaxVariant_alwaysSetsOwnerToZero() public {

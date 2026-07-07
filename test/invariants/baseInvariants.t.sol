@@ -96,10 +96,9 @@ contract LaunchpadInvariants is Test {
             UniswapV4PoolConstants.TICK_UPPER
         );
 
-        // The unified factories take both base and sniper-protected token impls. The invariant
-        // helper only ever uses the base path (no anti-sniper, no tax), so we pass `tokenImplementation`
-        // for both slots — sniper impls are never cloned in this suite.
-        // Creator-vault infra is unused in this suite, so the vault factory / curves are left zero.
+        // The unified factories take a base and a tax token impl. The invariant helper only ever uses
+        // the base path (no tax), so we pass `tokenImplementation` for both slots. Anti-sniper is a
+        // gated feature of the same impl, so no separate impl is needed.
         // Creator-vault + non-default-tier curves are unused in this suite (only the DEFAULT base path
         // is exercised), so they are left zero.
         address[6] memory emptyVaultCurves;
@@ -107,12 +106,7 @@ contract LaunchpadInvariants is Test {
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({
-                    base: address(tokenImplementation),
-                    antiSniper: address(tokenImplementation),
-                    tax: address(tokenImplementation),
-                    taxAntiSniper: address(tokenImplementation)
-                }),
+                ILivoFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
                 address(bondingCurve),
                 address(graduatorV2),
                 address(feeHandler),
@@ -129,12 +123,7 @@ contract LaunchpadInvariants is Test {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({
-                    base: address(tokenImplementation),
-                    antiSniper: address(tokenImplementation),
-                    tax: address(tokenImplementation),
-                    taxAntiSniper: address(tokenImplementation)
-                }),
+                ILivoFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
                 address(bondingCurve),
                 address(graduatorV4),
                 address(graduatorV4),

@@ -10,11 +10,8 @@ import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol"
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
@@ -28,7 +25,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 
 /// @title Launchpad-v2 rollout, phase 1: deploy the entire v2 stack (incl. factory implementations)
 /// @notice First of a TWO-PHASE rollout for the launchpad-v2 release (per-token, creator-splittable
-///         pre-graduation fees). Thirteen deployments + two whitelistings — the factory PROXIES are
+///         pre-graduation fees). Ten deployments + two whitelistings — the factory PROXIES are
 ///         NOT upgraded here (phase 2, see below), so token creation keeps flowing to the OLD
 ///         launchpad until phase 2 lands:
 ///
@@ -41,11 +38,9 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///             keeps working as long as the old launchpad stays deployed with a current treasury —
 ///             enforced below: both launchpads must report the same treasury).
 ///         5.  `LivoGraduatorUniswapV4` (0.5% hook) — same, reusing `SWAP_HOOK_0P5`.
-///         6.  The six token implementations (interface changed: `getLaunchpadFees`, lp-fee init
+///         6.  The three token implementations (interface changed: `getLaunchpadFees`, lp-fee init
 ///             params, creation-anchored tax window):
-///             `LivoToken`, `LivoTokenSniperProtected`, `LivoTaxableTokenUniV2`,
-///             `LivoTaxableTokenUniV2SniperProtected`, `LivoTaxableTokenUniV4`,
-///             `LivoTaxableTokenUniV4SniperProtected`.
+///             `LivoToken`, `LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV4`.
 ///         7.  Both unified factory IMPLEMENTATIONS — `LivoFactoryUniV2Unified` and
 ///             `LivoFactoryUniV4Unified` — wired to the launchpad / graduators / token impls deployed
 ///             above (1–6) plus the reused bonding curve / master fee handler / creator-vault stack
@@ -94,9 +89,9 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         `just export-deployments` (and mirror the new addresses in the envio-indexer configs):
 ///         - `LAUNCHPAD`, `QUOTER`
 ///         - `GRADUATOR_UNIV2`, `GRADUATOR_UNIV4`, `GRADUATOR_UNIV4_0P5`
-///         - `TOKEN_IMPL`, `TOKEN_SNIPER_PROTECTED_IMPL`
-///         - `TAXABLE_TOKEN_IMPL`, `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL`
-///         - `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`
+///         - `TOKEN_IMPL`
+///         - `TAXABLE_TOKEN_IMPL`
+///         - `TAXABLE_TOKEN_V2_IMPL`
 ///         - `FACTORY_UNIV2_UNIFIED_IMPL`, `FACTORY_UNIV4_UNIFIED_IMPL` (phase 2 reads these to flip the proxies)
 ///
 /// @dev    Run with:
@@ -164,11 +159,8 @@ contract DeployLaunchpadV2Stack is Script {
         address graduatorV4;
         address graduatorV4_0p5;
         address tokenImpl;
-        address tokenSniperImpl;
         address taxTokenV2Impl;
-        address taxTokenV2SniperImpl;
         address taxTokenV4Impl;
-        address taxTokenV4SniperImpl;
         address factoryV2Impl;
         address factoryV4Impl;
     }
@@ -345,24 +337,15 @@ contract DeployLaunchpadV2Stack is Script {
         );
         console.log("| LivoGraduatorUniswapV4 (0p5 hook)             |", fresh.graduatorV4_0p5);
 
-        // --- Token implementations (6) ---
+        // --- Token implementations (3) ---
         fresh.tokenImpl = address(new LivoToken());
         console.log("| LivoToken (new impl)                          |", fresh.tokenImpl);
-
-        fresh.tokenSniperImpl = address(new LivoTokenSniperProtected());
-        console.log("| LivoTokenSniperProtected (new impl)           |", fresh.tokenSniperImpl);
 
         fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
         console.log("| LivoTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
 
-        fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
-        console.log("| LivoTaxableTokenUniV2SniperProtected (new)    |", fresh.taxTokenV2SniperImpl);
-
         fresh.taxTokenV4Impl = address(new LivoTaxableTokenUniV4());
         console.log("| LivoTaxableTokenUniV4 (new impl)              |", fresh.taxTokenV4Impl);
-
-        fresh.taxTokenV4SniperImpl = address(new LivoTaxableTokenUniV4SniperProtected());
-        console.log("| LivoTaxableTokenUniV4SniperProtected (new)    |", fresh.taxTokenV4SniperImpl);
 
         // --- Factory implementations (2), wired to the freshly-deployed v2 stack ---
         // Bonding curve / master fee handler / creator-vault stack are reused from the manifest.
@@ -370,12 +353,7 @@ contract DeployLaunchpadV2Stack is Script {
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 fresh.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: fresh.tokenImpl,
-                    antiSniper: fresh.tokenSniperImpl,
-                    tax: fresh.taxTokenV2Impl,
-                    taxAntiSniper: fresh.taxTokenV2SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV2Impl}),
                 d.bondingCurve,
                 fresh.graduatorV2,
                 d.masterFeeHandler,
@@ -389,12 +367,7 @@ contract DeployLaunchpadV2Stack is Script {
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 fresh.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: fresh.tokenImpl,
-                    antiSniper: fresh.tokenSniperImpl,
-                    tax: fresh.taxTokenV4Impl,
-                    taxAntiSniper: fresh.taxTokenV4SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
                 d.bondingCurve,
                 fresh.graduatorV4,
                 fresh.graduatorV4_0p5,
@@ -429,11 +402,8 @@ contract DeployLaunchpadV2Stack is Script {
         console.log("  GRADUATOR_UNIV4                         :", fresh.graduatorV4);
         console.log("  GRADUATOR_UNIV4_0P5                     :", fresh.graduatorV4_0p5);
         console.log("  TOKEN_IMPL                              :", fresh.tokenImpl);
-        console.log("  TOKEN_SNIPER_PROTECTED_IMPL             :", fresh.tokenSniperImpl);
         console.log("  TAXABLE_TOKEN_IMPL                      :", fresh.taxTokenV4Impl);
-        console.log("  TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL    :", fresh.taxTokenV4SniperImpl);
         console.log("  TAXABLE_TOKEN_V2_IMPL                   :", fresh.taxTokenV2Impl);
-        console.log("  TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL :", fresh.taxTokenV2SniperImpl);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL              :", fresh.factoryV2Impl);
         console.log("  FACTORY_UNIV4_UNIFIED_IMPL              :", fresh.factoryV4Impl);
     }
