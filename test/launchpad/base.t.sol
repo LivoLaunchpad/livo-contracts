@@ -143,8 +143,16 @@ contract LaunchpadBaseTests is Test {
     /// @dev The factory namespaces the CREATE2 salt by the deployer (`keccak256(msg.sender, salt)`),
     ///      so address prediction / vanity mining must use the same derivation. `creator` is the
     ///      default deployer used by the createToken helpers below.
-    function _namespacedSalt(address deployer, bytes32 salt) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(deployer, salt));
+    function _namespacedSalt(address deployer, bytes32 salt) internal pure returns (bytes32 result) {
+        // Equivalent to keccak256(abi.encodePacked(deployer, salt)), but computed in scratch space so
+        // that mining loops (which call this ~65k times per salt) don't leak memory. `abi.encodePacked`
+        // advances the free-memory pointer every call and Solidity never frees it, so the naive version
+        // grows memory into the megabytes across a loop → quadratic memory-expansion gas → MemoryOOG.
+        assembly {
+            mstore(0x00, shl(96, deployer)) // deployer in bytes [0x00, 0x14)
+            mstore(0x14, salt) // salt in bytes [0x14, 0x34)
+            result := keccak256(0x00, 0x34) // hash the 52-byte packed encoding
+        }
     }
 
     /// @dev Predicts the token address the factory would deploy for `deployer` with `salt`, matching

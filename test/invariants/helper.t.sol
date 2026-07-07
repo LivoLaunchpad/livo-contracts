@@ -60,12 +60,22 @@ contract InvariantsHelperLaunchpad is Test {
     function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32) {
         for (uint256 i = _saltCounter;; i++) {
             bytes32 salt = bytes32(i);
-            address predicted =
-                Clones.predictDeterministicAddress(impl, keccak256(abi.encodePacked(deployer, salt)), factory);
+            address predicted = Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
             if (uint16(uint160(predicted)) == 0x1110) {
                 _saltCounter = i + 1;
                 return salt;
             }
+        }
+    }
+
+    /// @dev keccak256(abi.encodePacked(deployer, salt)) in scratch space — the loop above calls this
+    ///      ~65k times per salt, and `abi.encodePacked` would leak memory each call (quadratic
+    ///      memory-expansion gas → MemoryOOG).
+    function _namespacedSalt(address deployer, bytes32 salt) internal pure returns (bytes32 result) {
+        assembly {
+            mstore(0x00, shl(96, deployer))
+            mstore(0x14, salt)
+            result := keccak256(0x00, 0x34)
         }
     }
 

@@ -299,12 +299,22 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32 salt) {
         for (uint256 i = _saltCounter;; ++i) {
             salt = bytes32(i);
-            address predicted =
-                Clones.predictDeterministicAddress(impl, keccak256(abi.encodePacked(deployer, salt)), factory);
+            address predicted = Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
             if (uint16(uint160(predicted)) == 0x1110 && predicted.code.length == 0) {
                 _saltCounter = i + 1;
                 return salt;
             }
+        }
+    }
+
+    /// @dev keccak256(abi.encodePacked(deployer, salt)) in scratch space so the mining loop (which
+    ///      calls this ~65k times per salt) doesn't leak memory (quadratic memory-expansion gas →
+    ///      MemoryOOG).
+    function _namespacedSalt(address deployer, bytes32 salt) internal pure returns (bytes32 result) {
+        assembly {
+            mstore(0x00, shl(96, deployer))
+            mstore(0x14, salt)
+            result := keccak256(0x00, 0x34)
         }
     }
 
@@ -329,9 +339,8 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         (input.supply, input.ethValue) = _supplyShares(a, c.creatorBuyMode);
         input.impl = _previewImplementation(c, input.fees, input.supply);
         input.salt = _nextValidSalt(_factory(c), input.impl, a.creator);
-        input.expected = Clones.predictDeterministicAddress(
-            input.impl, keccak256(abi.encodePacked(a.creator, input.salt)), _factory(c)
-        );
+        input.expected =
+            Clones.predictDeterministicAddress(input.impl, _namespacedSalt(a.creator, input.salt), _factory(c));
     }
 
     function _createToken(ForkIntegrationCaseLib.IntegrationCase memory c, address creator, CreateInputs memory input)
