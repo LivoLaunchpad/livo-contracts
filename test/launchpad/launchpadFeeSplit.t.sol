@@ -60,7 +60,8 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
                     buyTaxDecayStartBps: 0,
                     sellTaxDecayStartBps: 0,
                     taxDecayDuration: 0
-                })
+                }),
+                _emptyAntiSniperCfg()
             );
         // Register the creator as the sole (claimable) fee receiver so creator-share routing works.
         t.registerFees(_fs(creator));

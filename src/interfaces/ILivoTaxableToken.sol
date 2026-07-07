@@ -58,27 +58,18 @@ interface ILivoTaxableToken is ILivoToken {
     ///         (`launchTimestamp`), `false` if it starts at graduation (`graduationTimestamp`).
     function startTaxFromLaunch() external view returns (bool);
 
-    /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2
-    ///         or V4 concrete tax-token implementations through a single shared type. Takes the full
-    ///         `TaxConfigs` so the clone receives any launch-tax-decay config; the factory builds it
-    ///         (from `TaxConfigInit` on the legacy paths, or passes it through on the new path).
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg) external;
-
-    /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
-    ///         attempts to raise either rate revert.
-    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
-}
-
-/// @title ILivoTaxableTokenSniperProtected
-/// @notice Venue-agnostic dispatch shape for the 3-arg (tax + anti-sniper) `initialize` overload the
-///         taxable impls expose. Anti-sniper is a gated feature on the single taxable impl per venue —
-///         there is no longer a distinct sniper-protected contract — so this interface is just the
-///         typed entry `LivoFactoryAbstract._dispatchAndInitialize` uses to init a taxable clone that
-///         opted into protection.
-interface ILivoTaxableTokenSniperProtected is ILivoTaxableToken {
+    /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2 or V4
+    ///         concrete tax-token implementations through a single shared type. Takes the full
+    ///         `TaxConfigs` (the factory builds it from `TaxConfigInit` on the legacy paths, or passes
+    ///         it through on the new path) plus the `AntiSniperConfigs`; anti-sniper protection is
+    ///         enabled iff that config opts in (`protectionWindowSeconds != 0`), gated inside the token.
     function initialize(
         ILivoToken.InitializeParams memory params,
         TaxConfigs memory taxCfg,
         AntiSniperConfigs memory antiSniperCfg
     ) external;
+
+    /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
+    ///         attempts to raise either rate revert.
+    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
 }

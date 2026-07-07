@@ -32,18 +32,9 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
     }
 
-    /// @notice Initializes the token clone with its parameters including tax configuration
-    /// @param params Shared token initialization parameters
-    /// @param taxCfg Tax configuration (buy/sell bps and post-graduation tax duration)
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
-        external
-        virtual
-        initializer
-    {
-        _initializeLivoTaxableToken(params, taxCfg);
-    }
-
-    /// @notice Initializes the token clone with tax config AND anti-sniper protection.
+    /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
+    ///         enabled iff `antiSniperCfg` opts in (`protectionWindowSeconds != 0`); pass an all-zero
+    ///         config for a tax-only token.
     /// @param params Shared token initialization parameters
     /// @param taxCfg Tax configuration (buy/sell bps, window, optional launch-tax decay)
     /// @param antiSniperCfg Anti-sniper caps + window config (validated upstream in the factory)
@@ -53,7 +44,7 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken {
         AntiSniperConfigs memory antiSniperCfg
     ) external virtual initializer {
         _initializeLivoTaxableToken(params, taxCfg);
-        _initializeSniperProtectionGated(antiSniperCfg);
+        _initializeAntiSniper(antiSniperCfg);
     }
 
     /// @inheritdoc LivoTaxableToken

@@ -123,13 +123,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
         _disableInitializers();
     }
 
-    /// @notice Initializes the token clone with its parameters
-    /// @param params Shared token initialization parameters
-    function initialize(ILivoToken.InitializeParams memory params) external virtual initializer {
-        _initializeLivoToken(params);
-    }
-
-    /// @notice Initializes the token clone and enables anti-sniper protection.
+    /// @notice Initializes the token clone. Anti-sniper protection is enabled iff `antiSniperCfg` opts
+    ///         in (`protectionWindowSeconds != 0`); pass an all-zero config for a plain token.
     /// @param params Shared token initialization parameters
     /// @param antiSniperCfg Anti-sniper caps + window config (validated upstream in the factory)
     function initialize(ILivoToken.InitializeParams memory params, AntiSniperConfigs memory antiSniperCfg)
@@ -138,7 +133,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
         initializer
     {
         _initializeLivoToken(params);
-        _initializeSniperProtectionGated(antiSniperCfg);
+        _initializeAntiSniper(antiSniperCfg);
     }
 
     /// @dev Internal initializer body; callable from child `initializer`-gated functions.
@@ -186,11 +181,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
         launchTimestamp = uint40(block.timestamp);
     }
 
-    /// @dev Enables anti-sniper protection: validates + stores the caps and window, then flips the
-    ///      warm-slot `hasSniperProt` gate so `_update` / `maxTokenPurchase` enforce them. Must run
-    ///      AFTER `_initializeLivoToken` (which sets `launchTimestamp`, the window anchor). Shared by
-    ///      the base and taxable `initialize` overloads that opt a token into protection.
-    function _initializeSniperProtectionGated(AntiSniperConfigs memory antiSniperCfg) internal onlyInitializing {
+    /// @dev Opt-in gate for anti-sniper protection, called by every token's `initialize`. A zero
+    ///      protection window means "not configured" (the factory's `_validateAntiSniperConfig`
+    ///      guarantees the rest of the config is then also empty), so this no-ops and leaves
+    ///      `hasSniperProt` false — a plain token. Otherwise it validates + stores the caps and window
+    ///      and flips the warm-slot `hasSniperProt` gate so `_update` / `maxTokenPurchase` enforce them.
+    ///      Must run AFTER `_initializeLivoToken` (which sets `launchTimestamp`, the window anchor).
+    function _initializeAntiSniper(AntiSniperConfigs memory antiSniperCfg) internal onlyInitializing {
+        if (antiSniperCfg.protectionWindowSeconds == 0) return;
         _initializeSniperProtection(antiSniperCfg, launchTimestamp);
         hasSniperProt = true;
     }

@@ -16,12 +16,7 @@ import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoCreatorVaultFactory} from "src/interfaces/ILivoCreatorVaultFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    ILivoTaxableToken,
-    ILivoTaxableTokenSniperProtected,
-    TaxConfigInit,
-    TaxConfigs
-} from "src/interfaces/ILivoTaxableToken.sol";
+import {ILivoTaxableToken, TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 
@@ -665,10 +660,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         return decayBps > staticBps ? decayBps : staticBps;
     }
 
-    function _isAntiSniperConfigured(AntiSniperConfigs calldata a) internal pure returns (bool) {
-        return a.protectionWindowSeconds != 0;
-    }
-
     /// @dev Single source of truth for which implementation `createToken` will clone for a given
     ///      `taxCfg`. Both the public `previewTokenImplementation` (used by frontends to mine a
     ///      `0x1110`-suffixed salt) and `_dispatchAndInitialize` (the path that actually clones the
@@ -690,13 +681,13 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     }
 
     /// @dev Resolves the implementation for `taxCfg` (tax vs non-tax — anti-sniper does NOT change the
-    ///      impl), clones it, and runs the matching `initialize` overload. Two impls, four init
-    ///      combinations: the tax family through the venue-agnostic `ILivoTaxableToken[SniperProtected]`
-    ///      interfaces, the non-tax family through `LivoToken` directly — each with a plain or a
-    ///      `+antiSniperCfg` overload. Impl resolution shares `_previewTokenImplementation` with the
-    ///      public preview, so a salt that previews to a `0x1110` address also clones to one. Callers
-    ///      (`createToken` on the derived factory) invoke `LAUNCHPAD.launchToken` and `_finalizeCreation`
-    ///      (which registers the token's fee config with the master handler) after this returns.
+    ///      impl), clones it, and runs the matching `initialize`. The ONLY branch is tax vs non-tax:
+    ///      both impls take the `AntiSniperConfigs` and enable protection internally iff it opts in
+    ///      (`protectionWindowSeconds != 0`), so the factory always forwards it and never branches on
+    ///      anti-sniper. Impl resolution shares `_previewTokenImplementation` with the public preview,
+    ///      so a salt that previews to a `0x1110` address also clones to one. Callers (`createToken` on
+    ///      the derived factory) invoke `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers
+    ///      the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(
         string memory name,
         string memory symbol,
@@ -712,22 +703,12 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         ILivoToken.InitializeParams memory params;
         (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
 
-        bool hasAntiSniper = _isAntiSniperConfigured(antiSniperCfg);
         if (_isTaxConfigured(taxCfg)) {
-            // taxCfg is non-empty; the token stores its tax rate from it in `_initializeTaxConfig`.
-            if (hasAntiSniper) {
-                ILivoTaxableTokenSniperProtected(payable(token)).initialize(params, taxCfg, antiSniperCfg);
-            } else {
-                ILivoTaxableToken(payable(token)).initialize(params, taxCfg);
-            }
+            // Taxable impl: stores the tax rate from `taxCfg` in `_initializeTaxConfig`.
+            ILivoTaxableToken(payable(token)).initialize(params, taxCfg, antiSniperCfg);
         } else {
-            // non-tax path: taxCfg is empty (validated); base `getLaunchpadFees` returns 0 tax.
-            // Anti-sniper is a gated feature of the base impl, enabled via the `+antiSniperCfg` overload.
-            if (hasAntiSniper) {
-                LivoToken(token).initialize(params, antiSniperCfg);
-            } else {
-                LivoToken(token).initialize(params);
-            }
+            // Non-tax impl: `taxCfg` is empty (validated); base `getLaunchpadFees` returns 0 tax.
+            LivoToken(token).initialize(params, antiSniperCfg);
         }
     }
 
