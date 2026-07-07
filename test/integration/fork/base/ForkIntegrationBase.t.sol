@@ -388,11 +388,10 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     }
 
     function _expectedImplFromConfig(ForkIntegrationCaseLib.IntegrationCase memory c) internal view returns (address) {
-        if (_isV4(c)) {
-            if (_hasTax(c)) return _hasSniper(c) ? forkCfg.taxTokenSniperImpl : forkCfg.taxTokenImpl;
-            return _hasSniper(c) ? forkCfg.tokenSniperImpl : forkCfg.tokenImpl;
-        }
-        return _hasSniper(c) ? forkCfg.tokenSniperImpl : forkCfg.tokenImpl;
+        // Anti-sniper is a gated feature of the base/tax impls, so it no longer selects a distinct
+        // implementation — only whether the token is taxable does.
+        if (_isV4(c) && _hasTax(c)) return forkCfg.taxTokenImpl;
+        return forkCfg.tokenImpl;
     }
 
     function _assertTaxConfig(ForkIntegrationCaseLib.IntegrationCase memory c, address token) internal view {

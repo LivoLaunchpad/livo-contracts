@@ -46,18 +46,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoQuoter", DeploymentsMainnet.QUOTER));
         s = string.concat(s, _row("LivoToken (impl)", DeploymentsMainnet.TOKEN_IMPL));
         s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_IMPL));
-        s = string.concat(s, _row("LivoTokenSniperProtected (impl)", DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL));
-        s = string.concat(
-            s,
-            _row("LivoTaxableTokenUniV4SniperProtected (impl)", DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL)
-        );
         s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL));
-        s = string.concat(
-            s,
-            _row(
-                "LivoTaxableTokenUniV2SniperProtected (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
-            )
-        );
         s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED_IMPL));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", DeploymentsMainnet.FACTORY_UNIV4_UNIFIED));
@@ -122,18 +111,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoQuoter", DeploymentsSepolia.QUOTER));
         s = string.concat(s, _row("LivoToken (impl)", DeploymentsSepolia.TOKEN_IMPL));
         s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_IMPL));
-        s = string.concat(s, _row("LivoTokenSniperProtected (impl)", DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL));
-        s = string.concat(
-            s,
-            _row("LivoTaxableTokenUniV4SniperProtected (impl)", DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL)
-        );
         s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL));
-        s = string.concat(
-            s,
-            _row(
-                "LivoTaxableTokenUniV2SniperProtected (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
-            )
-        );
         s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED_IMPL));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED));
@@ -183,9 +161,8 @@ contract ExportDeployments is Script {
     // ---------------------------------------------------------------- Helpers
 
     /// @dev Inner column widths (content + padding, excluding the surrounding `| ` and ` |`).
-    ///      Longest name today is `LivoTaxableTokenUniV4SniperProtected (impl)` = 43 chars,
-    ///      so 44 leaves a 1-char buffer. Backticked addresses are exactly 44 chars
-    ///      (`0x` + 40 hex + 2 backticks), so the same width fits the address column too.
+    ///      Backticked addresses are exactly 44 chars (`0x` + 40 hex + 2 backticks), which drives the
+    ///      width; every deployment name is shorter than that, so 44 fits both columns.
     uint256 private constant COL1_WIDTH = 44;
     uint256 private constant COL2_WIDTH = 44;
 
