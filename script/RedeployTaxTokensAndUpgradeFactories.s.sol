@@ -43,7 +43,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         Pre-broadcast sanity: confirms both V2 and V4 tax-token sources import the right
 ///         per-chain `DeploymentAddresses`. Run `just taxtokenaddresses` before deploying to Sepolia.
 ///
-///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_IMPL`,
+///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V4_IMPL`,
 ///         `FACTORY_UNIV2_UNIFIED_IMPL`, and `FACTORY_UNIV4_UNIFIED_IMPL` in
 ///         `src/config/manifest.<chain>.sol`, then run `just export-deployments`.
 ///
@@ -209,7 +209,7 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
         console.log("Proxy addresses are UNCHANGED - no launchpad whitelisting or integrator action needed.");
         console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
         console.log("  TAXABLE_TOKEN_V2_IMPL                  :", fresh.taxTokenV2Impl);
-        console.log("  TAXABLE_TOKEN_IMPL                     :", fresh.taxTokenV4Impl);
+        console.log("  TAXABLE_TOKEN_V4_IMPL                     :", fresh.taxTokenV4Impl);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL             :", fresh.factoryV2Impl);
         console.log("  FACTORY_UNIV4_UNIFIED_IMPL             :", fresh.factoryV4Impl);
     }

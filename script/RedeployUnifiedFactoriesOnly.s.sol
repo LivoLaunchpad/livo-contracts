@@ -16,7 +16,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 /// @notice For changes that live in `LivoFactoryAbstract` / the concrete factories ONLY, leaving every
 ///         token implementation untouched (e.g. a tweak to `_validateTaxConfig`). Unlike
 ///         `RedeployTaxTokensAndUpgradeFactories`, this deploys NO token impls: it reuses the existing
-///         `TOKEN_IMPL`, `TAXABLE_TOKEN_V2_IMPL` and `TAXABLE_TOKEN_IMPL` recorded in the per-chain
+///         `TOKEN_IMPL`, `TAXABLE_TOKEN_V2_IMPL` and `TAXABLE_TOKEN_V4_IMPL` recorded in the per-chain
 ///         manifest, wiring the fresh factory impls to them.
 ///
 ///         Single broadcast, two new deployments + two proxy upgrades:
@@ -76,7 +76,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV4Impl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL
+                taxTokenV4Impl: DeploymentsMainnet.TAXABLE_TOKEN_V4_IMPL
             });
         } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -90,7 +90,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV4Impl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL
+                taxTokenV4Impl: DeploymentsSepolia.TAXABLE_TOKEN_V4_IMPL
             });
         } else {
             revert("Unsupported chain");
@@ -106,7 +106,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(d.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
-        require(d.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
+        require(d.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
     }
 
     function run() public {

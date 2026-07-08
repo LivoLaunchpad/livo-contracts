@@ -67,7 +67,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
-                taxTokenImpl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL
+                taxTokenImpl: DeploymentsMainnet.TAXABLE_TOKEN_V4_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesMainnet.UNIV4_POOL_MANAGER,
@@ -82,7 +82,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
-                taxTokenImpl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL
+                taxTokenImpl: DeploymentsSepolia.TAXABLE_TOKEN_V4_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesSepolia.UNIV4_POOL_MANAGER,
@@ -99,7 +99,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
         require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing (deploy it first)");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
-        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
+        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
     }
 
     function run() public {

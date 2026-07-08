@@ -108,7 +108,7 @@ forge script RedeployAllTokensAndUpgradeFactories \
 Edit `src/config/manifest.<chain>.sol` from step 3's log:
 
 ```
-TOKEN_IMPL                                 TAXABLE_TOKEN_IMPL              (V4 tax)
+TOKEN_IMPL                                 TAXABLE_TOKEN_V4_IMPL              (V4 tax)
 TAXABLE_TOKEN_V2_IMPL                      FACTORY_UNIV2_UNIFIED_IMPL
 FACTORY_UNIV4_UNIFIED_IMPL
 ```

@@ -300,11 +300,15 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     //////////////////////// internal functions ////////////////////////
 
     function _update(address from, address to, uint256 amount) internal virtual override {
-        // Anti-sniper caps, gated by the warm-slot flag (packed with `pair`/`graduated`, so this read
-        // is free). Only enforced pre-graduation; `hasSniperProt && !graduated` short-circuits for the
-        // common non-protected token AND for every post-graduation transfer (when the tax variants'
-        // `_update` re-enters here after splitting a taxed transfer).
-        if (hasSniperProt && !graduated) {
+        // Load `pair`/`graduated`/`hasSniperProt` (one packed slot) with a single SLOAD, reused for
+        // both checks below instead of re-reading the slot up to three times.
+        (address _pair, bool _graduated, bool _hasSniperProt) = (pair, graduated, hasSniperProt);
+
+        // Anti-sniper caps, gated by the warm-slot flag. Only enforced pre-graduation;
+        // `_hasSniperProt && !_graduated` short-circuits for the common non-protected token AND for
+        // every post-graduation transfer (when the tax variants' `_update` re-enters here after
+        // splitting a taxed transfer).
+        if (_hasSniperProt && !_graduated) {
             _checkSniperProtection(
                 from, to, amount, address(launchpad), tokenFactory, address(graduator), balanceOf(to)
             );
@@ -312,7 +316,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
 
         // this ensures tokens don't arrive to the pair before graduation
         // to avoid exploits/DOS related to liquidity addition at graduation
-        if ((!graduated) && (to == pair)) {
+        if ((!_graduated) && (to == _pair)) {
             revert TransferToPairBeforeGraduationNotAllowed();
         }
 

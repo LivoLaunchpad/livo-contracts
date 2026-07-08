@@ -25,7 +25,7 @@ library DeploymentsMainnet {
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x1002488Af3EE59871339FCe0D171e1d32F62Aa77;
-    address internal constant TAXABLE_TOKEN_IMPL = 0xeD45762D25ce4CAE647bf27c8c9c6C7645498c09;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0xeD45762D25ce4CAE647bf27c8c9c6C7645498c09;
 
     /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
     address internal constant TAXABLE_TOKEN_V2_IMPL = 0x8DBdc48B8d9066983ad84be79B0382edCe390a04;

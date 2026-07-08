@@ -90,7 +90,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         - `LAUNCHPAD`, `QUOTER`
 ///         - `GRADUATOR_UNIV2`, `GRADUATOR_UNIV4`, `GRADUATOR_UNIV4_0P5`
 ///         - `TOKEN_IMPL`
-///         - `TAXABLE_TOKEN_IMPL`
+///         - `TAXABLE_TOKEN_V4_IMPL`
 ///         - `TAXABLE_TOKEN_V2_IMPL`
 ///         - `FACTORY_UNIV2_UNIFIED_IMPL`, `FACTORY_UNIV4_UNIFIED_IMPL` (phase 2 reads these to flip the proxies)
 ///
@@ -402,7 +402,7 @@ contract DeployLaunchpadV2Stack is Script {
         console.log("  GRADUATOR_UNIV4                         :", fresh.graduatorV4);
         console.log("  GRADUATOR_UNIV4_0P5                     :", fresh.graduatorV4_0p5);
         console.log("  TOKEN_IMPL                              :", fresh.tokenImpl);
-        console.log("  TAXABLE_TOKEN_IMPL                      :", fresh.taxTokenV4Impl);
+        console.log("  TAXABLE_TOKEN_V4_IMPL                      :", fresh.taxTokenV4Impl);
         console.log("  TAXABLE_TOKEN_V2_IMPL                   :", fresh.taxTokenV2Impl);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL              :", fresh.factoryV2Impl);
         console.log("  FACTORY_UNIV4_UNIFIED_IMPL              :", fresh.factoryV4Impl);

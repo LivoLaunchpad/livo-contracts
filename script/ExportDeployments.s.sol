@@ -45,7 +45,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoSwapHook (0.5%)", DeploymentsMainnet.SWAP_HOOK_0P5));
         s = string.concat(s, _row("LivoQuoter", DeploymentsMainnet.QUOTER));
         s = string.concat(s, _row("LivoToken (impl)", DeploymentsMainnet.TOKEN_IMPL));
-        s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_IMPL));
+        s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V4_IMPL));
         s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsMainnet.FACTORY_UNIV2_UNIFIED_IMPL));
@@ -110,7 +110,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoSwapHook (0.5%)", DeploymentsSepolia.SWAP_HOOK_0P5));
         s = string.concat(s, _row("LivoQuoter", DeploymentsSepolia.QUOTER));
         s = string.concat(s, _row("LivoToken (impl)", DeploymentsSepolia.TOKEN_IMPL));
-        s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_IMPL));
+        s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V4_IMPL));
         s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED_IMPL));

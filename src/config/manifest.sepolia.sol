@@ -26,7 +26,7 @@ library DeploymentsSepolia {
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x98010219eB88a8c9547023f3a26B6edd40204B2c;
-    address internal constant TAXABLE_TOKEN_IMPL = 0x794C660115988B052861016d75827DD9dC41b853;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x794C660115988B052861016d75827DD9dC41b853;
 
     /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
     address internal constant TAXABLE_TOKEN_V2_IMPL = 0x2a54bFFC5Ec9f703B0b5E05e0477Be77CF3b9a95;

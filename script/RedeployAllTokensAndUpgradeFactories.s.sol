@@ -46,7 +46,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         then run `just export-deployments`:
 ///         - `TOKEN_IMPL`
 ///         - `TAXABLE_TOKEN_V2_IMPL`
-///         - `TAXABLE_TOKEN_IMPL`
+///         - `TAXABLE_TOKEN_V4_IMPL`
 ///         - `FACTORY_UNIV2_UNIFIED_IMPL`
 ///         - `FACTORY_UNIV4_UNIFIED_IMPL`
 ///
@@ -209,7 +209,7 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
         console.log("  TOKEN_IMPL                              :", fresh.tokenImpl);
         console.log("  TAXABLE_TOKEN_V2_IMPL                   :", fresh.taxTokenV2Impl);
-        console.log("  TAXABLE_TOKEN_IMPL                      :", fresh.taxTokenV4Impl);
+        console.log("  TAXABLE_TOKEN_V4_IMPL                      :", fresh.taxTokenV4Impl);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL              :", fresh.factoryV2Impl);
         console.log("  FACTORY_UNIV4_UNIFIED_IMPL              :", fresh.factoryV4Impl);
     }
