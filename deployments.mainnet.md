@@ -17,10 +17,7 @@
 | LivoQuoter                                   | `0xBd208C238Dd7895a7b94833063C2397F10E056f1` |
 | LivoToken (impl)                             | `0x1002488Af3EE59871339FCe0D171e1d32F62Aa77` |
 | LivoTaxableTokenUniV4 (impl)                 | `0xeD45762D25ce4CAE647bf27c8c9c6C7645498c09` |
-| LivoTokenSniperProtected (impl)              | `0x35eBA2610F707B48E0e4ae66E2a0a1535d7B11Fb` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xFfb90D2d55515314210Fb0cB4BE82A6645572103` |
 | LivoTaxableTokenUniV2 (impl)                 | `0x8DBdc48B8d9066983ad84be79B0382edCe390a04` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0xcF816bA12a24cD9CC3297A6Ff7528cb66ea7e388` |
 | LivoFactoryUniV2Unified (proxy)              | `0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9` |
 | LivoFactoryUniV2Unified (impl)               | `0x9c66633Bf5a9744f04c4716edd680cC962eE6fa7` |
 | LivoFactoryUniV4Unified (proxy)              | `0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565` |
