@@ -103,15 +103,14 @@ forge script RedeployAllTokensAndUpgradeFactories \
   6 curves via `CreatorVaultScriptConfig`), then `upgradeToAndCall(newImpl, "")` on each proxy.
 - Proxy addresses are **unchanged** → no launchpad whitelisting or integrator action.
 
-## Step 4 — Fill the manifest (8 constants)
+## Step 4 — Fill the manifest (5 constants)
 
 Edit `src/config/manifest.<chain>.sol` from step 3's log:
 
 ```
-TOKEN_IMPL                                 TAXABLE_TOKEN_IMPL                      (V4 tax)
-TOKEN_SNIPER_PROTECTED_IMPL                TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL     (V4 tax)
+TOKEN_IMPL                                 TAXABLE_TOKEN_IMPL              (V4 tax)
 TAXABLE_TOKEN_V2_IMPL                      FACTORY_UNIV2_UNIFIED_IMPL
-TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL     FACTORY_UNIV4_UNIFIED_IMPL
+FACTORY_UNIV4_UNIFIED_IMPL
 ```
 
 > Update only the `_IMPL` constants. Do **not** touch `FACTORY_UNIV2_UNIFIED` / `FACTORY_UNIV4_UNIFIED`

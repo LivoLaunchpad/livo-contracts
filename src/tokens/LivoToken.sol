@@ -73,7 +73,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
     ///      end of tx, so a second `registerFees` attempt from any future tx finds it zeroed
     ///      and reverts on the `msg.sender == 0` check.
-    /// @dev SECURITY ASSUMPTION (sniper-protected variants): `SniperProtection._checkSniperProtection`
+    /// @dev SECURITY ASSUMPTION (tokens with `hasSniperProt`): `SniperProtection._checkSniperProtection`
     ///      reads this slot to exempt the deployer-buy hops `launchpad → factory → supplyShares`
     ///      from the per-tx / per-wallet caps (both `to == factoryAddr` and `from == factoryAddr`
     ///      branches). Outside the deploy tx the slot reads `address(0)`, so the exemption checks
@@ -306,7 +306,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
         // `_update` re-enters here after splitting a taxed transfer).
         if (hasSniperProt && !graduated) {
             _checkSniperProtection(
-                from, to, amount, address(launchpad), tokenFactory, address(graduator), graduated, balanceOf(to)
+                from, to, amount, address(launchpad), tokenFactory, address(graduator), balanceOf(to)
             );
         }
 

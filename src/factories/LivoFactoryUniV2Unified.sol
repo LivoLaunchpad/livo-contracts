@@ -6,12 +6,12 @@ import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
-/// @notice Unified factory for the Uniswap V2 token family. Dispatches between four token
-///         implementations based on whether `TaxConfigInit` and `AntiSniperConfigs` are
-///         configured.
+/// @notice Unified factory for the Uniswap V2 token family. Dispatches between two token
+///         implementations (`base`, `tax`) based on whether tax is configured; anti-sniper
+///         protection is a gated feature of both, not a separate impl.
 ///
 ///         Replaces `LivoFactoryUniV2` and `LivoFactoryUniV2SniperProtected`, and now also
-///         covers the new tax variants (`LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV2SniperProtected`).
+///         covers the tax variant `LivoTaxableTokenUniV2`.
 ///
 ///         Ownership rule: all V2-family tokens are deployed with `tokenOwner = address(0)`.
 ///         Tax cap: V2 has no post-graduation LP fee, so the per-direction tax can reach the full
