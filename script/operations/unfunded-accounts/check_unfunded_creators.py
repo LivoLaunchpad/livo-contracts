@@ -24,6 +24,7 @@ from rich.table import Table
 GRAPHQL_URL = "https://indexer.livo.trade/v1/graphql"
 JSONRPC_BATCH_SIZE = 100
 HTTP_TIMEOUT = 30
+MIN_ACCRUED_WEI = 10**16  # 0.01 ETH: ignore dust claims not worth funding gas for
 
 QUERY = """
 query MyQuery {
@@ -110,7 +111,7 @@ def main() -> int:
     unfunded = [
         (addr, balances[addr], accrued_by_addr[addr])
         for addr in addresses
-        if balances[addr] == 0
+        if balances[addr] == 0 and accrued_by_addr[addr] > MIN_ACCRUED_WEI
     ]
     unfunded.sort(key=lambda x: x[2], reverse=True)
 
