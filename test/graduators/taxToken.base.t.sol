@@ -107,7 +107,8 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
     }
 

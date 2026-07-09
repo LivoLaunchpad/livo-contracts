@@ -54,8 +54,9 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
         vm.prank(creator);
-        token =
-            factoryV4Unified.createToken(setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), vaults);
+        token = factoryV4Unified.createToken(
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), vaults, address(0)
+        );
     }
 
     /// @dev Creates a token and returns the (single) deployed vault address by scanning logs.
@@ -239,7 +240,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.recordLogs();
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days))
+            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days)), address(0)
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
         address vault;
@@ -268,7 +269,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             _toCfgs(_taxCfg(300, 300, uint32(7 days))),
             _noSs(),
             _emptyAntiSniperCfg(),
-            _one(_vault(vaultOwner, 2000, 0, 1 days))
+            _one(_vault(vaultOwner, 2000, 0, 1 days)),
+            address(0)
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
         address vault;

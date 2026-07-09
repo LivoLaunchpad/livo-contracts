@@ -116,6 +116,13 @@ interface ILivoFactory {
         address indexed token, uint256 totalVaultAllocation, address[] vaults, uint256[] amounts
     );
 
+    /// @notice Emitted when a token is created through the referral `createToken` overload with a
+    ///         non-zero `referral`. Records the relayer/referrer that forwarded the creation and is
+    ///         entitled to a cut of the fees. No on-chain payout or token storage is wired to this yet —
+    ///         it is purely an off-chain signal for now. Indexed on both fields so subscribers can filter
+    ///         by token or by referral (e.g. "all tokens referred by X").
+    event TokenReferral(address indexed token, address indexed referral);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();

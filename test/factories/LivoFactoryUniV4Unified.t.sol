@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {Vm} from "forge-std/Vm.sol";
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
@@ -280,7 +281,8 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
     }
 
@@ -299,7 +301,13 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         emit ILivoFactory.LpFeeBpsSet(address(0), 50);
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+            setup,
+            _toCfgs(_emptyTaxCfg()),
+            cfg,
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
 
         // The pre-graduation LP fee the launchpad reads each trade is 1%, not the 0.5% hook fee.
@@ -325,7 +333,8 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
     }
 
@@ -345,7 +354,8 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
     }
 
@@ -459,5 +469,59 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         factoryV4Unified.createToken(
             "T", "T", badSalt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days)), _emptyAntiSniperCfg()
         );
+    }
+
+    // ───────────── Referral overload ─────────────
+
+    function test_createToken_referral_emitsTokenReferral() public {
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "R", symbol: "R", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+        address referral = makeAddr("relayer");
+        address expected = _predictToken(address(factoryV4Unified), address(livoToken), creator, salt);
+
+        vm.expectEmit(true, true, false, false);
+        emit ILivoFactory.TokenReferral(expected, referral);
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            setup,
+            _toCfgs(_emptyTaxCfg()),
+            cfg,
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            referral
+        );
+        assertEq(token, expected);
+    }
+
+    /// @dev A zero referral emits no `TokenReferral` (the common no-referral deploy stays quiet).
+    function test_createToken_zeroReferral_noTokenReferralEvent() public {
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "R", symbol: "R", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
+        LivoFactoryUniV4Unified.UniV4Configs memory cfg =
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+
+        vm.recordLogs();
+        vm.prank(creator);
+        factoryV4Unified.createToken(
+            setup,
+            _toCfgs(_emptyTaxCfg()),
+            cfg,
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("TokenReferral(address,address)");
+        for (uint256 i; i < logs.length; ++i) {
+            assertTrue(logs[i].topics[0] != sig, "no TokenReferral for zero referral");
+        }
     }
 }

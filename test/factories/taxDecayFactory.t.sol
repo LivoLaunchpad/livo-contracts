@@ -40,7 +40,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
         );
 
         LivoTaxableTokenUniV2 t = LivoTaxableTokenUniV2(payable(token));
@@ -122,7 +122,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
         );
 
         assertEq(_tax(token, true), 1000, "at launch, decay 10% dominates static 5%");
@@ -194,6 +194,8 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidTaxBps.selector);
-        factoryV2Unified.createToken(setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0));
+        factoryV2Unified.createToken(
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+        );
     }
 }

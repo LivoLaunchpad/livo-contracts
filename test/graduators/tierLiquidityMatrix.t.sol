@@ -95,7 +95,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         if (value > 0) vm.deal(creator, value);
         vm.prank(creator);
         token = factoryV4Unified.createToken{value: value}(
-            setup, _toCfgs(_emptyTaxCfg()), _cfg(), ss, _emptyAntiSniperCfg(), vaults
+            setup, _toCfgs(_emptyTaxCfg()), _cfg(), ss, _emptyAntiSniperCfg(), vaults, address(0)
         );
     }
 

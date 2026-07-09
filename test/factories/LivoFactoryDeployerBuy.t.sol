@@ -458,7 +458,8 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
             _univ4Cfg100(),
             _ss(creator),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
 
         uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);

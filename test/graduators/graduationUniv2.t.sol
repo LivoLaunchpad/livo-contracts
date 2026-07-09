@@ -685,7 +685,8 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
             _decayCfg(1000, 1000, 20 minutes, true),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
         uniswapPair = LivoToken(testToken).pair();
 
