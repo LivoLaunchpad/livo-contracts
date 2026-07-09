@@ -39,8 +39,8 @@ fail_on_revert = false
 [rpc_endpoints]
 mainnet = "${ETH_RPC_URL}"
 sepolia = "${SEPOLIA_RPC_URL}"
-robinhood = "${ROBINHOOD_RPC_URL}"
-robinhood_testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
+robinhood-mainnet = "${ROBINHOOD_RPC_URL}"
+robinhood-testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
 
 # Etherscan verification. Robinhood is NOT in Foundry's chain registry (v1.5.1); adding it to this
 # `[etherscan]` table with `chain = 4663/46630` makes EVERY `forge script` run abort with
