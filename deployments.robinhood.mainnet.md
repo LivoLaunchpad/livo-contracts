@@ -6,49 +6,49 @@
 
 | Contract                                     | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| LivoLaunchpad                                | _(not deployed)_                             |
-| ConstantProductBondingCurve                  | _(not deployed)_                             |
-| LivoGraduatorUniswapV2                       | _(not deployed)_                             |
-| LivoGraduatorUniswapV4                       | _(not deployed)_                             |
-| LivoGraduatorUniswapV4 (0.5% hook)           | _(not deployed)_                             |
-| LivoMasterFeeHandler                         | _(not deployed)_                             |
-| LivoSwapHook                                 | _(not deployed)_                             |
-| LivoSwapHook (0.5%)                          | _(not deployed)_                             |
-| LivoQuoter                                   | _(not deployed)_                             |
-| LivoToken (impl)                             | _(not deployed)_                             |
-| LivoTaxableTokenUniV4 (impl)                 | _(not deployed)_                             |
-| LivoTaxableTokenUniV2 (impl)                 | _(not deployed)_                             |
-| LivoFactoryUniV2Unified (proxy)              | _(not deployed)_                             |
-| LivoFactoryUniV2Unified (impl)               | _(not deployed)_                             |
-| LivoFactoryUniV4Unified (proxy)              | _(not deployed)_                             |
-| LivoFactoryUniV4Unified (impl)               | _(not deployed)_                             |
-| LivoCreatorVaultFactory (proxy)              | _(not deployed)_                             |
-| LivoCreatorVaultFactory (impl)               | _(not deployed)_                             |
-| LivoCreatorVault (impl)                      | _(not deployed)_                             |
-| Creator-vault curve 5%                       | _(not deployed)_                             |
-| Creator-vault curve 10%                      | _(not deployed)_                             |
-| Creator-vault curve 15%                      | _(not deployed)_                             |
-| Creator-vault curve 20%                      | _(not deployed)_                             |
-| Creator-vault curve 25%                      | _(not deployed)_                             |
-| Creator-vault curve 30%                      | _(not deployed)_                             |
-| LivoGraduatorUniV4 THIN                      | _(not deployed)_                             |
-| LivoGraduatorUniV4 THIN (0.5%)               | _(not deployed)_                             |
-| LivoGraduatorUniV4 THICK                     | _(not deployed)_                             |
-| LivoGraduatorUniV4 THICK (0.5%)              | _(not deployed)_                             |
-| THIN-tier curve base                         | _(not deployed)_                             |
-| THIN-tier curve 5%                           | _(not deployed)_                             |
-| THIN-tier curve 10%                          | _(not deployed)_                             |
-| THIN-tier curve 15%                          | _(not deployed)_                             |
-| THIN-tier curve 20%                          | _(not deployed)_                             |
-| THIN-tier curve 25%                          | _(not deployed)_                             |
-| THIN-tier curve 30%                          | _(not deployed)_                             |
-| THICK-tier curve base                        | _(not deployed)_                             |
-| THICK-tier curve 5%                          | _(not deployed)_                             |
-| THICK-tier curve 10%                         | _(not deployed)_                             |
-| THICK-tier curve 15%                         | _(not deployed)_                             |
-| THICK-tier curve 20%                         | _(not deployed)_                             |
-| THICK-tier curve 25%                         | _(not deployed)_                             |
-| THICK-tier curve 30%                         | _(not deployed)_                             |
+| LivoLaunchpad                                | `0xfD550c5dC070Ea575A06A40f2e18304D85211663` |
+| ConstantProductBondingCurve                  | `0x696180420F8215749d5D59bD6239eE0e66e97A64` |
+| LivoGraduatorUniswapV2                       | `0x3828e402D901603eFcBd71F03Eba406B71f5e307` |
+| LivoGraduatorUniswapV4                       | `0xaFe36BAd2A8998e510Dd2846AA58e27acfed4B3b` |
+| LivoGraduatorUniswapV4 (0.5% hook)           | `0x3edc5c62B6119d1aBf39B74FdDc8A8c35Af8F7a4` |
+| LivoMasterFeeHandler                         | `0x7766e3a6A8C98a76308CFb4040E330c3308F7C73` |
+| LivoSwapHook                                 | `0xbFFe76CC9e506285032B2e5D1B74B579e39ac0CC` |
+| LivoSwapHook (0.5%)                          | `0xB00F65499050A4752F7027e578fAF690EfFf40cC` |
+| LivoQuoter                                   | `0x5176076dD27C12b5fF60eFbf97D2C6a0697CE0DF` |
+| LivoToken (impl)                             | `0xAbc7D936e2ee1d840D25070F75FF113218bFC522` |
+| LivoTaxableTokenUniV4 (impl)                 | `0x8f186be8A2f40fE87F27D8F15f86058bD3d5C481` |
+| LivoTaxableTokenUniV2 (impl)                 | `0x463b51ee8F4e5F551C9A87B26ff1Fe8a1245Dd17` |
+| LivoFactoryUniV2Unified (proxy)              | `0x7843203be233b3Be7E5017A68a64FdBf32b45fFE` |
+| LivoFactoryUniV2Unified (impl)               | `0x66751913C72016E5A5b27F68CCCB5d4935164883` |
+| LivoFactoryUniV4Unified (proxy)              | `0xb637800Dcd5c83913D828E961dBB964A9896f19d` |
+| LivoFactoryUniV4Unified (impl)               | `0x38649d4723d9e1dba64f6AB0093C1A9C1450225c` |
+| LivoCreatorVaultFactory (proxy)              | `0xBa1a7Fe65E7aAb563630F5921080996030a80AA1` |
+| LivoCreatorVaultFactory (impl)               | `0xf5E30BE2b72b0dEbCD85103AdaE399CbC3046Fcf` |
+| LivoCreatorVault (impl)                      | `0xE735d281d313AD09bd8bFF81F181715b6c6aD772` |
+| Creator-vault curve 5%                       | `0x34Cac940b94e2Cb577CBB671c2272412E1436a68` |
+| Creator-vault curve 10%                      | `0xEF6fCB80e976733dCd9e4F0b2F3A9C49771a09Fb` |
+| Creator-vault curve 15%                      | `0x61D6362e1FF2e81059D8fFeAc2407950a65684a6` |
+| Creator-vault curve 20%                      | `0xe4772247D918E32a9908EDb4225c4a123C576e48` |
+| Creator-vault curve 25%                      | `0x87426937c4e28F69900C2f3453399CF5F06886D7` |
+| Creator-vault curve 30%                      | `0xF5c4fEaC340e65A95EF72499E0aFaD4d45812946` |
+| LivoGraduatorUniV4 THIN                      | `0xC0Ac28ABAAbE6E3d1aF32b5Ec445C84DC75aE4ff` |
+| LivoGraduatorUniV4 THIN (0.5%)               | `0x22294075404c22196a4Bf681B8C7b1a4f7538Ce1` |
+| LivoGraduatorUniV4 THICK                     | `0x921e50c56182e178bB740Eb7A8041E784eE9C3CC` |
+| LivoGraduatorUniV4 THICK (0.5%)              | `0x7377d94a7107B577d3b1456b171bb27938E5556B` |
+| THIN-tier curve base                         | `0xf69FC76AEdAA95C1EE0f466760290cE77f94885D` |
+| THIN-tier curve 5%                           | `0x522fD5758e5185Cc95e2D0A8CB30f4a4B70c9107` |
+| THIN-tier curve 10%                          | `0x004f58F78DFbAC06439Da806C2E60d11B66E9731` |
+| THIN-tier curve 15%                          | `0x895c4914B0b11f285289493332Aa6A91D1B6A067` |
+| THIN-tier curve 20%                          | `0xe8a447E523138853d9B73f390a9cA603fa914a26` |
+| THIN-tier curve 25%                          | `0x28c0118F75c0658253036CEFbAf45EB2dF128642` |
+| THIN-tier curve 30%                          | `0xa076265b17B34eA6f8fF378d35E80C88b55aA9d2` |
+| THICK-tier curve base                        | `0xe42Be5CBEf30E6Ca3C5cBB0B9C631C619832ad89` |
+| THICK-tier curve 5%                          | `0x5f1df884684AD0a52fB5bd896147284907D321EC` |
+| THICK-tier curve 10%                         | `0xb33771a7Eb4fC9f54Adb39ec4519591477295974` |
+| THICK-tier curve 15%                         | `0x4BD5224FEec1c9c6194389bFEF8Db43144BE36f1` |
+| THICK-tier curve 20%                         | `0x8DF0D2791A55863d5a152f5Ab6f80b4aff243828` |
+| THICK-tier curve 25%                         | `0x8a80112BCdd79f7b2635DDB4775ca50b56A940B2` |
+| THICK-tier curve 30%                         | `0x77c51a398ff81cBDb14ed0FBc7816252fF78877F` |
 
 ## Accounts
 
