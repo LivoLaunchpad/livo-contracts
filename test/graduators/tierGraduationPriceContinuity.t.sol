@@ -348,9 +348,9 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         AntiSniperConfigs memory sniperCfg = _sniperCfgFor(flavor);
         vm.prank(creator);
         if (isV4) {
-            token = factoryV4Unified.createToken(setup, _toCfgs(taxCfg), _cfg(), _noSs(), sniperCfg, vaults);
+            token = factoryV4Unified.createToken(setup, _toCfgs(taxCfg), _cfg(), _noSs(), sniperCfg, vaults, address(0));
         } else {
-            token = factoryV2Unified.createToken(setup, _toCfgs(taxCfg), _noSs(), sniperCfg, vaults);
+            token = factoryV2Unified.createToken(setup, _toCfgs(taxCfg), _noSs(), sniperCfg, vaults, address(0));
         }
     }
 

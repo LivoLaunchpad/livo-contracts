@@ -659,7 +659,7 @@
       {
         "name": "tokenSetup",
         "type": "tuple",
-        "internalType": "struct ILivoFactory.TokenSetup",
+        "internalType": "struct ILivoFactory.TokenSetupTiered",
         "components": [
           {
             "name": "name",
@@ -697,6 +697,11 @@
                 "internalType": "bool"
               }
             ]
+          },
+          {
+            "name": "liquidityTier",
+            "type": "uint8",
+            "internalType": "enum LiquidityTier"
           }
         ]
       },
@@ -829,6 +834,11 @@
             "internalType": "uint256"
           }
         ]
+      },
+      {
+        "name": "referral",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [
@@ -1642,6 +1652,25 @@
         "name": "feeHandler",
         "type": "address",
         "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TokenReferral",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "referral",
+        "type": "address",
+        "indexed": true,
         "internalType": "address"
       }
     ],

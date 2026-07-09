@@ -341,9 +341,9 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     }
 
     /// @dev Single shared `createToken` body called by both `createToken` overloads on each unified
-    ///      factory (legacy positional + new struct-based). Centralises validation → dispatch →
+    ///      factory (legacy positional + tiered struct-based). Centralises validation → dispatch →
     ///      launch → finalize so both signatures emit the exact same events in the same order.
-    ///      Takes structs (not flat args) so future fields can be added to `TokenSetup`/configs
+    ///      Takes structs (not flat args) so future fields can be added to `TokenSetupTiered`/configs
     ///      without growing this function's stack frame. Callers derive `tokenOwner` per their
     ///      venue policy (V2: always `address(0)`; V4: `msg.sender` unless renounced).
     ///
@@ -352,15 +352,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      (one graduator per hardcoded LP-fee hook variant). V2 has a single graduator and
     ///      always passes `address(GRADUATOR)`.
     /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
-    ///      calldata args — can build a `TokenSetup` in memory and call this same umbrella. The
+    ///      calldata args — can build a `TokenSetupTiered` in memory and call this same umbrella. The
     ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
     ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`
     ///      to accept `memory` for those fields too. Once the legacy overload is removed, switch
     ///      `tokenSetup` (and the cascaded fields) back to `calldata` to skip the one-time copy
     ///      (~100–250 gas/deploy).
     function _createToken(
-        TokenSetup memory tokenSetup,
-        LiquidityTier liquidityTier,
+        TokenSetupTiered memory tokenSetup,
         address tokenOwner,
         address graduator,
         SupplyShare[] calldata buyOnDeployShares,
@@ -376,7 +375,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         // is minted to this factory by the token initializer; everything else (`TOTAL_SUPPLY -
         // vaultAllocation`) is minted to the launchpad and sold on the resolved curve.
         (uint256 totalLockedInVaultsBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
-        ILivoBondingCurve bondingCurve = _resolveBondingCurve(liquidityTier, totalLockedInVaultsBps);
+        ILivoBondingCurve bondingCurve = _resolveBondingCurve(tokenSetup.liquidityTier, totalLockedInVaultsBps);
 
         token = _dispatchAndInitialize(
             tokenSetup.name,
