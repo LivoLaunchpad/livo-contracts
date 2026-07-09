@@ -93,11 +93,12 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DecayToken",
             symbol: "DCY",
             salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(

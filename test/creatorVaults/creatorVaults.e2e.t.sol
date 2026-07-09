@@ -44,11 +44,12 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
 
     /// @dev Creates a plain (non-tax, non-sniper) V4 token with the given vaults.
     function _createV4(ILivoFactory.CreatorVault[] memory vaults) internal returns (address token) {
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "Vault",
             symbol: "VLT",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
@@ -219,11 +220,12 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_sniperToken_vaultExceedsMaxWallet_stillFunded() public {
         // sniper config with a tiny max-wallet cap (0.5%); the 30% vault is 60x that cap.
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "VaultSniper",
             symbol: "VS",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoTokenSniper)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
@@ -251,11 +253,12 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function test_v2TaxToken_vaultFunding_notTaxed() public {
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "VaultTaxV2",
             symbol: "VTX",
             salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
 
         vm.recordLogs();
@@ -385,11 +388,12 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "VQ",
             symbol: "VQ",
             salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
 
         vm.deal(creator, ethVaultAware);

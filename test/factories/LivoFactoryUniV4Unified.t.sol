@@ -267,8 +267,9 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_struct_halfPercentLp_succeedsAtFourPointFivePercentTax() public {
         // 0.5% LP + 4.5% tax (buy and sell) == 5% total, the boundary.
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoTaxToken));
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: salt, feeShares: _fs(creator)});
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "T", symbol: "T", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
 
@@ -287,8 +288,9 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         // A token that selects the 0.5% post-graduation hook still pays 1% LP on the bonding curve:
         // the pre-graduation launchpad LP fee is a fixed launchpad policy, decoupled from the hook fee.
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: salt, feeShares: _fs(creator)});
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "T", symbol: "T", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
 
@@ -309,8 +311,9 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_struct_halfPercentLp_revertsAboveFourPointFivePercentTax() public {
         // 0.5% LP + 4.51% sell tax == 5.01% total > 5%.
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: "0x12", feeShares: _fs(creator)});
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "T", symbol: "T", salt: "0x12", feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 50});
 
@@ -328,8 +331,9 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_struct_onePercentLp_revertsAboveFourPercentTax() public {
         // 1% LP + 4.01% buy tax == 5.01% total > 5%, even though 4.01% is below the absolute cap.
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "T", symbol: "T", salt: "0x12", feeShares: _fs(creator)});
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "T", symbol: "T", salt: "0x12", feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
         LivoFactoryUniV4Unified.UniV4Configs memory cfg =
             LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
 

@@ -83,44 +83,13 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // params) before introducing the `taxConfigs` memory local, to keep the stack shallow enough
         // to compile without `via_ir`.
         // Legacy overload always uses the DEFAULT liquidity tier.
-        TokenSetup memory tokenSetup = TokenSetup({name: name, symbol: symbol, salt: salt, feeShares: feeReceivers});
+        TokenSetupTiered memory tokenSetup = TokenSetupTiered({
+            name: name, symbol: symbol, salt: salt, feeShares: feeReceivers, liquidityTier: LiquidityTier.DEFAULT
+        });
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxCfg);
         _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
         token = _createToken(
-            tokenSetup,
-            LiquidityTier.DEFAULT,
-            address(0),
-            address(GRADUATOR),
-            supplyShares,
-            taxConfigs,
-            antiSniperCfg,
-            new CreatorVault[](0)
-        );
-    }
-
-    /// @notice TMP struct-based overload: full `TaxConfigs` (static tax + optional launch-tax decay) and a
-    ///         `creatorVaults` array (pass empty for none). Always uses `LiquidityTier.DEFAULT`.
-    /// @dev TEMPORARY: the tier-less overload existing frontends call while the liquidity-tier UI is not
-    ///      ready. Removed once the frontend adopts tiers; use the `TokenSetupTiered` overload below to
-    ///      select a tier.
-    function createToken(
-        TokenSetup calldata tokenSetup,
-        TaxConfigs calldata taxConfigs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults
-    ) external payable returns (address token) {
-        // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
-        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
-        token = _createToken(
-            tokenSetup,
-            LiquidityTier.DEFAULT,
-            address(0),
-            address(GRADUATOR),
-            buyOnDeployShares,
-            taxConfigs,
-            antiSniperConfigs,
-            creatorVaults
+            tokenSetup, address(0), address(GRADUATOR), supplyShares, taxConfigs, antiSniperCfg, new CreatorVault[](0)
         );
     }
 
@@ -136,18 +105,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
-        TokenSetup memory base = TokenSetup({
-            name: tokenSetup.name, symbol: tokenSetup.symbol, salt: tokenSetup.salt, feeShares: tokenSetup.feeShares
-        });
         token = _createToken(
-            base,
-            tokenSetup.liquidityTier,
-            address(0),
-            address(GRADUATOR),
-            buyOnDeployShares,
-            taxConfigs,
-            antiSniperConfigs,
-            creatorVaults
+            tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
         );
     }
 

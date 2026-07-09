@@ -447,8 +447,9 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
-        ILivoFactory.TokenSetup memory setup =
-            ILivoFactory.TokenSetup({name: "TestToken", symbol: "TEST", salt: salt, feeShares: _fs(creator)});
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "TestToken", symbol: "TEST", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
