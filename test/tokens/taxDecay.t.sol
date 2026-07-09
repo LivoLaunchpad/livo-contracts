@@ -29,7 +29,8 @@ contract TaxDecayUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 lpFeeBps: 100,
                 treasuryShareBps: 5_000
             }),
-            cfg
+            cfg,
+            _emptyAntiSniperCfg()
         );
     }
 
@@ -69,7 +70,8 @@ contract TaxDecayUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 lpFeeBps: 100,
                 treasuryShareBps: 5_000
             }),
-            _decayCfg(1000, 800, 1200, true)
+            _decayCfg(1000, 800, 1200, true),
+            _emptyAntiSniperCfg()
         );
     }
 

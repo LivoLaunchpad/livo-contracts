@@ -17,10 +17,7 @@
 | LivoQuoter                                   | _(not deployed)_                             |
 | LivoToken (impl)                             | _(not deployed)_                             |
 | LivoTaxableTokenUniV4 (impl)                 | _(not deployed)_                             |
-| LivoTokenSniperProtected (impl)              | _(not deployed)_                             |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | _(not deployed)_                             |
 | LivoTaxableTokenUniV2 (impl)                 | _(not deployed)_                             |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | _(not deployed)_                             |
 | LivoFactoryUniV2Unified (proxy)              | _(not deployed)_                             |
 | LivoFactoryUniV2Unified (impl)               | _(not deployed)_                             |
 | LivoFactoryUniV4Unified (proxy)              | _(not deployed)_                             |

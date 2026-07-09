@@ -37,10 +37,7 @@ contract ExportDeployments is Script {
         address quoter;
         address tokenImpl;
         address taxableTokenImpl;
-        address tokenSniperImpl;
-        address taxableTokenSniperImpl;
         address taxableTokenV2Impl;
-        address taxableTokenV2SniperImpl;
         address factoryUniV2Unified;
         address factoryUniV2UnifiedImpl;
         address factoryUniV4Unified;
@@ -98,11 +95,8 @@ contract ExportDeployments is Script {
         d.swapHook0p5 = DeploymentsEthereumMainnet.SWAP_HOOK_0P5;
         d.quoter = DeploymentsEthereumMainnet.QUOTER;
         d.tokenImpl = DeploymentsEthereumMainnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_IMPL;
-        d.tokenSniperImpl = DeploymentsEthereumMainnet.TOKEN_SNIPER_PROTECTED_IMPL;
-        d.taxableTokenSniperImpl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+        d.taxableTokenImpl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL;
-        d.taxableTokenV2SniperImpl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
         d.factoryUniV2Unified = DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED_IMPL;
         d.factoryUniV4Unified = DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED;
@@ -144,11 +138,8 @@ contract ExportDeployments is Script {
         d.swapHook0p5 = DeploymentsEthereumSepolia.SWAP_HOOK_0P5;
         d.quoter = DeploymentsEthereumSepolia.QUOTER;
         d.tokenImpl = DeploymentsEthereumSepolia.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_IMPL;
-        d.tokenSniperImpl = DeploymentsEthereumSepolia.TOKEN_SNIPER_PROTECTED_IMPL;
-        d.taxableTokenSniperImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+        d.taxableTokenImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
-        d.taxableTokenV2SniperImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
         d.factoryUniV2Unified = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED_IMPL;
         d.factoryUniV4Unified = DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED;
@@ -190,11 +181,8 @@ contract ExportDeployments is Script {
         d.swapHook0p5 = DeploymentsRobinhoodMainnet.SWAP_HOOK_0P5;
         d.quoter = DeploymentsRobinhoodMainnet.QUOTER;
         d.tokenImpl = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_IMPL;
-        d.tokenSniperImpl = DeploymentsRobinhoodMainnet.TOKEN_SNIPER_PROTECTED_IMPL;
-        d.taxableTokenSniperImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+        d.taxableTokenImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
-        d.taxableTokenV2SniperImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
         d.factoryUniV2Unified = DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED_IMPL;
         d.factoryUniV4Unified = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED;
@@ -236,11 +224,8 @@ contract ExportDeployments is Script {
         d.swapHook0p5 = DeploymentsRobinhoodTestnet.SWAP_HOOK_0P5;
         d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
         d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_IMPL;
-        d.tokenSniperImpl = DeploymentsRobinhoodTestnet.TOKEN_SNIPER_PROTECTED_IMPL;
-        d.taxableTokenSniperImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+        d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
-        d.taxableTokenV2SniperImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
         d.factoryUniV2Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED_IMPL;
         d.factoryUniV4Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED;
@@ -292,10 +277,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoQuoter", d.quoter));
         s = string.concat(s, _row("LivoToken (impl)", d.tokenImpl));
         s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
-        s = string.concat(s, _row("LivoTokenSniperProtected (impl)", d.tokenSniperImpl));
-        s = string.concat(s, _row("LivoTaxableTokenUniV4SniperProtected (impl)", d.taxableTokenSniperImpl));
         s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
-        s = string.concat(s, _row("LivoTaxableTokenUniV2SniperProtected (impl)", d.taxableTokenV2SniperImpl));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", d.factoryUniV2Unified));
         s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", d.factoryUniV2UnifiedImpl));
         s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", d.factoryUniV4Unified));
@@ -346,8 +328,8 @@ contract ExportDeployments is Script {
     // ---------------------------------------------------------------- Helpers
 
     /// @dev Inner column widths (content + padding, excluding the surrounding `| ` and ` |`).
-    ///      Longest name today is `LivoTaxableTokenUniV4SniperProtected (impl)` = 43 chars,
-    ///      so 44 leaves a 1-char buffer. Backticked addresses are exactly 44 chars
+    ///      Longest name today is `LivoGraduatorUniswapV4 (0.5% hook)` = 34 chars, so 44 leaves
+    ///      ample buffer. Backticked addresses are exactly 44 chars
     ///      (`0x` + 40 hex + 2 backticks), so the same width fits the address column too.
     uint256 private constant COL1_WIDTH = 44;
     uint256 private constant COL2_WIDTH = 44;

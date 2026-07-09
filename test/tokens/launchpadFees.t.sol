@@ -29,7 +29,8 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 vaultAllocation: 0,
                 lpFeeBps: lpFee,
                 treasuryShareBps: treasuryShare
-            })
+            }),
+            _emptyAntiSniperCfg()
         );
     }
 
@@ -65,7 +66,8 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 vaultAllocation: 0,
                 lpFeeBps: 150,
                 treasuryShareBps: 4000
-            })
+            }),
+            _emptyAntiSniperCfg()
         );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();

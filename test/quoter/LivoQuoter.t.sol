@@ -6,7 +6,6 @@ import {LivoQuoter} from "src/LivoQuoter.sol";
 import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
 import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -290,7 +289,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         // Snapshot the sniper cap *before* the buy. After the buy the buyer's balance changes and
         // the cap can shrink to zero (when the wallet cap was binding), making a post-buy read
         // useless for this assertion.
-        uint256 sniperCapBefore = LivoTokenSniperProtected(token).maxTokenPurchase(buyer_);
+        uint256 sniperCapBefore = LivoToken(token).maxTokenPurchase(buyer_);
 
         uint256 buyerEthBefore = buyer_.balance;
         uint256 buyerTokensBefore = IERC20(token).balanceOf(buyer_);
@@ -339,7 +338,7 @@ contract LivoQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
             return;
         }
 
-        uint256 sniperCapBefore = LivoTokenSniperProtected(token).maxTokenPurchase(buyer_);
+        uint256 sniperCapBefore = LivoToken(token).maxTokenPurchase(buyer_);
 
         uint256 buyerEthBefore = buyer_.balance;
         uint256 buyerTokensBefore = IERC20(token).balanceOf(buyer_);

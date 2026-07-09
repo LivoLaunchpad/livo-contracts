@@ -49,11 +49,8 @@ contract DeploymentsUnifiedFactories is Script {
         address graduatorV4_0p5;
         address masterFeeHandler;
         address tokenImpl;
-        address tokenSniperImpl;
         address taxTokenImpl;
-        address taxTokenSniperImpl;
         address taxTokenV2Impl;
-        address taxTokenV2SniperImpl;
     }
 
     /// @dev Freshly-deployed addresses emitted by this script.
@@ -77,11 +74,8 @@ contract DeploymentsUnifiedFactories is Script {
                 graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsEthereumMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_IMPL,
-                taxTokenSniperImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenV2Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV2SniperImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
+                taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL,
+                taxTokenV2Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
@@ -97,11 +91,8 @@ contract DeploymentsUnifiedFactories is Script {
                 graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsEthereumSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_IMPL,
-                taxTokenSniperImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV2SniperImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL
+                taxTokenImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL,
+                taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
@@ -120,11 +111,8 @@ contract DeploymentsUnifiedFactories is Script {
         require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
-        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
-        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
-        require(d.taxTokenSniperImpl != address(0), "manifest: TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
         require(d.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
-        require(d.taxTokenV2SniperImpl != address(0), "manifest: TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL missing");
     }
 
     function run() public {
@@ -145,12 +133,7 @@ contract DeploymentsUnifiedFactories is Script {
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: d.tokenSniperImpl,
-                    tax: d.taxTokenV2Impl,
-                    taxAntiSniper: d.taxTokenV2SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -168,12 +151,7 @@ contract DeploymentsUnifiedFactories is Script {
         fresh.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: d.tokenSniperImpl,
-                    tax: d.taxTokenImpl,
-                    taxAntiSniper: d.taxTokenSniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,

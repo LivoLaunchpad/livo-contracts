@@ -18,17 +18,7 @@
             "internalType": "address"
           },
           {
-            "name": "antiSniper",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "tax",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "taxAntiSniper",
             "type": "address",
             "internalType": "address"
           }
@@ -547,19 +537,6 @@
   },
   {
     "type": "function",
-    "name": "TOKEN_IMPL_ANTISNIPER",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "TOKEN_IMPL_BASE",
     "inputs": [],
     "outputs": [
@@ -574,19 +551,6 @@
   {
     "type": "function",
     "name": "TOKEN_IMPL_TAX",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "TOKEN_IMPL_TAX_ANTISNIPER",
     "inputs": [],
     "outputs": [
       {

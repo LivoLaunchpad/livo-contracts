@@ -18,11 +18,8 @@ import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
@@ -44,7 +41,7 @@ import {DeploymentAddresses as AddressesFromTaxTokenV4} from "src/tokens/LivoTax
 ///         build` therefore yields only ONE hook fee, so the from-scratch deploy is split in two:
 ///
 ///           Part 1 (`DeployFullStack`, build with LP_FEE_BPS=100): launchpad, fee handler, quoter,
-///             creator-vault system, all 21 bonding curves, the 6 token impls, the 1% hook + its three
+///             creator-vault system, all 21 bonding curves, the 3 token impls, the 1% hook + its three
 ///             tier graduators.
 ///           Part 2 (`DeployFullStackPart2`, rebuild with LP_FEE_BPS=50): the 0.5% hook + its three
 ///             tier graduators, the V2 graduator, and the V4/V2 unified factories (wired to all six V4
@@ -85,11 +82,8 @@ abstract contract DeployFullStackBase is Script {
 
     struct Impls {
         address token;
-        address tokenSniper;
         address taxV4;
-        address taxV4Sniper;
         address taxV2; // zero on chains without V2
-        address taxV2Sniper; // zero on chains without V2
     }
 
     // -------------------------------------------------------------- deploy helpers
@@ -133,12 +127,9 @@ abstract contract DeployFullStackBase is Script {
 
     function _deployImpls(bool hasV2) internal returns (Impls memory impls) {
         impls.token = address(new LivoToken());
-        impls.tokenSniper = address(new LivoTokenSniperProtected());
         impls.taxV4 = address(new LivoTaxableTokenUniV4());
-        impls.taxV4Sniper = address(new LivoTaxableTokenUniV4SniperProtected());
         if (hasV2) {
             impls.taxV2 = address(new LivoTaxableTokenUniV2());
-            impls.taxV2Sniper = address(new LivoTaxableTokenUniV2SniperProtected());
         }
     }
 
@@ -244,7 +235,7 @@ abstract contract DeployFullStackBase is Script {
 
 /// @title DeployFullStack — Part 1 of the launchpad-v2 rollout (build with LP_FEE_BPS=100)
 /// @notice Deploys the launchpad, fee handler, quoter, creator-vault system, all 21 bonding curves, the
-///         six token implementations, the 1% swap hook, and its three tier graduators. Prints every
+///         three token implementations, the 1% swap hook, and its three tier graduators. Prints every
 ///         address to paste into `src/config/manifest.<chain>.sol`; then run `just export-deployments`
 ///         and proceed to Part 2 (`DeployFullStackPart2`) after rebuilding with LP_FEE_BPS=50.
 /// @dev Run (broadcast): forge script DeployFullStack --rpc-url <chain> --account livo.dev --slow --broadcast
@@ -305,11 +296,8 @@ contract DeployFullStack is DeployFullStackBase {
         _logAddr("GRADUATOR_UNIV4_THIN                 ", o.gradV4Thin);
         _logAddr("GRADUATOR_UNIV4_THICK                ", o.gradV4Thick);
         _logAddr("TOKEN_IMPL                           ", o.impls.token);
-        _logAddr("TOKEN_SNIPER_PROTECTED_IMPL          ", o.impls.tokenSniper);
-        _logAddr("TAXABLE_TOKEN_IMPL (V4)              ", o.impls.taxV4);
-        _logAddr("TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL  ", o.impls.taxV4Sniper);
+        _logAddr("TAXABLE_TOKEN_V4_IMPL                ", o.impls.taxV4);
         _logAddr("TAXABLE_TOKEN_V2_IMPL                ", o.impls.taxV2);
-        _logAddr("TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL", o.impls.taxV2Sniper);
         _logAddr("CREATOR_VAULT_IMPL                   ", o.vaultImpl);
         _logAddr("CREATOR_VAULT_FACTORY (proxy)        ", o.vaultFactory);
         _logAddr("CREATOR_VAULT_FACTORY_IMPL           ", o.vaultFactoryImpl);

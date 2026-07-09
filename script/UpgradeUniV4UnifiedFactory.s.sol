@@ -57,9 +57,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address graduatorV4_0p5;
         address masterFeeHandler;
         address tokenImpl;
-        address tokenSniperImpl;
         address taxTokenImpl;
-        address taxTokenSniperImpl;
     }
 
     function _getDeps() internal view returns (Deps memory d) {
@@ -72,9 +70,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsEthereumMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_IMPL,
-                taxTokenSniperImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
@@ -90,9 +86,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsEthereumSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
-                taxTokenImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_IMPL,
-                taxTokenSniperImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                taxTokenImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
@@ -110,9 +104,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
         require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing (deploy it first)");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
-        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
-        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
-        require(d.taxTokenSniperImpl != address(0), "manifest: TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
     }
 
     function run() public {
@@ -140,12 +132,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: d.tokenSniperImpl,
-                    tax: d.taxTokenImpl,
-                    taxAntiSniper: d.taxTokenSniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,

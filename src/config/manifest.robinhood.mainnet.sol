@@ -26,15 +26,10 @@ library DeploymentsRobinhoodMainnet {
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = address(0);
-    address internal constant TAXABLE_TOKEN_IMPL = address(0);
+    address internal constant TAXABLE_TOKEN_V4_IMPL = address(0);
 
-    /// @notice Sniper-protected token implementations
-    address internal constant TOKEN_SNIPER_PROTECTED_IMPL = address(0);
-    address internal constant TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL = address(0);
-
-    /// @notice V2 taxable token implementations (cloned by `LivoFactoryUniV2Unified` when tax is configured)
+    /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
     address internal constant TAXABLE_TOKEN_V2_IMPL = address(0);
-    address internal constant TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL = address(0);
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.

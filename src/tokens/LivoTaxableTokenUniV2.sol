@@ -7,6 +7,7 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
@@ -79,15 +80,19 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
     }
 
-    /// @notice Initializes the token clone with its parameters including tax configuration
+    /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
+    ///         enabled iff `antiSniperCfg` opts in (`protectionWindowSeconds != 0`); pass an all-zero
+    ///         config for a tax-only token.
     /// @param params Shared token initialization parameters
-    /// @param taxCfg Tax configuration (buy/sell bps and post-graduation tax duration)
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg)
-        external
-        virtual
-        initializer
-    {
+    /// @param taxCfg Tax configuration (buy/sell bps, window, optional launch-tax decay)
+    /// @param antiSniperCfg Anti-sniper caps + window config (validated upstream in the factory)
+    function initialize(
+        ILivoToken.InitializeParams memory params,
+        TaxConfigs memory taxCfg,
+        AntiSniperConfigs memory antiSniperCfg
+    ) external virtual initializer {
         _initializeLivoTaxableToken(params, taxCfg);
+        _initializeAntiSniper(antiSniperCfg);
     }
 
     /// @inheritdoc LivoTaxableToken

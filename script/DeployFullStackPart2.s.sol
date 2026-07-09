@@ -98,12 +98,7 @@ contract DeployFullStackPart2 is DeployFullStackBase {
         o.factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 p.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: p.impls.token,
-                    antiSniper: p.impls.tokenSniper,
-                    tax: p.impls.taxV4,
-                    taxAntiSniper: p.impls.taxV4Sniper
-                }),
+                ILivoFactory.TokenImpls({base: p.impls.token, tax: p.impls.taxV4}),
                 p.curves.bondingCurve,
                 p.gradV4, // 1% DEFAULT graduator (from Part 1)
                 o.gradV4_0p5, // 0.5% DEFAULT graduator (just deployed)
@@ -121,12 +116,7 @@ contract DeployFullStackPart2 is DeployFullStackBase {
         o.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 p.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: p.impls.token,
-                    antiSniper: p.impls.tokenSniper,
-                    tax: p.impls.taxV2,
-                    taxAntiSniper: p.impls.taxV2Sniper
-                }),
+                ILivoFactory.TokenImpls({base: p.impls.token, tax: p.impls.taxV2}),
                 p.curves.bondingCurve,
                 o.gradV2,
                 p.feeHandler,
@@ -158,11 +148,8 @@ contract DeployFullStackPart2 is DeployFullStackBase {
             p.curves.thickBase = DeploymentsEthereumMainnet.THICK_CURVE_BASE;
             p.curves.thickVaults = DeploymentsEthereumMainnet.thickVaultCurves();
             p.impls.token = DeploymentsEthereumMainnet.TOKEN_IMPL;
-            p.impls.tokenSniper = DeploymentsEthereumMainnet.TOKEN_SNIPER_PROTECTED_IMPL;
-            p.impls.taxV4 = DeploymentsEthereumMainnet.TAXABLE_TOKEN_IMPL;
-            p.impls.taxV4Sniper = DeploymentsEthereumMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+            p.impls.taxV4 = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL;
             p.impls.taxV2 = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL;
-            p.impls.taxV2Sniper = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
             p.gradV4 = DeploymentsEthereumMainnet.GRADUATOR_UNIV4;
             p.gradV4Thin = DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THIN;
             p.gradV4Thick = DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK;
@@ -177,11 +164,8 @@ contract DeployFullStackPart2 is DeployFullStackBase {
             p.curves.thickBase = DeploymentsEthereumSepolia.THICK_CURVE_BASE;
             p.curves.thickVaults = DeploymentsEthereumSepolia.thickVaultCurves();
             p.impls.token = DeploymentsEthereumSepolia.TOKEN_IMPL;
-            p.impls.tokenSniper = DeploymentsEthereumSepolia.TOKEN_SNIPER_PROTECTED_IMPL;
-            p.impls.taxV4 = DeploymentsEthereumSepolia.TAXABLE_TOKEN_IMPL;
-            p.impls.taxV4Sniper = DeploymentsEthereumSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+            p.impls.taxV4 = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL;
             p.impls.taxV2 = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
-            p.impls.taxV2Sniper = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
             p.gradV4 = DeploymentsEthereumSepolia.GRADUATOR_UNIV4;
             p.gradV4Thin = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN;
             p.gradV4Thick = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK;
@@ -196,11 +180,8 @@ contract DeployFullStackPart2 is DeployFullStackBase {
             p.curves.thickBase = DeploymentsRobinhoodMainnet.THICK_CURVE_BASE;
             p.curves.thickVaults = DeploymentsRobinhoodMainnet.thickVaultCurves();
             p.impls.token = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
-            p.impls.tokenSniper = DeploymentsRobinhoodMainnet.TOKEN_SNIPER_PROTECTED_IMPL;
-            p.impls.taxV4 = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_IMPL;
-            p.impls.taxV4Sniper = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+            p.impls.taxV4 = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL;
             p.impls.taxV2 = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
-            p.impls.taxV2Sniper = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
             p.gradV4 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4;
             p.gradV4Thin = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN;
             p.gradV4Thick = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK;
@@ -215,11 +196,8 @@ contract DeployFullStackPart2 is DeployFullStackBase {
             p.curves.thickBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
             p.curves.thickVaults = DeploymentsRobinhoodTestnet.thickVaultCurves();
             p.impls.token = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
-            p.impls.tokenSniper = DeploymentsRobinhoodTestnet.TOKEN_SNIPER_PROTECTED_IMPL;
-            p.impls.taxV4 = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_IMPL;
-            p.impls.taxV4Sniper = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL;
+            p.impls.taxV4 = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
             p.impls.taxV2 = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
-            p.impls.taxV2Sniper = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL;
             p.gradV4 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4;
             p.gradV4Thin = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN;
             p.gradV4Thick = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK;

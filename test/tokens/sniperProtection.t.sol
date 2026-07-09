@@ -7,8 +7,6 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -581,16 +579,16 @@ abstract contract SniperProtectionBaseTest is Test {
 /// -------------------- Plain variant --------------------
 
 contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
-    LivoTokenSniperProtected internal token;
-    LivoTokenSniperProtected internal impl;
+    LivoToken internal token;
+    LivoToken internal impl;
 
     function setUp() public {
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
 
         graduator = new MockGraduator(makeAddr("pair"));
-        impl = new LivoTokenSniperProtected();
-        token = LivoTokenSniperProtected(Clones.clone(address(impl)));
+        impl = new LivoToken();
+        token = LivoToken(Clones.clone(address(impl)));
         token.initialize(
             ILivoToken.InitializeParams({
                 name: "TestSniper",
@@ -619,7 +617,7 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
         internal
         override
     {
-        LivoTokenSniperProtected(clone)
+        LivoToken(clone)
             .initialize(
                 ILivoToken.InitializeParams({
                     name: "CustomSniper",
@@ -645,8 +643,8 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
 /// -------------------- Taxable variant --------------------
 
 contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
-    LivoTaxableTokenUniV4SniperProtected internal token;
-    LivoTaxableTokenUniV4SniperProtected internal impl;
+    LivoTaxableTokenUniV4 internal token;
+    LivoTaxableTokenUniV4 internal impl;
 
     function setUp() public {
         vm.chainId(DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID);
@@ -655,8 +653,8 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         launchpad = address(launchpadMock);
 
         graduator = new MockGraduator(DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER);
-        impl = new LivoTaxableTokenUniV4SniperProtected();
-        token = LivoTaxableTokenUniV4SniperProtected(payable(Clones.clone(address(impl))));
+        impl = new LivoTaxableTokenUniV4();
+        token = LivoTaxableTokenUniV4(payable(Clones.clone(address(impl))));
         token.initialize(
             ILivoToken.InitializeParams({
                 name: "TestSniperTax",
@@ -694,7 +692,7 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         internal
         override
     {
-        LivoTaxableTokenUniV4SniperProtected(payable(clone))
+        LivoTaxableTokenUniV4(payable(clone))
             .initialize(
                 ILivoToken.InitializeParams({
                     name: "CustomSniperTax",

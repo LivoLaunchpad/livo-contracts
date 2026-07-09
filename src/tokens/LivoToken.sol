@@ -9,8 +9,14 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
-contract LivoToken is ERC20, ILivoToken, Initializable {
+/// @dev Anti-sniper protection is folded into every token as a gated feature: `SniperProtection`
+///      supplies the caps + window logic, and the warm-slot `hasSniperProt` flag (packed into the
+///      `pair`/`graduated` slot the hot path already loads) gates it. Tokens that don't opt in pay
+///      no extra SLOAD and behave identically to a plain token — the caps code is present but never
+///      reached. Tax variants (`LivoTaxableToken*`) inherit this same gated feature.
+contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     /// @notice Version of the Livo stack this token belongs to
     string public constant override VERSION = "2.0";
 
@@ -28,12 +34,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     address public graduator;
 
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
-    /// @dev Packed with `graduated` so the hot-path read of both fields in `_update` costs a
-    ///      single SLOAD.
+    /// @dev Packed with `graduated` and `hasSniperProt` so the hot-path read of all three fields in
+    ///      `_update` costs a single SLOAD.
     address public pair;
 
     /// @notice Whether the token has graduated already or not
     bool public graduated;
+
+    /// @notice Whether anti-sniper protection is enabled for this token. Set once at initialization
+    ///         when an `AntiSniperConfigs` with a non-zero window is supplied. Packs into the `pair`
+    ///         slot so `_update` reads it for free while it already loads `pair`/`graduated`; gates the
+    ///         `SniperProtection` caps so non-opted-in tokens skip the check entirely.
+    bool public hasSniperProt;
 
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
@@ -61,7 +73,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
     ///      end of tx, so a second `registerFees` attempt from any future tx finds it zeroed
     ///      and reverts on the `msg.sender == 0` check.
-    /// @dev SECURITY ASSUMPTION (sniper-protected variants): `SniperProtection._checkSniperProtection`
+    /// @dev SECURITY ASSUMPTION (tokens with `hasSniperProt`): `SniperProtection._checkSniperProtection`
     ///      reads this slot to exempt the deployer-buy hops `launchpad → factory → supplyShares`
     ///      from the per-tx / per-wallet caps (both `to == factoryAddr` and `from == factoryAddr`
     ///      branches). Outside the deploy tx the slot reads `address(0)`, so the exemption checks
@@ -111,10 +123,17 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _disableInitializers();
     }
 
-    /// @notice Initializes the token clone with its parameters
+    /// @notice Initializes the token clone. Anti-sniper protection is enabled iff `antiSniperCfg` opts
+    ///         in (`protectionWindowSeconds != 0`); pass an all-zero config for a plain token.
     /// @param params Shared token initialization parameters
-    function initialize(ILivoToken.InitializeParams memory params) external virtual initializer {
+    /// @param antiSniperCfg Anti-sniper caps + window config (validated upstream in the factory)
+    function initialize(ILivoToken.InitializeParams memory params, AntiSniperConfigs memory antiSniperCfg)
+        external
+        virtual
+        initializer
+    {
         _initializeLivoToken(params);
+        _initializeAntiSniper(antiSniperCfg);
     }
 
     /// @dev Internal initializer body; callable from child `initializer`-gated functions.
@@ -160,6 +179,18 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         // `launchTimestamp == 0` (the sniper-window early-return relies on it; see the `tokenFactory`
         // security note). Anchors the sniper window and the taxable variants' tax window.
         launchTimestamp = uint40(block.timestamp);
+    }
+
+    /// @dev Opt-in gate for anti-sniper protection, called by every token's `initialize`. A zero
+    ///      protection window means "not configured" (the factory's `_validateAntiSniperConfig`
+    ///      guarantees the rest of the config is then also empty), so this no-ops and leaves
+    ///      `hasSniperProt` false — a plain token. Otherwise it validates + stores the caps and window
+    ///      and flips the warm-slot `hasSniperProt` gate so `_update` / `maxTokenPurchase` enforce them.
+    ///      Must run AFTER `_initializeLivoToken` (which sets `launchTimestamp`, the window anchor).
+    function _initializeAntiSniper(AntiSniperConfigs memory antiSniperCfg) internal onlyInitializing {
+        if (antiSniperCfg.protectionWindowSeconds == 0) return;
+        _initializeSniperProtection(antiSniperCfg, launchTimestamp);
+        hasSniperProt = true;
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -242,9 +273,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: 0});
     }
 
-    /// @notice Default max-purchase: no cap. Overridden by sniper-protected variants.
-    function maxTokenPurchase(address) external view virtual returns (uint256) {
-        return type(uint256).max;
+    /// @notice Largest amount `buyer` may purchase on the bonding curve right now. No cap unless the
+    ///         token opted into anti-sniper protection (`hasSniperProt`), in which case the per-tx /
+    ///         per-wallet caps apply during the protection window.
+    function maxTokenPurchase(address buyer) external view virtual returns (uint256) {
+        if (!hasSniperProt) return type(uint256).max;
+        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated);
     }
 
     /// @dev ERC20 interface compliance
@@ -266,9 +300,23 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     //////////////////////// internal functions ////////////////////////
 
     function _update(address from, address to, uint256 amount) internal virtual override {
+        // Load `pair`/`graduated`/`hasSniperProt` (one packed slot) with a single SLOAD, reused for
+        // both checks below instead of re-reading the slot up to three times.
+        (address _pair, bool _graduated, bool _hasSniperProt) = (pair, graduated, hasSniperProt);
+
+        // Anti-sniper caps, gated by the warm-slot flag. Only enforced pre-graduation;
+        // `_hasSniperProt && !_graduated` short-circuits for the common non-protected token AND for
+        // every post-graduation transfer (when the tax variants' `_update` re-enters here after
+        // splitting a taxed transfer).
+        if (_hasSniperProt && !_graduated) {
+            _checkSniperProtection(
+                from, to, amount, address(launchpad), tokenFactory, address(graduator), balanceOf(to)
+            );
+        }
+
         // this ensures tokens don't arrive to the pair before graduation
         // to avoid exploits/DOS related to liquidity addition at graduation
-        if ((!graduated) && (to == pair)) {
+        if ((!_graduated) && (to == _pair)) {
             revert TransferToPairBeforeGraduationNotAllowed();
         }
 

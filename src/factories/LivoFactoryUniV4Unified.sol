@@ -6,9 +6,9 @@ import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
-/// @notice Unified factory for the Uniswap V4 token family. Dispatches between four token
-///         implementations based on whether `TaxConfigInit` and `AntiSniperConfigs` are
-///         configured.
+/// @notice Unified factory for the Uniswap V4 token family. Dispatches between two token
+///         implementations (`base`, `tax`) based on whether tax is configured; anti-sniper
+///         protection is a gated feature of both, not a separate impl.
 ///
 ///         Replaces `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV4SniperProtected`,
 ///         and `LivoFactoryTaxTokenSniperProtected`.

@@ -5,7 +5,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {Script, console} from "forge-std/Script.sol";
 
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
@@ -19,14 +18,13 @@ import {
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
-/// @title Redeploy V2 taxable token implementations and upgrade the V2 unified factory proxy
+/// @title Redeploy the V2 taxable token implementation and upgrade the V2 unified factory proxy
 /// @notice Three-step deploy, all in a single broadcast:
 ///         1. Deploys a fresh `LivoTaxableTokenUniV2` implementation.
-///         2. Deploys a fresh `LivoTaxableTokenUniV2SniperProtected` implementation.
-///         3. Deploys a fresh `LivoFactoryUniV2Unified` implementation wired to the new token impls
-///            (plus the unchanged non-tax token impls + bonding curve + V2 graduator + master fee
-///            handler + launchpad pulled from the per-chain manifest).
-///         4. Calls `upgradeToAndCall(newFactoryImpl, "")` on the existing V2 factory UUPS proxy.
+///         2. Deploys a fresh `LivoFactoryUniV2Unified` implementation wired to the new token impl
+///            (plus the unchanged non-tax base token impl + bonding curve + V2 graduator + master
+///            fee handler + launchpad pulled from the per-chain manifest).
+///         3. Calls `upgradeToAndCall(newFactoryImpl, "")` on the existing V2 factory UUPS proxy.
 ///
 ///         The proxy address — and therefore the launchpad's `whitelistedFactories` entry — does
 ///         NOT change. No init data is passed; there are no new storage variables to populate.
@@ -37,9 +35,8 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         Pre-broadcast sanity: confirms the V2 token implementation file imports the right
 ///         per-chain `DeploymentAddresses` (run `just taxtoken-sepolia` before deploying to Sepolia).
 ///
-///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`,
-///         and the V2 factory impl address in `src/config/manifest.<chain>.sol`, then run
-///         `just export-deployments`.
+///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL` and the V2 factory impl address in
+///         `src/config/manifest.<chain>.sol`, then run `just export-deployments`.
 ///
 /// @dev    Run with:
 ///         forge script RedeployV2TaxTokensAndUpgradeFactory --rpc-url <mainnet|sepolia> \
@@ -55,13 +52,11 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         address graduatorV2;
         address masterFeeHandler;
         address tokenImpl;
-        address tokenSniperImpl;
     }
 
     /// @dev Addresses emitted by this script (for logging + manifest updates).
     struct FreshDeployments {
         address taxTokenV2Impl;
-        address taxTokenV2SniperImpl;
         address factoryV2Impl;
     }
 
@@ -73,8 +68,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsEthereumMainnet.TOKEN_SNIPER_PROTECTED_IMPL
+                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
@@ -87,8 +81,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsEthereumSepolia.TOKEN_SNIPER_PROTECTED_IMPL
+                tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
@@ -104,7 +97,6 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
-        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
     }
 
     function run() public {
@@ -130,18 +122,10 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
         console.log("| LivoTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
 
-        fresh.taxTokenV2SniperImpl = address(new LivoTaxableTokenUniV2SniperProtected());
-        console.log("| LivoTaxableTokenUniV2SniperProtected (new)    |", fresh.taxTokenV2SniperImpl);
-
         fresh.factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: d.tokenSniperImpl,
-                    tax: fresh.taxTokenV2Impl,
-                    taxAntiSniper: fresh.taxTokenV2SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: fresh.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -162,7 +146,6 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         console.log("Proxy address is UNCHANGED - no launchpad whitelisting or integrator action needed.");
         console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
         console.log("  TAXABLE_TOKEN_V2_IMPL                  :", fresh.taxTokenV2Impl);
-        console.log("  TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL :", fresh.taxTokenV2SniperImpl);
         console.log("  LivoFactoryUniV2Unified impl           :", fresh.factoryV2Impl);
     }
 }

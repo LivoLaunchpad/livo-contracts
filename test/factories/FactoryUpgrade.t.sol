@@ -20,12 +20,7 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         return address(
             new LivoFactoryUniV4Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({
-                    base: address(livoToken),
-                    antiSniper: address(livoTokenSniper),
-                    tax: address(livoTaxToken),
-                    taxAntiSniper: address(livoTaxTokenSniper)
-                }),
+                ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxToken)}),
                 address(bondingCurve),
                 newGraduator,
                 newGraduator,

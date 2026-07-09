@@ -58,9 +58,7 @@ library ForkIntegrationCaseLib {
         address factoryV2Unified;
         address factoryV4Unified;
         address tokenImpl;
-        address tokenSniperImpl;
         address taxTokenImpl;
-        address taxTokenSniperImpl;
         address weth;
         address uniV2Router;
         address uniV2Factory;

@@ -22,7 +22,7 @@ interface IUniV2RouterSwap {
 }
 
 /// @notice Reusable V2 swap helpers for end-to-end tests against the post-graduation Uniswap V2 pair.
-/// @dev Uses the FeeOnTransfer-tolerant variants because LivoTokenSniperProtected enforces sniper
+/// @dev Uses the FeeOnTransfer-tolerant variants because an anti-sniper-enabled token enforces sniper
 ///      checks inside `_update`, which Uniswap V2's standard `swapExactETHForTokens` would treat as
 ///      an unexpected balance delta.
 abstract contract V2SwapHelpers is LaunchpadBaseTests {
