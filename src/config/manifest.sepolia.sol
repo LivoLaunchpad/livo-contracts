@@ -39,8 +39,8 @@ library DeploymentsSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xD6CB866D7f5630EACfE43A57d70058C4686a9f77;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xD1D09BBCeDEFfd8dc46F708F417908c57aEA64EE;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x174a043E00C527e3D1a8e0bc19fE1E15e4e859f6;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x8ED7408Def91C96E7C76df3FA9B3a15918E5b1bd;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
