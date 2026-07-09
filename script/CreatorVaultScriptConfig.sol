@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
@@ -25,6 +27,12 @@ library CreatorVaultScriptConfig {
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             return DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY;
         }
+        if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
+            return DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY;
+        }
+        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
+            return DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
+        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 
@@ -35,6 +43,12 @@ library CreatorVaultScriptConfig {
         }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             return DeploymentsEthereumSepolia.vaultBondingCurves();
+        }
+        if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
+            return DeploymentsRobinhoodMainnet.vaultBondingCurves();
+        }
+        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
+            return DeploymentsRobinhoodTestnet.vaultBondingCurves();
         }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
@@ -64,6 +78,26 @@ library CreatorVaultScriptConfig {
             });
             return tierConfig;
         }
+        if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
+            tierConfig.thin = ILivoFactory.TierCurves({
+                base: DeploymentsRobinhoodMainnet.THIN_CURVE_BASE, vaults: DeploymentsRobinhoodMainnet.thinVaultCurves()
+            });
+            tierConfig.thick = ILivoFactory.TierCurves({
+                base: DeploymentsRobinhoodMainnet.THICK_CURVE_BASE,
+                vaults: DeploymentsRobinhoodMainnet.thickVaultCurves()
+            });
+            return tierConfig;
+        }
+        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
+            tierConfig.thin = ILivoFactory.TierCurves({
+                base: DeploymentsRobinhoodTestnet.THIN_CURVE_BASE, vaults: DeploymentsRobinhoodTestnet.thinVaultCurves()
+            });
+            tierConfig.thick = ILivoFactory.TierCurves({
+                base: DeploymentsRobinhoodTestnet.THICK_CURVE_BASE,
+                vaults: DeploymentsRobinhoodTestnet.thickVaultCurves()
+            });
+            return tierConfig;
+        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 
@@ -85,6 +119,24 @@ library CreatorVaultScriptConfig {
                 thin0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN_0P5,
                 thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK,
                 thick0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK_0P5
+            });
+            return v4Tier;
+        }
+        if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
+            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+                thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
+                thin0p5: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN_0P5,
+                thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK,
+                thick0p5: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK_0P5
+            });
+            return v4Tier;
+        }
+        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
+            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+                thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
+                thin0p5: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN_0P5,
+                thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK,
+                thick0p5: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK_0P5
             });
             return v4Tier;
         }

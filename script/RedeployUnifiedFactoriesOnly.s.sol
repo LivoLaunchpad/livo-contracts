@@ -11,6 +11,8 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Redeploy BOTH unified factory implementations and upgrade their proxies — factories only
 /// @notice For changes that live in `LivoFactoryAbstract` / the concrete factories ONLY, leaving every
@@ -91,6 +93,34 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL,
                 taxTokenV4Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL
+            });
+        } else if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                factoryV2Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsRobinhoodMainnet.LAUNCHPAD,
+                bondingCurve: DeploymentsRobinhoodMainnet.BONDING_CURVE,
+                graduatorV2: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsRobinhoodMainnet.TOKEN_IMPL,
+                taxTokenV2Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV4Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL
+            });
+        } else if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                factoryV2Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
+                bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
+                graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsRobinhoodTestnet.TOKEN_IMPL,
+                taxTokenV2Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV4Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL
             });
         } else {
             revert("Unsupported chain");
