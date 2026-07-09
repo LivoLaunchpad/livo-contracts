@@ -15,16 +15,13 @@
 | LivoSwapHook                                 | `0x0591a87D3a56797812C4DA164C1B005c545400Cc` |
 | LivoSwapHook (0.5%)                          | `0xC04Bb5bA43795330e54efaC7244ce40318FD80cc` |
 | LivoQuoter                                   | `0x17b8f037a261344714A64643Bde0Bd7C5745b3BE` |
-| LivoToken (impl)                             | `0x98010219eB88a8c9547023f3a26B6edd40204B2c` |
-| LivoTaxableTokenUniV4 (impl)                 | `0x794C660115988B052861016d75827DD9dC41b853` |
-| LivoTokenSniperProtected (impl)              | `0xb1f0387Bcfe4555F46182e477387aF8DcF78AA8B` |
-| LivoTaxableTokenUniV4SniperProtected (impl)  | `0xA8EFa90eA1faC983789D0DD7e19A0BE4a6607FED` |
-| LivoTaxableTokenUniV2 (impl)                 | `0x2a54bFFC5Ec9f703B0b5E05e0477Be77CF3b9a95` |
-| LivoTaxableTokenUniV2SniperProtected (impl)  | `0x7ce43f5a17FD4B6674bc685E325e12dE7fcd3aa7` |
+| LivoToken (impl)                             | `0xb653e5036689eAcBd518B5Cf7AAD48FA6d03a10C` |
+| LivoTaxableTokenUniV4 (impl)                 | `0x61054ec92636c2e4eE1ecE05F7F9bE7D240F24dA` |
+| LivoTaxableTokenUniV2 (impl)                 | `0x76bA7d2d05b76CA78bF7504ede5c2E607Acfc328` |
 | LivoFactoryUniV2Unified (proxy)              | `0x87Dd69F8d294fA9cd704fccd38d36d6197F80868` |
-| LivoFactoryUniV2Unified (impl)               | `0xa35D37290ae26230a41F473311b5a69Ee4ef2Ab6` |
+| LivoFactoryUniV2Unified (impl)               | `0xD6CB866D7f5630EACfE43A57d70058C4686a9f77` |
 | LivoFactoryUniV4Unified (proxy)              | `0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b` |
-| LivoFactoryUniV4Unified (impl)               | `0x9adB869DD71eb953773f6E9AA3A713Ad8413aE78` |
+| LivoFactoryUniV4Unified (impl)               | `0xD1D09BBCeDEFfd8dc46F708F417908c57aEA64EE` |
 | LivoCreatorVaultFactory (proxy)              | `0x804ad45394FCF755350d924f712EC463E5E3147D` |
 | LivoCreatorVaultFactory (impl)               | `0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47` |
 | LivoCreatorVault (impl)                      | `0xe5aF8d840963060302cf5021630d6dBF41a9e07b` |

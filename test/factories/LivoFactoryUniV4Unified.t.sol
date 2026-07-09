@@ -5,14 +5,11 @@ import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @notice Dispatch + field-readback tests for `LivoFactoryUniV4Unified`. The unified factory
 ///         dispatches between four token implementations based on whether `taxCfg` and
@@ -59,7 +56,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
         );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
+        address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
@@ -74,7 +71,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
             _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()
         );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
+        address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
@@ -89,7 +86,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address impl =
             factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
+        address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token =
@@ -103,7 +100,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address impl =
             factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _defaultAntiSniperCfg());
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV4Unified));
+        address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token =
@@ -128,7 +125,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         address token =
             factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), snipCfg);
 
-        LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
+        LivoToken t = LivoToken(token);
         assertEq(t.maxBuyPerTxBps(), 50);
         assertEq(t.maxWalletBps(), 100);
         assertEq(uint256(t.protectionWindowSeconds()), 30 minutes);
@@ -165,7 +162,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         address token = factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, taxCfg, snipCfg);
 
-        LivoTaxableTokenUniV4SniperProtected t = LivoTaxableTokenUniV4SniperProtected(payable(token));
+        LivoTaxableTokenUniV4 t = LivoTaxableTokenUniV4(payable(token));
         assertEq(t.buyTaxBps(), 100);
         assertEq(t.sellTaxBps(), 200);
         assertEq(uint256(t.taxDurationSeconds()), 1 days);
@@ -446,7 +443,7 @@ contract LivoFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 badSalt;
         for (uint256 i = 0;; i++) {
             bytes32 s = bytes32(i);
-            address predicted = Clones.predictDeterministicAddress(address(livoTaxToken), s, address(factoryV4Unified));
+            address predicted = _predictToken(address(factoryV4Unified), address(livoTaxToken), creator, s);
             if (uint16(uint160(predicted)) != 0x1110) {
                 badSalt = s;
                 break;

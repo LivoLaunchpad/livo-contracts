@@ -16,10 +16,8 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 /// @notice For changes that live in `LivoFactoryAbstract` / the concrete factories ONLY, leaving every
 ///         token implementation untouched (e.g. a tweak to `_validateTaxConfig`). Unlike
 ///         `RedeployTaxTokensAndUpgradeFactories`, this deploys NO token impls: it reuses the existing
-///         `TOKEN_IMPL`, `TOKEN_SNIPER_PROTECTED_IMPL`, `TAXABLE_TOKEN_V2_IMPL`,
-///         `TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL`, `TAXABLE_TOKEN_IMPL` and
-///         `TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL` recorded in the per-chain manifest, wiring the fresh
-///         factory impls to them.
+///         `TOKEN_IMPL`, `TAXABLE_TOKEN_V2_IMPL` and `TAXABLE_TOKEN_V4_IMPL` recorded in the per-chain
+///         manifest, wiring the fresh factory impls to them.
 ///
 ///         Single broadcast, two new deployments + two proxy upgrades:
 ///         1. `LivoFactoryUniV2Unified` impl wired to the manifest's V2 token + tax-token impls.
@@ -61,11 +59,8 @@ contract RedeployUnifiedFactoriesOnly is Script {
         address masterFeeHandler;
         // Existing token impls — reused as-is when wiring the new factories
         address tokenImpl;
-        address tokenSniperImpl;
         address taxTokenV2Impl;
-        address taxTokenV2SniperImpl;
         address taxTokenV4Impl;
-        address taxTokenV4SniperImpl;
     }
 
     function _getDeps() internal view returns (Deps memory d) {
@@ -80,11 +75,8 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsMainnet.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsMainnet.TOKEN_SNIPER_PROTECTED_IMPL,
                 taxTokenV2Impl: DeploymentsMainnet.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV2SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
-                taxTokenV4Impl: DeploymentsMainnet.TAXABLE_TOKEN_IMPL,
-                taxTokenV4SniperImpl: DeploymentsMainnet.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                taxTokenV4Impl: DeploymentsMainnet.TAXABLE_TOKEN_V4_IMPL
             });
         } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -97,11 +89,8 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsSepolia.TOKEN_IMPL,
-                tokenSniperImpl: DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL,
                 taxTokenV2Impl: DeploymentsSepolia.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV2SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL,
-                taxTokenV4Impl: DeploymentsSepolia.TAXABLE_TOKEN_IMPL,
-                taxTokenV4SniperImpl: DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
+                taxTokenV4Impl: DeploymentsSepolia.TAXABLE_TOKEN_V4_IMPL
             });
         } else {
             revert("Unsupported chain");
@@ -116,11 +105,8 @@ contract RedeployUnifiedFactoriesOnly is Script {
         require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
-        require(d.tokenSniperImpl != address(0), "manifest: TOKEN_SNIPER_PROTECTED_IMPL missing");
         require(d.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
-        require(d.taxTokenV2SniperImpl != address(0), "manifest: TAXABLE_TOKEN_V2_SNIPER_PROTECTED_IMPL missing");
-        require(d.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_IMPL missing");
-        require(d.taxTokenV4SniperImpl != address(0), "manifest: TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL missing");
+        require(d.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
     }
 
     function run() public {
@@ -151,12 +137,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: d.tokenSniperImpl,
-                    tax: d.taxTokenV2Impl,
-                    taxAntiSniper: d.taxTokenV2SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -170,12 +151,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({
-                    base: d.tokenImpl,
-                    antiSniper: d.tokenSniperImpl,
-                    tax: d.taxTokenV4Impl,
-                    taxAntiSniper: d.taxTokenV4SniperImpl
-                }),
+                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV4Impl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.graduatorV4_0p5,

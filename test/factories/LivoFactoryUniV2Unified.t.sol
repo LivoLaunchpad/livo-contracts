@@ -4,10 +4,8 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @notice Dispatch + field-readback tests for `LivoFactoryUniV2Unified`. These non-tax tests lock
 ///         in dispatch between the base and anti-sniper implementations based on
@@ -39,7 +37,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
             _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
         );
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
+        address expected = _predictToken(address(factoryV2Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token =
@@ -54,7 +52,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
             _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
         );
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
+        address expected = _predictToken(address(factoryV2Unified), impl, creator, salt);
 
         vm.expectEmit(true, true, false, false);
         emit ILivoFactory.BondingCurveAssigned(expected, address(factoryV2Unified.BONDING_CURVE()));
@@ -67,7 +65,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
             _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()
         );
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), impl);
-        address expected = Clones.predictDeterministicAddress(impl, salt, address(factoryV2Unified));
+        address expected = _predictToken(address(factoryV2Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
@@ -91,7 +89,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         address token = factoryV2Unified.createToken("T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), cfg);
 
-        LivoTokenSniperProtected t = LivoTokenSniperProtected(token);
+        LivoToken t = LivoToken(token);
         assertEq(t.maxBuyPerTxBps(), 50);
         assertEq(t.maxWalletBps(), 150);
         assertEq(uint256(t.protectionWindowSeconds()), 45 minutes);
@@ -141,7 +139,7 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
             "T", "T", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _defaultAntiSniperCfg()
         );
 
-        assertEq(LivoTokenSniperProtected(token).owner(), address(0));
+        assertEq(LivoToken(token).owner(), address(0));
     }
 
     // ───────────── Empty fee receivers (V2 specific) ─────────────

@@ -68,7 +68,7 @@ contract LivoMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithUniv4Gradua
         address token = factoryV4Unified.createToken(
             "AttackToken",
             "ATTK",
-            _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+            _nextValidSalt(address(factoryV4Unified), address(livoToken), address(malicious)),
             _feeShares(),
             _noSs(),
             false, // do NOT renounce — owner = msg.sender = malicious

@@ -117,7 +117,7 @@ abstract contract SniperProtection {
     ///          split. Dev-configured, may legitimately exceed the per-wallet cap.
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     ///      `from == graduatorAddr` is intentionally NOT exempt: graduator outgoing transfers
-    ///      happen post-`markGraduated()`, hitting the `graduated` early-return.
+    ///      happen post-`markGraduated()`, which the caller's `!graduated` gate already skips.
     /// @dev Mints (`from == 0`) only happen during `_initializeLivoToken`, before
     ///      `_initializeSniperProtection` runs, so `protectionWindowEnd == 0` and the window
     ///      early-return covers them. Burns (`to == 0`) are rejected by OZ ERC20 v5 before `_update`.
@@ -129,10 +129,8 @@ abstract contract SniperProtection {
         address launchpadAddr,
         address factoryAddr,
         address graduatorAddr,
-        bool graduated,
         uint256 toBalance
     ) internal view {
-        if (graduated) return;
         if (block.timestamp >= protectionWindowEnd) return;
 
         // sells back to the curve

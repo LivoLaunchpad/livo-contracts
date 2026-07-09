@@ -23,14 +23,14 @@ interface ILivoFactory {
         TierCurves thick;
     }
 
-    /// @notice Constructor-only bundle of the four token implementations the factory clones. Grouped
-    ///         into one struct to keep the factory constructors' parameter count within the ABI-decode
-    ///         stack limit without `via_ir`.
+    /// @notice Constructor-only bundle of the token implementations the factory clones. Two impls per
+    ///         factory: `base` (non-taxable) and `tax` (taxable). Anti-sniper protection is a gated
+    ///         feature baked into BOTH impls (selected at init from the `AntiSniperConfigs`), so it no
+    ///         longer selects a distinct implementation — keeping the pre-generated token address
+    ///         independent of the anti-sniper choice.
     struct TokenImpls {
         address base;
-        address antiSniper;
         address tax;
-        address taxAntiSniper;
     }
 
     /// @notice A single fee-receiver entry: account + shares in basis points (sum must == 10 000).

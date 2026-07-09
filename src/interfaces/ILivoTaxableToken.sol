@@ -58,26 +58,18 @@ interface ILivoTaxableToken is ILivoToken {
     ///         (`launchTimestamp`), `false` if it starts at graduation (`graduationTimestamp`).
     function startTaxFromLaunch() external view returns (bool);
 
-    /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2
-    ///         or V4 concrete tax-token implementations through a single shared type. Takes the full
-    ///         `TaxConfigs` so the clone receives any launch-tax-decay config; the factory builds it
-    ///         (from `TaxConfigInit` on the legacy paths, or passes it through on the new path).
-    function initialize(ILivoToken.InitializeParams memory params, TaxConfigs memory taxCfg) external;
-
-    /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
-    ///         attempts to raise either rate revert.
-    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
-}
-
-/// @title ILivoTaxableTokenSniperProtected
-/// @notice Extension of `ILivoTaxableToken` for tax-token variants that also enforce anti-sniper
-///         caps during the post-launch protection window.
-/// @dev Used by `LivoFactoryAbstract._initializeTaxToken` to dispatch into the 3-arg `initialize`
-///      overload through a venue-agnostic type.
-interface ILivoTaxableTokenSniperProtected is ILivoTaxableToken {
+    /// @notice Initializes a taxable-token clone. Used by the factory to dispatch into either V2 or V4
+    ///         concrete tax-token implementations through a single shared type. Takes the full
+    ///         `TaxConfigs` (the factory builds it from `TaxConfigInit` on the legacy paths, or passes
+    ///         it through on the new path) plus the `AntiSniperConfigs`; anti-sniper protection is
+    ///         enabled iff that config opts in (`protectionWindowSeconds != 0`), gated inside the token.
     function initialize(
         ILivoToken.InitializeParams memory params,
         TaxConfigs memory taxCfg,
         AntiSniperConfigs memory antiSniperCfg
     ) external;
+
+    /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
+    ///         attempts to raise either rate revert.
+    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
 }

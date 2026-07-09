@@ -27,11 +27,7 @@ abstract contract ForkIntegrationConfig is Test {
             factoryV2Unified: vm.envOr("LIVO_FACTORY_V2_UNIFIED", DeploymentsSepolia.FACTORY_UNIV2_UNIFIED),
             factoryV4Unified: vm.envOr("LIVO_FACTORY_V4_UNIFIED", DeploymentsSepolia.FACTORY_UNIV4_UNIFIED),
             tokenImpl: vm.envOr("LIVO_TOKEN_IMPL", DeploymentsSepolia.TOKEN_IMPL),
-            tokenSniperImpl: vm.envOr("LIVO_TOKEN_SNIPER_IMPL", DeploymentsSepolia.TOKEN_SNIPER_PROTECTED_IMPL),
-            taxTokenImpl: vm.envOr("LIVO_TAX_TOKEN_IMPL", DeploymentsSepolia.TAXABLE_TOKEN_IMPL),
-            taxTokenSniperImpl: vm.envOr(
-                "LIVO_TAX_TOKEN_SNIPER_IMPL", DeploymentsSepolia.TAXABLE_TOKEN_SNIPER_PROTECTED_IMPL
-            ),
+            taxTokenImpl: vm.envOr("LIVO_TAX_TOKEN_IMPL", DeploymentsSepolia.TAXABLE_TOKEN_V4_IMPL),
             weth: vm.envOr("LIVO_WETH", DeploymentAddressesSepolia.WETH),
             uniV2Router: vm.envOr("LIVO_UNIV2_ROUTER", DeploymentAddressesSepolia.UNIV2_ROUTER),
             uniV2Factory: vm.envOr("LIVO_UNIV2_FACTORY", DeploymentAddressesSepolia.UNIV2_FACTORY),

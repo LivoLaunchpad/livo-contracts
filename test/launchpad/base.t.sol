@@ -11,10 +11,7 @@ import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {LivoTokenSniperProtected} from "src/tokens/LivoTokenSniperProtected.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV2SniperProtected} from "src/tokens/LivoTaxableTokenUniV2SniperProtected.sol";
-import {LivoTaxableTokenUniV4SniperProtected} from "src/tokens/LivoTaxableTokenUniV4SniperProtected.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
@@ -42,7 +39,10 @@ contract LaunchpadBaseTests is Test {
     LivoToken public livoToken;
     LivoTaxableTokenUniV4 public livoTaxToken;
     LivoTaxableTokenUniV2 public livoTaxTokenV2;
-    LivoTaxableTokenUniV2SniperProtected public livoTaxTokenV2Sniper;
+    // Anti-sniper is now a gated feature of the base/tax impls (no separate sniper impls). These
+    // `*Sniper` names are kept as ALIASES pointing at the merged impls so existing call sites (impl
+    // assertions, salt prediction) keep compiling and stay correct.
+    LivoTaxableTokenUniV2 public livoTaxTokenV2Sniper;
 
     ILivoToken public implementation;
 
@@ -81,8 +81,8 @@ contract LaunchpadBaseTests is Test {
     LivoFactoryUniV4Unified public factorySniper;
     LivoFactoryUniV4Unified public factoryTaxSniper;
 
-    LivoTokenSniperProtected public livoTokenSniper;
-    LivoTaxableTokenUniV4SniperProtected public livoTaxTokenSniper;
+    LivoToken public livoTokenSniper; // alias of `livoToken` (anti-sniper is a gated feature)
+    LivoTaxableTokenUniV4 public livoTaxTokenSniper; // alias of `livoTaxToken`
     LivoMasterFeeHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
@@ -140,11 +140,41 @@ contract LaunchpadBaseTests is Test {
 
     uint256 internal _saltCounter;
 
+    /// @dev The factory namespaces the CREATE2 salt by the deployer (`keccak256(msg.sender, salt)`),
+    ///      so address prediction / vanity mining must use the same derivation. `creator` is the
+    ///      default deployer used by the createToken helpers below.
+    function _namespacedSalt(address deployer, bytes32 salt) internal pure returns (bytes32 result) {
+        // Equivalent to keccak256(abi.encodePacked(deployer, salt)), but computed in scratch space so
+        // that mining loops (which call this ~65k times per salt) don't leak memory. `abi.encodePacked`
+        // advances the free-memory pointer every call and Solidity never frees it, so the naive version
+        // grows memory into the megabytes across a loop → quadratic memory-expansion gas → MemoryOOG.
+        assembly {
+            mstore(0x00, shl(96, deployer)) // deployer in bytes [0x00, 0x14)
+            mstore(0x14, salt) // salt in bytes [0x14, 0x34)
+            result := keccak256(0x00, 0x34) // hash the 52-byte packed encoding
+        }
+    }
+
+    /// @dev Predicts the token address the factory would deploy for `deployer` with `salt`, matching
+    ///      the on-chain namespaced-salt derivation.
+    function _predictToken(address factory, address impl, address deployer, bytes32 salt)
+        internal
+        pure
+        returns (address)
+    {
+        return Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
+    }
+
+    /// @dev Mines the next salt whose namespaced address has the `0x1110` vanity suffix, for the
+    ///      default `creator` deployer. Use the 3-arg overload when deploying as a different account.
     function _nextValidSalt(address factory, address impl) internal returns (bytes32 salt) {
+        return _nextValidSalt(factory, impl, creator);
+    }
+
+    function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32 salt) {
         for (uint256 i = _saltCounter;; i++) {
             salt = bytes32(i);
-            address predicted = Clones.predictDeterministicAddress(impl, salt, factory);
-            if (uint16(uint160(predicted)) == 0x1110) {
+            if (uint16(uint160(_predictToken(factory, impl, deployer, salt))) == 0x1110) {
                 _saltCounter = i + 1;
                 return salt;
             }
@@ -371,10 +401,11 @@ contract LaunchpadBaseTests is Test {
             UniswapV4PoolConstants.TICK_UPPER
         );
 
-        livoTokenSniper = new LivoTokenSniperProtected();
-        livoTaxTokenSniper = new LivoTaxableTokenUniV4SniperProtected();
         livoTaxTokenV2 = new LivoTaxableTokenUniV2();
-        livoTaxTokenV2Sniper = new LivoTaxableTokenUniV2SniperProtected();
+        // Sniper aliases point at the merged impls: anti-sniper is a gated feature, not a distinct impl.
+        livoTokenSniper = livoToken;
+        livoTaxTokenSniper = livoTaxToken;
+        livoTaxTokenV2Sniper = livoTaxTokenV2;
 
         // Creator-vault infrastructure: vault factory (UUPS proxy) + the six allocation-specific curves.
         creatorVaultFactory = _deployCreatorVaultInfra();
@@ -405,12 +436,7 @@ contract LaunchpadBaseTests is Test {
         address factoryV2Impl = address(
             new LivoFactoryUniV2Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({
-                    base: address(livoToken),
-                    antiSniper: address(livoTokenSniper),
-                    tax: address(livoTaxTokenV2),
-                    taxAntiSniper: address(livoTaxTokenV2Sniper)
-                }),
+                ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxTokenV2)}),
                 address(bondingCurve),
                 address(graduatorV2),
                 address(feeHandler),
@@ -426,12 +452,7 @@ contract LaunchpadBaseTests is Test {
         address factoryV4Impl = address(
             new LivoFactoryUniV4Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({
-                    base: address(livoToken),
-                    antiSniper: address(livoTokenSniper),
-                    tax: address(livoTaxToken),
-                    taxAntiSniper: address(livoTaxTokenSniper)
-                }),
+                ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxToken)}),
                 address(bondingCurve),
                 address(graduatorV4),
                 address(graduatorV4),
