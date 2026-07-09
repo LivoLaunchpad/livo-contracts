@@ -672,11 +672,12 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
     function test_v2_graduatesWhileTaxDecayActive() public {
         uint40 t0 = uint40(block.timestamp);
         // decay-only token: 10%/10% buy/sell decay over the full 20min window, creation-anchored.
-        ILivoFactory.TokenSetup memory setup = ILivoFactory.TokenSetup({
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "Decay",
             symbol: "DCY",
             salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
-            feeShares: _fs(creator)
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
         });
         vm.prank(creator);
         testToken = factoryV2Unified.createToken(
@@ -684,7 +685,8 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
             _decayCfg(1000, 1000, 20 minutes, true),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0)
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
         );
         uniswapPair = LivoToken(testToken).pair();
 

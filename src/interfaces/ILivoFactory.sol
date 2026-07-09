@@ -62,23 +62,11 @@ interface ILivoFactory {
         uint256 vestingSeconds;
     }
 
-    /// @notice Token-identity bundle for the tier-less (tmp) struct-based `createToken` overload and the
-    ///         legacy positional overload. Groups the inputs that define the token itself (name, symbol,
-    ///         deterministic salt) and its fee receivers. `feeShares` must be non-empty — every token has
-    ///         at least one receiver. Tokens created through this struct always use `LiquidityTier.DEFAULT`.
-    /// @dev TEMPORARY: kept tier-less so existing frontends keep their `createToken` ABI while the
-    ///      liquidity-tier UI is not ready. Once the frontend adopts tiers, this struct is removed and
-    ///      `TokenSetupTiered` becomes the only setup struct.
-    struct TokenSetup {
-        string name;
-        string symbol;
-        bytes32 salt;
-        FeeShare[] feeShares;
-    }
-
-    /// @notice Token-identity bundle for the tiered struct-based `createToken` overload. Same fields as
-    ///         `TokenSetup` plus `liquidityTier`, which selects the post-graduation pool depth (and the
-    ///         tier-specific bonding curve + graduation marketcap).
+    /// @notice Token-identity bundle for the struct-based `createToken` overload. Groups the inputs that
+    ///         define the token itself (name, symbol, deterministic salt), its fee receivers and the
+    ///         `liquidityTier` selecting the post-graduation pool depth (and the tier-specific bonding
+    ///         curve + graduation marketcap). `feeShares` must be non-empty — every token has at least one
+    ///         receiver.
     /// @dev `liquidityTier`'s zero value is `LiquidityTier.THIN`, so set it explicitly.
     struct TokenSetupTiered {
         string name;
@@ -127,6 +115,13 @@ interface ILivoFactory {
     event CreatorVaultsCreated(
         address indexed token, uint256 totalVaultAllocation, address[] vaults, uint256[] amounts
     );
+
+    /// @notice Emitted when a token is created through the referral `createToken` overload with a
+    ///         non-zero `referral`. Records the relayer/referrer that forwarded the creation and is
+    ///         entitled to a cut of the fees. No on-chain payout or token storage is wired to this yet —
+    ///         it is purely an off-chain signal for now. Indexed on both fields so subscribers can filter
+    ///         by token or by referral (e.g. "all tokens referred by X").
+    event TokenReferral(address indexed token, address indexed referral);
 
     ////////////////// Errors //////////////////////
 

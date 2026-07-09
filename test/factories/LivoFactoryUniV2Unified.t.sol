@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {Vm} from "forge-std/Vm.sol";
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @notice Dispatch + field-readback tests for `LivoFactoryUniV2Unified`. These non-tax tests lock
 ///         in dispatch between the base and anti-sniper implementations based on
@@ -150,5 +152,48 @@ contract LivoFactoryUniV2UnifiedTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.InvalidFeeReceiver.selector);
         factoryV2Unified.createToken("T", "T", salt, _noFs(), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+    }
+
+    // ───────────── Referral overload ─────────────
+
+    function test_createToken_referral_emitsTokenReferral() public {
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoToken));
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "R", symbol: "R", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
+        address referral = makeAddr("relayer");
+        address expected = _predictToken(address(factoryV2Unified), address(livoToken), creator, salt);
+
+        vm.expectEmit(true, true, false, false);
+        emit ILivoFactory.TokenReferral(expected, referral);
+        vm.prank(creator);
+        address token = factoryV2Unified.createToken(
+            setup, _toCfgs(_emptyTaxCfg()), _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), referral
+        );
+        assertEq(token, expected);
+    }
+
+    /// @dev A zero referral emits no `TokenReferral` (the common no-referral deploy stays quiet).
+    function test_createToken_zeroReferral_noTokenReferralEvent() public {
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoToken));
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "R", symbol: "R", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
+
+        vm.recordLogs();
+        vm.prank(creator);
+        factoryV2Unified.createToken(
+            setup,
+            _toCfgs(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("TokenReferral(address,address)");
+        for (uint256 i; i < logs.length; ++i) {
+            assertTrue(logs[i].topics[0] != sig, "no TokenReferral for zero referral");
+        }
     }
 }
