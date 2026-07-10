@@ -157,7 +157,10 @@ library DeploymentAddressesRobinhoodTestnet {
     address public constant UNIV4_POSITION_MANAGER = 0x00EB6902D1e3be1A8C667041f9E75b77B7Ad3ba6;
 
     /// @notice Uniswap V4 Universal Router contract
-    address public constant UNIV4_UNIVERSAL_ROUTER = 0xE28c0e44F4016b073db20cF28971CAc6ce3664D3;
+    /// @dev Livo-deployed. The chain's pre-existing router (0xE28c…) is an old pre-V4 UniversalRouter
+    ///      (no `unlockCallback`) that reverts on V4 swaps, so Livo redeployed Robinhood mainnet's
+    ///      exact V4-capable UR bytecode re-pointed at this testnet's V4 infra.
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d;
 
     /// @notice Permit2 contract (canonical address)
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;

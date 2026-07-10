@@ -67,5 +67,5 @@
 | Uniswap V2 factory                           | `0x7766e3a6A8C98a76308CFb4040E330c3308F7C73` |
 | Uniswap V4 Pool Manager                      | `0x552815eF68E6eb418A3d65D0AA1043d93204F612` |
 | Uniswap V4 Position Manager                  | `0x00EB6902D1e3be1A8C667041f9E75b77B7Ad3ba6` |
-| Uniswap V4 Universal router                  | `0xE28c0e44F4016b073db20cF28971CAc6ce3664D3` |
+| Uniswap V4 Universal router                  | `0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d` |
 | Permit2                                      | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
