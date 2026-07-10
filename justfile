@@ -264,6 +264,48 @@ _rollback-unified rpc v2proxy v4proxy:
     done
     echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.<chain>.sol and run 'just export-deployments'."
 
+##################### ROLLBACK — Robinhood (unified factory proxies) #######################
+# Same break-glass rollback as `rollback-mainnet`, but Robinhood is on Blockscout, not Etherscan,
+# so the previous impl is read from the node via `cast logs` (fresh L2 → full-range getLogs is cheap)
+# instead of the Etherscan API. Broadcaster must be the proxy owner (livo.dev). Same guards; mainnet
+# (chain 4663) asks to confirm. Manifest is NOT auto-edited — see the note under `rollback-mainnet`.
+rollback-robinhood:
+    just _rollback-unified-rpclogs "$ROBINHOOD_RPC_URL" 0x7843203be233b3Be7E5017A68a64FdBf32b45fFE 0xb637800Dcd5c83913D828E961dBB964A9896f19d
+
+rollback-robinhood-testnet:
+    just _rollback-unified-rpclogs "$ROBINHOOD_TESTNET_RPC_URL" 0xc0dE7109626A458dE1E0Ff06106830beD96DE971 0xfBa7137768E53f3B6a0d2333F41C44BaC7161FA0
+
+_rollback-unified-rpclogs rpc v2proxy v4proxy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RPC='{{rpc}}'
+    CHAINID=$(cast chain-id --rpc-url "$RPC")
+    declare -a TARGETS=()
+    echo "Chain $CHAINID — discovering previous implementations (proxy : current -> previous):"
+    for PROXY in {{v2proxy}} {{v4proxy}}; do
+        LP=$(cast call --rpc-url "$RPC" "$PROXY" 'LAUNCHPAD()(address)')
+        LOGS=$(cast logs --rpc-url "$RPC" --from-block 0 --to-block latest 'Upgraded(address)' --address "$PROXY" --json)
+        N=$(echo "$LOGS" | jq 'length')
+        [ "$N" -ge 2 ] || { echo "❌ $PROXY: only $N Upgraded events; no previous impl"; exit 1; }
+        PREV=$(echo "$LOGS" | jq -r '.[-2].topics[1]'); PREV="0x${PREV: -40}"
+        CURR=$(echo "$LOGS" | jq -r '.[-1].topics[1]'); CURR="0x${CURR: -40}"
+        [ "$(cast code --rpc-url "$RPC" "$PREV")" != "0x" ] || { echo "❌ prev impl $PREV has no bytecode"; exit 1; }
+        PLP=$(cast call --rpc-url "$RPC" "$PREV" 'LAUNCHPAD()(address)')
+        [ "${PLP,,}" = "${LP,,}" ] || { echo "❌ prev impl $PREV wired to $PLP, not proxy launchpad $LP — refusing"; exit 1; }
+        echo "  $PROXY : $CURR -> $PREV"
+        TARGETS+=("$PROXY=$PREV")
+    done
+    if [ "$CHAINID" = "4663" ]; then
+        read -r -p "Broadcast these ROBINHOOD MAINNET rollbacks? type 'yes': " ok
+        [ "$ok" = "yes" ] || { echo "aborted"; exit 1; }
+    fi
+    for t in "${TARGETS[@]}"; do
+        PROXY="${t%%=*}"; PREV="${t##*=}"
+        cast send --rpc-url "$RPC" --account livo.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
+        echo "✔ $PROXY rolled back to $PREV"
+    done
+    echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.robinhood.<net>.sol and run 'just export-deployments'."
+
 create-token-v2 tokenName value="0":
     SALT=$(just next-salt {{factoryV2}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \
