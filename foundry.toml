@@ -12,8 +12,10 @@ verbosity = 3
 
 # Allow ExportDeployments script to (re)write the generated deployment manifests.
 fs_permissions = [
-    { access = "read-write", path = "./deployments.mainnet.md" },
-    { access = "read-write", path = "./deployments.sepolia.md" },
+    { access = "read-write", path = "./deployments.ethereum.mainnet.md" },
+    { access = "read-write", path = "./deployments.ethereum.sepolia.md" },
+    { access = "read-write", path = "./deployments.robinhood.mainnet.md" },
+    { access = "read-write", path = "./deployments.robinhood.testnet.md" },
 ]
 
 # extra_output = ["storageLayout"]
@@ -31,11 +33,19 @@ fail_on_revert = false
 # shrink_run_limit = 5000
 
 # RPC endpoints (uses env vars)
+# Robinhood Chain is an Arbitrum L2 with native ETH. Public RPCs:
+#   mainnet  https://rpc.mainnet.chain.robinhood.com
+#   testnet  https://rpc.testnet.chain.robinhood.com
 [rpc_endpoints]
 mainnet = "${ETH_RPC_URL}"
 sepolia = "${SEPOLIA_RPC_URL}"
+robinhood-mainnet = "${ROBINHOOD_RPC_URL}"
+robinhood-testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
 
-# Etherscan verification
+# Etherscan verification. Robinhood is NOT in Foundry's chain registry (v1.5.1); adding it to this
+# `[etherscan]` table with `chain = 4663/46630` makes EVERY `forge script` run abort with
+# "Chain <id> not supported". Robinhood uses Blockscout, so verify it from the CLI instead — the
+# `deploy-robinhood*` recipes pass `--verifier blockscout --verifier-url <explorer>/api/`.
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
 sepolia = { key = "${ETHERSCAN_API_KEY}" }

@@ -7,9 +7,12 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {
+    DeploymentAddressesEthereumMainnet,
+    DeploymentAddressesEthereumSepolia
+} from "src/config/DeploymentAddresses.sol";
+import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @notice Deploys `LivoSwapHook` via CREATE2 after mining a salt that encodes the four
 ///         required Uniswap V4 permission flags into the address.
@@ -64,12 +67,12 @@ contract DeployLivoSwapHook is Script {
     }
 
     function _resolveAddresses() internal view returns (address poolManager, address launchpad) {
-        if (block.chainid == DeploymentAddressesMainnet.BLOCKCHAIN_ID) {
-            poolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-            launchpad = DeploymentsMainnet.LAUNCHPAD;
-        } else if (block.chainid == DeploymentAddressesSepolia.BLOCKCHAIN_ID) {
-            poolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
-            launchpad = DeploymentsSepolia.LAUNCHPAD;
+        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
+            poolManager = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
+            launchpad = DeploymentsEthereumMainnet.LAUNCHPAD;
+        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+            poolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
+            launchpad = DeploymentsEthereumSepolia.LAUNCHPAD;
         } else {
             revert("Unsupported chain ID");
         }

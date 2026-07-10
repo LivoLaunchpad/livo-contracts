@@ -50,7 +50,7 @@ upgrades the proxies, which is the only consistent combination.
 ```bash
 # Sepolia ONLY: switch the hardcoded tax-token addresses to Sepolia first.
 # (Skip on mainnet — the default import is mainnet, and the scripts assert it.)
-just taxtokenaddresses
+just taxtoken-sepolia
 
 forge script DeployCreatorVaultSystem \
   --rpc-url <mainnet|sepolia> --account livo.dev --slow --broadcast --verify
@@ -90,7 +90,7 @@ just export-deployments   # refresh deployments.<chain>.md
 
 ```bash
 # Sepolia ONLY, again (this script also redeploys the tax tokens):
-just taxtokenaddresses
+just taxtoken-sepolia
 
 forge script RedeployAllTokensAndUpgradeFactories \
   --rpc-url <mainnet|sepolia> --account livo.dev --slow --broadcast --verify
@@ -138,7 +138,7 @@ forge script RedeployAllTokensAndUpgradeFactories --rpc-url <mainnet|sepolia> --
 - **ABIs:** already regenerated and committed (all 3 `createToken` overloads present) — no `just abis` needed.
 - **Vault factory:** permissionless `createVault`; nothing to whitelist.
 - **Sepolia tax-token import:** `LivoTaxableTokenUniV2/V4` hardcode `DeploymentAddresses` for gas; `just
-  taxtokenaddresses` flips the import to Sepolia. The redeploy scripts assert the import matches the target
+  taxtoken-sepolia` flips the import to Sepolia. The redeploy scripts assert the import matches the target
   chain and revert otherwise.
 - **Verification:** `--verify` needs the explorer API key configured in `foundry.toml`/env; drop it and verify
   later if needed.

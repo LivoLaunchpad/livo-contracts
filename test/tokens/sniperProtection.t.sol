@@ -10,7 +10,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 
 /// @dev Minimal graduator mock — returns a caller-chosen `pair` address from `initialize()`
 ///      and lets the test drive `markGraduated` on the token.
@@ -647,12 +647,12 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
     LivoTaxableTokenUniV4 internal impl;
 
     function setUp() public {
-        vm.chainId(DeploymentAddressesMainnet.BLOCKCHAIN_ID);
+        vm.chainId(DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID);
 
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
 
-        graduator = new MockGraduator(DeploymentAddressesMainnet.UNIV4_POOL_MANAGER);
+        graduator = new MockGraduator(DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER);
         impl = new LivoTaxableTokenUniV4();
         token = LivoTaxableTokenUniV4(payable(Clones.clone(address(impl))));
         token.initialize(

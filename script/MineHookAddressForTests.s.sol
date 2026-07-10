@@ -7,8 +7,8 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
-import {DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Simple script to mine a hook address for testing purposes
 /// @dev Run this once to get a valid hook address and salt, then hardcode in tests
@@ -54,10 +54,10 @@ contract MineHookAddressForTests is Script {
     /// @notice Get deployment addresses based on chain ID
     /// @return poolManager The Uniswap V4 Pool Manager address
     function _getPoolManager() internal view returns (address poolManager) {
-        if (block.chainid == DeploymentAddressesMainnet.BLOCKCHAIN_ID) {
-            poolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-        } else if (block.chainid == DeploymentAddressesSepolia.BLOCKCHAIN_ID) {
-            poolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
+        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
+            poolManager = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
+        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+            poolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
         } else {
             revert("Unsupported chain ID");
         }

@@ -7,8 +7,8 @@ import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Flip the unified factory proxies onto their pre-deployed v2 implementations — the launchpad v1->v2 cutover
 /// @notice Phase 2 of the launchpad-v2 rollout, and the SINGLE atomic switch of token creation from
@@ -55,21 +55,21 @@ contract UpgradeUnifiedFactories is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
-                factoryV2Impl: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED_IMPL,
-                factoryV4Impl: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED_IMPL,
-                launchpad: DeploymentsMainnet.LAUNCHPAD
+                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
+                factoryV2Impl: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED_IMPL,
+                factoryV4Impl: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED_IMPL,
+                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD
             });
-        } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
+        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
-                factoryV2Impl: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED_IMPL,
-                factoryV4Impl: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED_IMPL,
-                launchpad: DeploymentsSepolia.LAUNCHPAD
+                factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
+                factoryV2Impl: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED_IMPL,
+                factoryV4Impl: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED_IMPL,
+                launchpad: DeploymentsEthereumSepolia.LAUNCHPAD
             });
         } else {
             revert("Unsupported chain");

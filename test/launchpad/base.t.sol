@@ -22,7 +22,7 @@ import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol"
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
@@ -110,7 +110,7 @@ contract LaunchpadBaseTests is Test {
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
-    address constant DEAD_ADDRESS = DeploymentAddressesMainnet.DEAD_ADDRESS;
+    address constant DEAD_ADDRESS = DeploymentAddressesEthereumMainnet.DEAD_ADDRESS;
 
     // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
     address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
@@ -119,15 +119,15 @@ contract LaunchpadBaseTests is Test {
     uint256 constant BLOCKNUMBER = 23327777;
 
     // uniswapv4 addresses in mainnet
-    address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-    address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
-    address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
-    address constant universalRouter = DeploymentAddressesMainnet.UNIV4_UNIVERSAL_ROUTER;
+    address constant poolManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
+    address constant positionManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER;
+    address constant permit2Address = DeploymentAddressesEthereumMainnet.PERMIT2;
+    address constant universalRouter = DeploymentAddressesEthereumMainnet.UNIV4_UNIVERSAL_ROUTER;
 
     // Uniswap V2 router address on mainnet
-    address constant UNISWAP_V2_ROUTER = DeploymentAddressesMainnet.UNIV2_ROUTER;
-    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(DeploymentAddressesMainnet.UNIV2_FACTORY);
-    IWETH constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
+    address constant UNISWAP_V2_ROUTER = DeploymentAddressesEthereumMainnet.UNIV2_ROUTER;
+    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(DeploymentAddressesEthereumMainnet.UNIV2_FACTORY);
+    IWETH constant WETH = IWETH(DeploymentAddressesEthereumMainnet.WETH);
 
     // This is the effective price when buying at graduation (from bonding curve slope)
     uint256 constant GRADUATION_PRICE = 12373924040; // ETH/token (eth per token, expressed in wei)
@@ -381,7 +381,7 @@ contract LaunchpadBaseTests is Test {
         launchpad = new LivoLaunchpad(treasury, admin);
         bondingCurve = new ConstantProductBondingCurve();
         graduatorV2 = new LivoGraduatorUniswapV2(
-            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesMainnet.UNIV2_PAIR_INIT_CODE_HASH
+            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
 
         deployCodeTo(

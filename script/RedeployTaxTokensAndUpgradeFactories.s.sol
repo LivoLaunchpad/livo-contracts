@@ -14,9 +14,12 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
-import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {
+    DeploymentAddressesEthereumMainnet,
+    DeploymentAddressesEthereumSepolia
+} from "src/config/DeploymentAddresses.sol";
+import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Redeploy all tax-token implementations and upgrade BOTH unified factory proxies
 /// @notice Wraps up the rollout for the `setTaxBps` feature added to `LivoTaxableToken`.
@@ -41,7 +44,7 @@ import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
 ///         reverts with `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
 ///
 ///         Pre-broadcast sanity: confirms both V2 and V4 tax-token sources import the right
-///         per-chain `DeploymentAddresses`. Run `just taxtokenaddresses` before deploying to Sepolia.
+///         per-chain `DeploymentAddresses`. Run `just taxtoken-sepolia` before deploying to Sepolia.
 ///
 ///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL`, `TAXABLE_TOKEN_V4_IMPL`,
 ///         `FACTORY_UNIV2_UNIFIED_IMPL`, and `FACTORY_UNIV4_UNIFIED_IMPL` in
@@ -77,45 +80,45 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsMainnet.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsMainnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsMainnet.LAUNCHPAD,
-                bondingCurve: DeploymentsMainnet.BONDING_CURVE,
-                graduatorV2: DeploymentsMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsMainnet.GRADUATOR_UNIV4_0P5,
-                masterFeeHandler: DeploymentsMainnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsMainnet.TOKEN_IMPL
+                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
+                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
+                graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just taxtokenaddresses` only for sepolia)"
+                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV2 import is not Mainnet (run `just taxtoken-sepolia` only for sepolia)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.BLOCKCHAIN_ID == DeploymentAddressesMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV4 import is not Mainnet (run `just taxtokenaddresses` only for sepolia)"
+                AddressesFromLivoTaxableTokenV4.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV4 import is not Mainnet (run `just taxtoken-sepolia` only for sepolia)"
             );
-        } else if (block.chainid == DeploymentsSepolia.BLOCKCHAIN_ID) {
+        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
-                factoryV2Proxy: DeploymentsSepolia.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsSepolia.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsSepolia.LAUNCHPAD,
-                bondingCurve: DeploymentsSepolia.BONDING_CURVE,
-                graduatorV2: DeploymentsSepolia.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsSepolia.GRADUATOR_UNIV4_0P5,
-                masterFeeHandler: DeploymentsSepolia.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsSepolia.TOKEN_IMPL
+                factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
+                bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
+                graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
+                graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
+                masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just taxtokenaddresses`)"
+                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV2 import is not Sepolia (run `just taxtoken-sepolia`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.BLOCKCHAIN_ID == DeploymentAddressesSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtokenaddresses`)"
+                AddressesFromLivoTaxableTokenV4.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
             );
         } else {
             revert("Unsupported chain");

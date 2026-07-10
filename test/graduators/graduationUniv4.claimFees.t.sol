@@ -28,7 +28,7 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {

@@ -47,8 +47,8 @@ jobs:
       - name: Deployment manifest drift check
         run: |
           forge script ExportDeployments
-          if ! git diff --exit-code deployments.mainnet.md deployments.sepolia.md; then
-            echo "::error::deployments.{mainnet,sepolia}.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
+          if ! git diff --exit-code deployments.ethereum.mainnet.md deployments.ethereum.sepolia.md deployments.robinhood.mainnet.md deployments.robinhood.testnet.md; then
+            echo "::error::deployments.{ethereum,robinhood}.*.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
             exit 1
           fi
         id: deployments_drift

@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {DeploymentAddressesSepolia} from "../../src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumSepolia} from "../../src/config/DeploymentAddresses.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IWETH} from "../../src/interfaces/IWETH.sol";
 import {IUniswapV2Router02} from "../../src/interfaces/IUniswapV2Router02.sol";
@@ -20,8 +20,8 @@ import {IUniswapV2Router02} from "../../src/interfaces/IUniswapV2Router02.sol";
 /// @notice Script to perform Uniswap V2 swaps (buy/sell) on Sepolia testnet
 /// @dev Uses environment variables for configuration
 contract UniswapV2Swaps is Script {
-    IWETH constant WETH = IWETH(DeploymentAddressesSepolia.WETH);
-    IUniswapV2Router02 constant ROUTER = IUniswapV2Router02(DeploymentAddressesSepolia.UNIV2_ROUTER);
+    IWETH constant WETH = IWETH(DeploymentAddressesEthereumSepolia.WETH);
+    IUniswapV2Router02 constant ROUTER = IUniswapV2Router02(DeploymentAddressesEthereumSepolia.UNIV2_ROUTER);
 
     /// @notice Executes a buy swap (ETH -> WETH -> Token)
     /// @param token The token to buy

@@ -4,9 +4,12 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsMainnet} from "src/config/manifest.mainnet.sol";
-import {DeploymentsSepolia} from "src/config/manifest.sepolia.sol";
+import {
+    DeploymentAddressesEthereumMainnet,
+    DeploymentAddressesEthereumSepolia
+} from "src/config/DeploymentAddresses.sol";
+import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Redeploy all six `LivoGraduatorUniswapV4` instances (bytecode-only change)
 /// @notice Redeploys the six V4 graduators (DEFAULT/THIN/THICK x 100/50-bps hook) with unchanged
@@ -81,23 +84,23 @@ contract RedeployUniV4Graduators is Script {
     }
 
     function _resolveDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentAddressesMainnet.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
             d = Deps({
-                launchpad: DeploymentsMainnet.LAUNCHPAD,
-                poolManager: DeploymentAddressesMainnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesMainnet.PERMIT2,
-                hook100: DeploymentsMainnet.SWAP_HOOK,
-                hook50: DeploymentsMainnet.SWAP_HOOK_0P5
+                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
+                poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
+                positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
+                permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
+                hook100: DeploymentsEthereumMainnet.SWAP_HOOK,
+                hook50: DeploymentsEthereumMainnet.SWAP_HOOK_0P5
             });
-        } else if (block.chainid == DeploymentAddressesSepolia.BLOCKCHAIN_ID) {
+        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
-                launchpad: DeploymentsSepolia.LAUNCHPAD,
-                poolManager: DeploymentAddressesSepolia.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesSepolia.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesSepolia.PERMIT2,
-                hook100: DeploymentsSepolia.SWAP_HOOK,
-                hook50: DeploymentsSepolia.SWAP_HOOK_0P5
+                launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
+                poolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
+                positionManager: DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
+                permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
+                hook100: DeploymentsEthereumSepolia.SWAP_HOOK,
+                hook50: DeploymentsEthereumSepolia.SWAP_HOOK_0P5
             });
         } else {
             revert("Unsupported chain ID");
