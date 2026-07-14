@@ -25,8 +25,12 @@ from rich.table import Table
 GRAPHQL_URL = "https://indexer.livo.trade/v1/graphql"
 JSONRPC_BATCH_SIZE = 100
 HTTP_TIMEOUT = 30
-MIN_BALANCE_WEI = 10**15  # 0.001 ETH
-MIN_ACCRUED_WEI = 10**16  # 0.01 ETH: ignore dust claims not worth funding gas for
+MIN_ACCRUED_WEI = 5 * 10**16  # 0.05 ETH: ignore dust claims not worth funding gas for
+
+# We flag a creator only when ALL three hold on the chain where they accrued:
+#   1. total accrued > MIN_ACCRUED_WEI
+#   2. never claimed anything on that chain (they don't know how to claim yet)
+#   3. exactly 0 ETH balance (any balance means they have gas / have held ETH before)
 
 # Chains to check. rpc_default lets Robinhood work without a configured secret (public RPC).
 CHAINS = [
@@ -39,16 +43,19 @@ CHAINS = [
     },
 ]
 
+# No claimedEth filter here: rows are per-token, so we must aggregate every token a
+# creator has on the chain to know whether they have EVER claimed. Filtering rows by
+# claimedEth == 0 would keep a creator who claimed on one token but not another.
 QUERY = """
 query MyQuery {{
   RewardsTokenCreator(
     where: {{
       chainId: {{_eq: "{chain_id}"}},
-      accountedEth: {{_gt: "0"}},
-      claimedEth: {{_eq: "0"}}
+      accountedEth: {{_gt: "0"}}
     }}
   ) {{
     accruedEth
+    claimedEth
     creator
   }}
 }}
@@ -69,12 +76,13 @@ def fetch_creators(chain_id: str) -> list[dict]:
     return payload["data"]["RewardsTokenCreator"]
 
 
-def unique_creators(rows: list[dict]) -> dict[str, int]:
-    """Return {lowercased address: total accruedEth in wei}."""
-    totals: dict[str, int] = {}
+def unique_creators(rows: list[dict]) -> dict[str, tuple[int, int]]:
+    """Return {lowercased address: (total accruedEth, total claimedEth) in wei}."""
+    totals: dict[str, tuple[int, int]] = {}
     for row in rows:
         addr = row["creator"].lower()
-        totals[addr] = totals.get(addr, 0) + int(row["accruedEth"])
+        accrued, claimed = totals.get(addr, (0, 0))
+        totals[addr] = (accrued + int(row["accruedEth"]), claimed + int(row["claimedEth"]))
     return totals
 
 
@@ -120,16 +128,21 @@ def main() -> int:
             continue
         try:
             console.print(f"[dim]{name}: querying Livo indexer…[/dim]")
-            accrued_by_addr = unique_creators(fetch_creators(chain["chain_id"]))
-            addresses = list(accrued_by_addr.keys())
-            console.print(f"[dim]{name}: {len(addresses)} unique creators with pending claims.[/dim]")
-            if not addresses:
+            totals = unique_creators(fetch_creators(chain["chain_id"]))
+            # Rules 1 & 2: enough accrued and never claimed on this chain.
+            candidates = {
+                addr: accrued
+                for addr, (accrued, claimed) in totals.items()
+                if accrued > MIN_ACCRUED_WEI and claimed == 0
+            }
+            console.print(f"[dim]{name}: {len(candidates)} creators with unclaimed rewards ≥ 0.05 ETH.[/dim]")
+            if not candidates:
                 continue
-            console.print(f"[dim]{name}: reading balances ({len(addresses)} wallets, batched)…[/dim]")
-            balances = get_balances(addresses, rpc_url)
-            for addr in addresses:
-                if balances[addr] < MIN_BALANCE_WEI and accrued_by_addr[addr] > MIN_ACCRUED_WEI:
-                    unfunded.append((name, addr, balances[addr], accrued_by_addr[addr]))
+            console.print(f"[dim]{name}: reading balances ({len(candidates)} wallets, batched)…[/dim]")
+            balances = get_balances(list(candidates), rpc_url)
+            for addr, accrued in candidates.items():
+                if balances[addr] == 0:  # Rule 3: exactly 0 ETH means no gas and never held ETH.
+                    unfunded.append((name, addr, balances[addr], accrued))
         except Exception as e:  # noqa: BLE001 — keep going so the other chain still gets checked
             errors.append(f"{name}: {e}")
             console.print(f"[red]{name}: error — {e}[/red]")
@@ -137,7 +150,7 @@ def main() -> int:
     unfunded.sort(key=lambda x: x[3], reverse=True)
 
     if unfunded:
-        table = Table(title=f"Unfunded creators (balance < 0.001 ETH): {len(unfunded)}")
+        table = Table(title=f"Unfunded creators (0 ETH balance, unclaimed ≥ 0.05 ETH): {len(unfunded)}")
         table.add_column("chain", style="magenta", no_wrap=True)
         table.add_column("creator", style="cyan", no_wrap=True)
         table.add_column("balance (ETH)", justify="right")
@@ -157,7 +170,7 @@ def main() -> int:
             per_chain[chain_name] = per_chain.get(chain_name, 0) + 1
         breakdown = ", ".join(f"{n} on {c}" for c, n in per_chain.items())
         parts.append(
-            f"{len(unfunded)} creator(s) have pending ETH claims but a balance below 0.001 ETH "
+            f"{len(unfunded)} creator(s) have ≥ 0.05 ETH unclaimed, never claimed, and a 0 ETH balance "
             f"({breakdown}) — fund them or investigate."
         )
     if errors:
