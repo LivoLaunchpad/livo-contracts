@@ -147,6 +147,25 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         }
     }
 
+    /// @dev Scenario 3: a creator buy sized at `maxBuyOnDeploy` (the entire pre-graduation float) is
+    ///      accepted for every vault level and graduates the token inside the same `createToken` tx — the
+    ///      max buy reaches the graduation threshold without tripping `MaxEthReservesExceeded`. Proves the
+    ///      no-cap deploy buy is bounded only by graduation, across tiers and up to the 30% max vault.
+    function _sweepCreatorBuyMax(LiquidityTier tier) internal {
+        for (uint256 j; j < BPS_IDX.length; ++j) {
+            uint256 i = BPS_IDX[j];
+            string memory ctx = _ctx(tier, BPS[i]);
+            uint256 maxTokens = factoryV4Unified.maxBuyOnDeploy(tier, BPS[i]);
+            uint256 ethNeeded =
+                factoryV4Unified.quoteBuyOnDeploy(tier, maxTokens, BPS[i], _toCfgs(_emptyTaxCfg()), _cfg());
+            address token = _create(tier, BPS[i], ethNeeded, _ss(creator));
+            assertTrue(
+                launchpad.getTokenState(token).graduated, string.concat(ctx, "max creator buy must graduate the token")
+            );
+            assertGe(ILivoToken(token).balanceOf(creator), maxTokens, string.concat(ctx, "deployer got less than max"));
+        }
+    }
+
     /// @dev Scenarios 4/5: a normal launchpad buy returns tokens; selling them all back returns eth that
     ///      matches the launchpad quote and never exceeds the eth deposited. Stays well below the lowest
     ///      tier threshold (THIN = 2.0 ETH) so the token does not graduate mid-test.
@@ -229,23 +248,20 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         _sweepCreatorBuy(LiquidityTier.THICK, TOTAL_SUPPLY / 100);
     }
 
-    // ───────────────────────── scenario 3: create + creator buy (max quoted) ─────────────────────────
-    // The buy-on-deploy cap: maxBuyOnDeployBps (10%) of supply.
-
-    function _maxBuyTokens() internal view returns (uint256) {
-        return TOTAL_SUPPLY * factoryV4Unified.maxBuyOnDeployBps() / 10_000;
-    }
+    // ───────────────────────── scenario 3: create + creator buy (max = up to graduation) ─────────────────────────
+    // No buy-on-deploy cap: the max is `maxBuyOnDeploy` (the whole pre-graduation float), and buying it
+    // graduates the token in the same createToken tx.
 
     function test_creatorBuyMax_thin() public {
-        _sweepCreatorBuy(LiquidityTier.THIN, _maxBuyTokens());
+        _sweepCreatorBuyMax(LiquidityTier.THIN);
     }
 
     function test_creatorBuyMax_default() public {
-        _sweepCreatorBuy(LiquidityTier.DEFAULT, _maxBuyTokens());
+        _sweepCreatorBuyMax(LiquidityTier.DEFAULT);
     }
 
     function test_creatorBuyMax_thick() public {
-        _sweepCreatorBuy(LiquidityTier.THICK, _maxBuyTokens());
+        _sweepCreatorBuyMax(LiquidityTier.THICK);
     }
 
     // ───────────────────────── scenarios 4/5: buy + sell from launchpad ─────────────────────────

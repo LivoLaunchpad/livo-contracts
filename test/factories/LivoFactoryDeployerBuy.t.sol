@@ -11,6 +11,8 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
@@ -106,21 +108,6 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         assertEq(LivoToken(token).balanceOf(address(factoryV2)), 0);
     }
 
-    /// @dev cap applies to aggregate — a single recipient holding 100% shares can receive up to the full cap
-    function test_createToken_capAppliesToAggregate_singleRecipientCanHitFullCap() public {
-        uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxBuyOnDeployBps() / 10_000;
-        uint256 totalEthNeeded =
-            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_emptyTaxCfg()));
-        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
-
-        vm.prank(creator);
-        address token = factoryV2.createToken{value: totalEthNeeded}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
-        );
-
-        assertGe(LivoToken(token).balanceOf(creator), maxTokens);
-    }
-
     // ============ Supply-share validation ============
 
     /// @dev shares not summing to 10 000 revert with InvalidShares
@@ -200,31 +187,18 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         );
     }
 
-    // ============ Cap Enforcement ============
+    // ============ Graduation ceiling ============
 
-    /// @dev reverts when ETH would buy more than the aggregate cap (10%)
-    function test_createToken_revertsWhenExceedingMaxBuy() public {
-        // 1 ether should buy way more than 10% at the start of the curve
+    /// @dev No buy-on-deploy cap: the deploy buy is bounded only by graduation. A buy whose ETH would push
+    ///      the curve past `graduationThreshold + maxExcessOverThreshold` reverts `MaxEthReservesExceeded`
+    ///      (DEFAULT threshold is 3.75 ETH, so 10 ETH is comfortably over the ceiling).
+    function test_createToken_revertsWhenBuyExceedsGraduationCeiling() public {
         bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidBuyOnDeploy.selector));
-        factoryV2.createToken{value: 1 ether}(
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        factoryV2.createToken{value: 10 ether}(
             "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
-        );
-    }
-
-    /// @dev cap is on aggregate — splitting doesn't bypass the cap
-    function test_createToken_revertsWhenAggregateExceedsCap_evenWithSplit() public {
-        bytes32 salt = _nextValidSalt(address(factoryV2), address(livoToken));
-        ILivoFactory.SupplyShare[] memory ss = new ILivoFactory.SupplyShare[](2);
-        ss[0] = ILivoFactory.SupplyShare({account: alice, shares: 5_000});
-        ss[1] = ILivoFactory.SupplyShare({account: bob, shares: 5_000});
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidBuyOnDeploy.selector));
-        factoryV2.createToken{value: 1 ether}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
     }
 
@@ -263,9 +237,10 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
-    /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
-    function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
-        uint256 maxTokens = TOTAL_SUPPLY * factoryV2.maxBuyOnDeployBps() / 10_000;
+    /// @dev At `maxBuyOnDeploy` the deploy buy reaches the graduation threshold: createToken succeeds
+    ///      (no MaxEthReservesExceeded) and the token graduates in the same tx.
+    function test_maxBuyOnDeploy_reachesGraduation() public {
+        uint256 maxTokens = factoryV2.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
         uint256 totalEthNeeded =
             factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_emptyTaxCfg()));
 
@@ -277,6 +252,7 @@ contract LivoFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduator
         );
 
         assertGe(LivoToken(token).balanceOf(creator), maxTokens);
+        assertTrue(launchpad.getTokenState(token).graduated, "max buy must graduate the token");
     }
 
     /// @dev With a graduation-anchored tax window (`startTaxFromLaunch == false`) the deploy buy pays
@@ -360,15 +336,16 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         assertEq(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), 0);
     }
 
-    // ============ Cap Enforcement ============
+    // ============ Graduation ceiling ============
 
-    /// @dev reverts when ETH would buy more than 10% of supply
-    function test_createToken_revertsWhenExceedingMaxBuy() public {
+    /// @dev No buy-on-deploy cap: a deploy buy past `graduationThreshold + maxExcessOverThreshold`
+    ///      reverts `MaxEthReservesExceeded` (DEFAULT threshold 3.75 ETH; 10 ETH is over the ceiling).
+    function test_createToken_revertsWhenBuyExceedsGraduationCeiling() public {
         bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidBuyOnDeploy.selector));
-        factoryTax.createToken{value: 1 ether}(
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        factoryTax.createToken{value: 10 ether}(
             "TestToken",
             "TEST",
             salt,
@@ -467,9 +444,10 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // quote is tight: deployer doesn't materially overpay
     }
 
-    /// @dev quoteBuyOnDeploy at max allowed tokens does not revert on createToken
-    function test_quoteBuyOnDeploy_maxAllowedTokens_doesNotRevert() public {
-        uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;
+    /// @dev At `maxBuyOnDeploy` the tax-token deploy buy reaches graduation: createToken succeeds and the
+    ///      token graduates in the same tx.
+    function test_maxBuyOnDeploy_reachesGraduation() public {
+        uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
             LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100()
         );
@@ -489,6 +467,115 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         );
 
         assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
+        assertTrue(launchpad.getTokenState(token).graduated, "max buy must graduate the token");
+    }
+
+    /// @dev `maxBuyOnDeploy` is a TOKEN amount, independent of fees/taxes (the curve reserve ceiling is on
+    ///      post-fee reserves). So a token launching with a BUY tax active from launch still graduates on a
+    ///      max deploy buy: the deploy buy pays LP fee + launch buy tax, but `quoteBuyOnDeploy` grosses the
+    ///      ETH up for both, so reserves still land at the graduation threshold. 4% buy tax (+1% V4 LP fee).
+    function test_maxBuyOnDeploy_reachesGraduation_withLaunchBuyTax() public {
+        uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
+        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(400, 0, uint32(14 days))), _univ4Cfg100()
+        );
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+
+        vm.prank(creator);
+        address token = factoryTax.createToken{value: totalEthNeeded}(
+            "TestToken",
+            "TEST",
+            salt,
+            _fs(creator),
+            _ss(creator),
+            false,
+            _taxCfg(400, 0, uint32(14 days)), // buyTax 400, startTaxFromLaunch defaults true
+            _emptyAntiSniperCfg()
+        );
+
+        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
+        assertTrue(launchpad.getTokenState(token).graduated, "max buy with launch buy tax must graduate");
+    }
+
+    /// @dev Same, with a launch-anchored decaying buy tax (decay-only token): at elapsed≈0 the deploy buy
+    ///      pays the full 10% decay-start buy rate (+1% LP), and the max deploy buy still graduates because
+    ///      `quoteBuyOnDeploy` grosses the ETH up for the decay-start rate.
+    function test_maxBuyOnDeploy_reachesGraduation_withLaunchDecayBuyTax() public {
+        uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
+        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
+            LiquidityTier.DEFAULT, maxTokens, 0, _decayCfg(1000, 0, 20 minutes, true), _univ4Cfg100()
+        );
+
+        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "TestToken", symbol: "TEST", salt: salt, feeShares: _fs(creator), liquidityTier: LiquidityTier.DEFAULT
+        });
+
+        vm.prank(creator);
+        address token = factoryTax.createToken{value: totalEthNeeded}(
+            setup,
+            _decayCfg(1000, 0, 20 minutes, true),
+            _univ4Cfg100(),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+
+        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
+        assertTrue(launchpad.getTokenState(token).graduated, "max buy with launch decay buy tax must graduate");
+    }
+
+    /// @dev Tightest deploy-buy: max creator vault (30%) locked + a launch-anchored BUY tax. `maxBuyOnDeploy`
+    ///      reads the 30%-vault curve (a smaller float) and `quoteBuyOnDeploy` grosses the ETH up for LP +
+    ///      launch buy tax — the max deploy buy still graduates in the same tx with no revert. 4% buy tax.
+    function test_maxBuyOnDeploy_reachesGraduation_withMaxVaultAndLaunchBuyTax() public {
+        uint256 vaultBps = 3000; // 30% max
+        uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, vaultBps);
+        TaxConfigs memory taxConfigs = _toCfgs(_taxCfg(400, 0, uint32(14 days)));
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, vaultBps, taxConfigs, _univ4Cfg100());
+
+        address token = _createMaxVaultTaxToken(vaultBps, taxConfigs, totalEthNeeded);
+
+        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
+        assertTrue(launchpad.getTokenState(token).graduated, "max buy w/ 30% vault + launch buy tax must graduate");
+    }
+
+    /// @dev Same tightest scenario with a launch-anchored decaying buy tax (10% decay start).
+    function test_maxBuyOnDeploy_reachesGraduation_withMaxVaultAndLaunchDecayTax() public {
+        uint256 vaultBps = 3000; // 30% max
+        uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, vaultBps);
+        TaxConfigs memory taxConfigs = _decayCfg(1000, 0, 20 minutes, true);
+        uint256 totalEthNeeded =
+            factoryTax.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, vaultBps, taxConfigs, _univ4Cfg100());
+
+        address token = _createMaxVaultTaxToken(vaultBps, taxConfigs, totalEthNeeded);
+
+        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
+        assertTrue(launchpad.getTokenState(token).graduated, "max buy w/ 30% vault + launch decay tax must graduate");
+    }
+
+    /// @dev Deploys a DEFAULT-tier tax token with a single 30%-vault, funding the deployer buy with `value`.
+    function _createMaxVaultTaxToken(uint256 vaultBps, TaxConfigs memory taxConfigs, uint256 value)
+        internal
+        returns (address token)
+    {
+        ILivoFactory.CreatorVault[] memory vaults = new ILivoFactory.CreatorVault[](1);
+        vaults[0] = ILivoFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "TestToken",
+            symbol: "TEST",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+
+        vm.prank(creator);
+        token = factoryTax.createToken{value: value}(
+            setup, taxConfigs, _univ4Cfg100(), _ss(creator), _emptyAntiSniperCfg(), vaults, address(0)
+        );
     }
 
     /// @dev With a graduation-anchored tax window (`startTaxFromLaunch == false`) the deploy buy pays
@@ -519,32 +606,5 @@ contract LivoFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradua
         uint256 creatorBalance = LivoTaxableTokenUniV4(payable(token)).balanceOf(creator);
         assertGe(creatorBalance, tokenAmount);
         assertApproxEqRel(creatorBalance, tokenAmount, 0.005e18); // within 0.5% of the quote
-    }
-
-    /// @dev The user-facing harm of an inflated quote: at the `maxBuyOnDeployBps` limit, the extra
-    ///      ETH from wrongly including a graduation-anchored `buyTaxBps` buys more than the cap and
-    ///      `createToken` reverts with InvalidBuyOnDeploy.
-    function test_quoteBuyOnDeploy_graduationAnchoredTax_maxAllowedTokens_doesNotRevert() public {
-        uint256 maxTokens = TOTAL_SUPPLY * factoryTax.maxBuyOnDeployBps() / 10_000;
-        uint16 buyTax = 400;
-        uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days), false)), _univ4Cfg100()
-        );
-
-        bytes32 salt = _nextValidSalt(address(factoryTax), address(livoTaxToken));
-
-        vm.prank(creator);
-        address token = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
-            _ss(creator),
-            false,
-            _taxCfg(buyTax, 0, uint32(14 days), false),
-            _emptyAntiSniperCfg()
-        );
-
-        assertGe(LivoTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
     }
 }

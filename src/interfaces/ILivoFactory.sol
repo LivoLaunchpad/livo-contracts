@@ -131,7 +131,6 @@ interface ILivoFactory {
     error InvalidSupplyShares();
     error InvalidShares();
     error InvalidTokenAddress();
-    error InvalidBuyOnDeploy();
     error MultipleDirectFeeReceivers();
     error InvalidAntiSniperConfig();
     error InvalidTaxConfig();

@@ -39,8 +39,8 @@ library DeploymentsRobinhoodMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x12947f43652BE26d7b418f0cEe3fE73259805222;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xDBfa01630382e88268df8AE00476e03eE2da1Af7;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xdA15442dCe5C2356C0b42d67DAc606C3dc2f4356;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xCBe739C13a031c446617f0722FDC081b9298979b;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.

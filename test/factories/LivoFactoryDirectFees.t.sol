@@ -90,7 +90,7 @@ contract LivoFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
         vm.deal(creator, 5 ether);
-        // Small buy to stay under maxBuyOnDeployBps; the trace shows registration is invoked
+        // Small buy so the token stays pre-graduation; the trace shows registration is invoked
         // immediately after token init, before any fee can possibly flow.
         vm.prank(creator);
         address token = factoryV4Unified.createToken{value: 0.05 ether}(

@@ -105,11 +105,6 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///         100 bps in LP fees, leaving 450 or 400 bps for tax.
     uint256 public constant MAX_TOTAL_FEE_BPS = 500;
 
-    /// @notice Max percentage of total supply that can be purchased on token creation (applies to the
-    ///         aggregate, not per recipient), in basis points. Fixed at 10%. To change this value,
-    ///         deploy a new implementation with a different constant and `upgradeTo` the proxy.
-    uint256 public constant maxBuyOnDeployBps = 1_000; // 10%
-
     /// @notice Total token supply minted per token. Mirrors `LivoToken.TOTAL_SUPPLY`; used to size
     ///         creator-vault allocations from their bps.
     uint256 internal constant TOTAL_SUPPLY = 1_000_000_000e18;
@@ -186,6 +181,23 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
+    /// @notice Max tokens a deploy buy can purchase for a given liquidity tier and total creator-vault
+    ///         allocation. Buying this amount pushes the curve to exactly its graduation threshold, so the
+    ///         token graduates in the same `createToken` tx while staying clear of `maxExcessOverThreshold`
+    ///         — a deploy buy sized at or below it never reverts `MaxEthReservesExceeded`. There is no other
+    ///         cap on the deploy buy; graduation is the limit. Frontends read this to bound the deploy-buy
+    ///         token amount, then price it with `quoteBuyOnDeploy`.
+    /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults (0 for none); selects the
+    ///        same curve `createToken` uses. Reverts `InvalidCreatorVault` if not a valid multiple in range.
+    function maxBuyOnDeploy(LiquidityTier tier, uint256 totalLockedInVaultsBps)
+        external
+        view
+        returns (uint256 maxTokens)
+    {
+        ILivoBondingCurve curve = _resolveBondingCurve(tier, totalLockedInVaultsBps);
+        (maxTokens,) = curve.buyTokensWithExactEth(0, curve.ethGraduationThreshold());
+    }
+
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     /// @dev Shared body for the concrete factories' `quoteBuyOnDeploy`: total ETH (including the
@@ -195,10 +207,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      deployer will pass to `createToken` — the token doesn't exist at quote time, so the fee is
     ///      computed from those inputs rather than read from the token. Pass the SUM of `supplyBps`
     ///      across the vaults (0 for a non-vault token); only the aggregate matters (it keys the curve),
-    ///      so vault owners/vesting need not be finalized to quote. Doesn't account for the
-    ///      `maxBuyOnDeployBps` cap — the caller must keep `tokenAmount` under it. Reverts
-    ///      (`InvalidCreatorVault`) on a `totalLockedInVaultsBps` no vault array could sum to; a
-    ///      `buyFeeBps >= BASIS_POINTS` reverts on the subtraction below (nonsensical input).
+    ///      so vault owners/vesting need not be finalized to quote. The only bound on `tokenAmount` is
+    ///      graduation: keep it at or below `maxBuyOnDeploy(tier, totalLockedInVaultsBps)`, else the
+    ///      resulting buy reverts `MaxEthReservesExceeded`. Reverts (`InvalidCreatorVault`) on a
+    ///      `totalLockedInVaultsBps` no vault array could sum to; a `buyFeeBps >= BASIS_POINTS` reverts
+    ///      on the subtraction below (nonsensical input).
     function _quoteBuyOnDeploy(
         LiquidityTier tier,
         uint256 tokenAmount,
@@ -269,16 +282,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     }
 
     /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
-    ///      The cap is enforced on the aggregate `tokensBought`, not per recipient. Rounding dust
-    ///      goes to the last recipient so no tokens remain in the factory.
+    ///      Rounding dust goes to the last recipient so no tokens remain in the factory. There is no
+    ///      per-deploy buy cap: the buy is bounded only by graduation — the launchpad/curve accept ETH
+    ///      up to `graduationThreshold + maxExcessOverThreshold` and revert `MaxEthReservesExceeded`
+    ///      beyond it (a buy that reaches the threshold graduates the token in this same tx). Use
+    ///      `maxBuyOnDeploy` to size a buy up to the instant-graduation point without risking that revert.
     /// @dev deployer-buy receivers bypass the sniper-protection features
     function _buyAndDistribute(address token, SupplyShare[] calldata supplyShares) internal {
         uint256 tokensBought = LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
-
-        // Floor division absorbs sub-token rounding from the bonding curve's ceiling math
-        require(
-            tokensBought * BASIS_POINTS / ILivoToken(token).totalSupply() <= maxBuyOnDeployBps, InvalidBuyOnDeploy()
-        );
 
         uint256 len = supplyShares.length;
         address[] memory recipients = new address[](len);

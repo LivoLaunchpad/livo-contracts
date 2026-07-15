@@ -46,7 +46,7 @@ abstract contract E2EHappyPath is LivoE2EBase {
         ss[0] = ILivoFactory.SupplyShare({account: alice, shares: 7_000});
         ss[1] = ILivoFactory.SupplyShare({account: bob, shares: 3_000});
 
-        // 0.1 ether keeps the deployer buy under the factory's `maxBuyOnDeployBps` (10%).
+        // 0.1 ether keeps the deployer buy small (well below graduation).
         address token = _createTokenWithDeployerBuy(salt, 0.1 ether, ss);
 
         uint256 aliceAmt = IERC20(token).balanceOf(alice);

@@ -487,9 +487,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             return;
         }
 
-        uint256 maxBuyOnDeployBps = _isV4(c) ? factoryV4.maxBuyOnDeployBps() : factoryV2.maxBuyOnDeployBps();
         assertGt(releasedSupply, 0, "missing deployer-buy released supply");
-        assertLe(releasedSupply, TOTAL_SUPPLY * maxBuyOnDeployBps / 10_000, "deployer buy cap");
 
         if (c.creatorBuyMode == ForkIntegrationCaseLib.CreatorBuyMode.SingleSupplyReceiver) {
             assertEq(creatorBal, releasedSupply, "single supply receiver mismatch");

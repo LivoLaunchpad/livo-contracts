@@ -104,10 +104,13 @@ across these recipients.
 
 Rules:
 - `msg.value == 0` ⇔ `buyOnDeployShares.length == 0` (pass one without the other → revert).
-- Aggregate tokens bought must be `≤ maxBuyOnDeployBps` = **1_000 bps (10%)** of supply. This is on the
-  aggregate — splitting across recipients does not bypass it.
-- Use `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])`
-  to compute the `msg.value` for a target token amount. It does **not** enforce the 10% cap — that's on you.
+- There is **no** buy-on-deploy cap: the deploy buy is bounded only by graduation. A buy whose ETH would
+  push the curve past `graduationThreshold + maxExcessOverThreshold` reverts `MaxEthReservesExceeded`; a buy
+  that reaches the threshold **graduates the token in the same tx**.
+- Use `maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches
+  graduation without tripping that revert, then
+  `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])`
+  to compute the `msg.value` for a target token amount.
 
 ### `antiSniperConfigs` — `AntiSniperConfigs`
 
@@ -156,7 +159,7 @@ All errors are 4-byte custom errors.
 | `InvalidShares` | any `shares == 0`, or `feeShares` / `buyOnDeployShares` sum ≠ `10_000`. |
 | `MultipleDirectFeeReceivers` | more than one `feeShares` entry with `directFeesEnabled == true`. |
 | `InvalidSupplyShares` | `msg.value` and `buyOnDeployShares.length` disagree (one zero, one not); or zero/duplicate accounts. |
-| `InvalidBuyOnDeploy` | aggregate buy-on-deploy > 10% of supply. |
+| `MaxEthReservesExceeded` | deploy buy exceeds graduation (`graduationThreshold + maxExcessOverThreshold`); size it with `maxBuyOnDeploy`. |
 | `InvalidTaxConfig` | tax sentinel mismatch: `taxDurationSeconds == 0` with non-zero bps (or vice-versa); or `taxDecayDuration == 0` with non-zero decay-start bps (or vice-versa). |
 | `InvalidTaxBps` | `lpFeeBps + buyTaxBps` or `lpFeeBps + sellTaxBps` > `500`; combined decay start > `2_000`; or a decay start ≤ its direction's static rate. |
 | `InvalidTaxDuration` | `taxDurationSeconds` > 120 years; `taxDecayDuration` > 20 min; or (both set) `taxDurationSeconds < taxDecayDuration`. |
