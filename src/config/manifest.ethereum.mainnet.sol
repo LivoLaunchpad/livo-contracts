@@ -38,8 +38,8 @@ library DeploymentsEthereumMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x03AfF3484c04BeD2B2eA63b55475F03318eF7EA9;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x178A14654D080450e5Cf11b8f6114c6280Df7828;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x25A30503E2680CEDA6fa5b5d966Bc2219C37F464;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x81597b85f2C760d0960C84E4DAd8a5b4E9EeF0A5;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
