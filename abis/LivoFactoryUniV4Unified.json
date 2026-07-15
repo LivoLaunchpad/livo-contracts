@@ -1179,11 +1179,22 @@
   },
   {
     "type": "function",
-    "name": "maxBuyOnDeployBps",
-    "inputs": [],
+    "name": "maxBuyOnDeploy",
+    "inputs": [
+      {
+        "name": "tier",
+        "type": "uint8",
+        "internalType": "enum LiquidityTier"
+      },
+      {
+        "name": "totalLockedInVaultsBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "outputs": [
       {
-        "name": "",
+        "name": "maxTokens",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -1755,11 +1766,6 @@
   {
     "type": "error",
     "name": "InvalidAntiSniperConfig",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InvalidBuyOnDeploy",
     "inputs": []
   },
   {
