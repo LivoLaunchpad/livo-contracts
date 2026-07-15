@@ -215,6 +215,12 @@ deploy-univ2-robintest feeToSetter="0xBa489180Ea6EEB25cA65f123a46F3115F388f181":
 export-deployments:
     forge script ExportDeployments
 
+##################### OPERATIONS ####################
+# Alert if any reward creator has pending ETH claims but a 0 ETH wallet (ethereum + robinhood).
+# Needs MAINNET_RPC_URL exported (or a sibling .env); robinhood uses its public RPC by default.
+unfunded-creators:
+    uv run script/operations/unfunded-accounts/check_unfunded_creators.py
+
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, i.e. Etherscan's
