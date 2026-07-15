@@ -90,7 +90,7 @@ struct AntiSniperConfigs {
 
 1. Build the exact `(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` you intend to submit. For V4 also decide `renounceOwnership_`.
 2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` (view). This runs the same validation as `createToken` for the tax and anti-sniper sentinels, and returns the implementation that will be cloned. The V4 `renounceOwnership_` flag is **not** an input — preview always assumes the renounced path. If you intend to keep ownership, the charity-mode owner check in `createToken` will fire only at submit time.
-3. (Optional) If `msg.value > 0`, call `factory.quoteBuyOnDeploy(tokenAmount)` to get the ETH amount that yields exactly `tokenAmount` tokens after the launchpad buy fee. The quote does **not** check against `maxBuyOnDeployBps` — that's on you.
+3. (Optional) If `msg.value > 0`, call `factory.quoteBuyOnDeploy(tokenAmount)` to get the ETH amount that yields exactly `tokenAmount` tokens after the launchpad buy fee. The deploy buy is uncapped except by graduation — call `factory.maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches graduation without reverting `MaxEthReservesExceeded`.
 4. Mine `salt` so that `Clones.predictDeterministicAddress(implementation, salt, factory)` ends in `0x1110` (see [`salt-mining-guide.md`](../salt-mining-guide.md)). Statistically ~65k iterations.
 5. Submit `factory.createToken(name, symbol, salt, … same args …)` with `value: ethToSpend`.
 
@@ -108,7 +108,7 @@ In order, every successful call performs:
 4. **Initialize** the cloned token (mints `TOTAL_SUPPLY` to the launchpad, sets graduator/launchpad/feeHandler immutables, applies tax/anti-sniper configs).
 5. **`LAUNCHPAD.launchToken(token, BONDING_CURVE)`** — registers the token in the launchpad and emits `TokenLaunched`. The factory **must be whitelisted** on the launchpad or this reverts with `UnauthorizedFactory`.
 6. **`ILivoToken.registerFees(feeReceivers)`** — the token self-registers its fee config with `LivoMasterFeeHandler`. Emits one `DirectReceiverRegistered` per direct entry, then `SharesUpdated`.
-7. **If `msg.value > 0`**, the factory routes the ETH through `LAUNCHPAD.buyTokensWithExactEth` to buy supply, checks the aggregate buy doesn't exceed `maxBuyOnDeployBps`, and distributes the bought tokens proportionally across `supplyShares` (rounding dust goes to the last recipient). Emits `LivoTokenBuy` (launchpad) then `BuyOnDeploy` (factory).
+7. **If `msg.value > 0`**, the factory routes the ETH through `LAUNCHPAD.buyTokensWithExactEth` to buy supply (bounded only by graduation; a buy reaching the threshold graduates the token in the same tx) and distributes the bought tokens proportionally across `supplyShares` (rounding dust goes to the last recipient). Emits `LivoTokenBuy` (launchpad) then `BuyOnDeploy` (factory).
 
 Returns the deployed token address.
 
@@ -149,10 +149,9 @@ There is no upper bound on the array length at the factory layer. The master fee
 | Any duplicate `account` | `InvalidSupplyShares` |
 | Any `shares == 0` | `InvalidShares` |
 | `sum(shares) != 10_000` | `InvalidShares` |
-| Bought tokens exceed `maxBuyOnDeployBps` of `TOTAL_SUPPLY` (aggregate, not per recipient) | `InvalidBuyOnDeploy` |
-| Owner set `maxBuyOnDeployBps = 0` | `InvalidBuyOnDeploy` |
+| Deploy buy exceeds graduation (`graduationThreshold + maxExcessOverThreshold`) | `MaxEthReservesExceeded` |
 
-The cap is **aggregate**: splitting across N recipients does not bypass it. Default cap is `1_000` bps (10%) and is owner-mutable via `setMaxBuyOnDeployBps`.
+There is no buy-on-deploy cap: the deploy buy is bounded only by graduation. Use `maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` to size a buy up to the instant-graduation point.
 
 ### Anti-sniper config (`antiSniperCfg`)
 

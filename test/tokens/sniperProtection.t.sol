@@ -283,9 +283,9 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(buyer2), MAX_WALLET);
     }
 
-    /// Deployer-buy path: launchpad → factory → supplyShares. The launchpad → factory hop moves
-    /// up to 10% of supply (factory's `maxBuyOnDeployBps`), which is far above the 3% cap. The
-    /// recipient-is-factory exemption lets this pass.
+    /// Deployer-buy path: launchpad → factory → supplyShares. The launchpad → factory hop can move a
+    /// large share of supply (the deploy buy is uncapped, bounded only by graduation) — here 10%, far
+    /// above the 3% cap. The recipient-is-factory exemption lets this pass.
     /// @dev `tokenFactory` lives in transient storage on the token, so the recipient-is-factory
     ///      exemption only fires while init and the deployer-buy hop run in the same tx — which
     ///      mirrors the production flow (the factory's `createToken` does both atomically). We

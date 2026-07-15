@@ -78,18 +78,6 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(address(factoryV4Unified.GRADUATOR()), newGraduator);
     }
 
-    function test_upgrade_preservesMaxBuyOnDeployBps() public {
-        // The constant ships at 1_000 (10%); upgrading to an impl built from the same code keeps it.
-        uint256 before = factoryV4Unified.maxBuyOnDeployBps();
-        assertEq(before, 1_000);
-
-        address newImpl = _deployV4ImplSameArgs();
-        vm.prank(admin);
-        factoryV4Unified.upgradeToAndCall(newImpl, "");
-
-        assertEq(factoryV4Unified.maxBuyOnDeployBps(), before);
-    }
-
     // ───────────── Upgrade authorization ─────────────
 
     function test_upgrade_revertsForNonOwner() public {
