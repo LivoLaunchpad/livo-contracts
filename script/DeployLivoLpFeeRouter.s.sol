@@ -42,10 +42,17 @@ contract DeployLivoLpFeeRouter is Script {
         console.log("LivoLpFeeRouter (proxy): %s", proxy);
         console.log("");
         console.log(
-            "Next: paste these into LP_FEE_ROUTER + LP_FEE_ROUTER_IMPL in src/config/manifest.%s.sol",
-            block.chainid == 1 ? "mainnet" : "sepolia"
+            "Next: paste these into LP_FEE_ROUTER + LP_FEE_ROUTER_IMPL in src/config/manifest.%s.sol", _manifestName()
         );
         console.log("Then: just export-deployments");
+    }
+
+    /// @dev Manifest file suffix for the current chain, for the "paste it here" hint.
+    function _manifestName() internal view returns (string memory) {
+        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) return "ethereum.mainnet";
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) return "ethereum.sepolia";
+        if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) return "robinhood.mainnet";
+        return "robinhood.testnet";
     }
 
     /// @dev Production tier policy:
