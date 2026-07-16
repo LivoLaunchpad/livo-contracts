@@ -9,11 +9,11 @@
 | LivoLaunchpad                                | `0xaA74Aa89590E3B50BE178eA970E490c173b61110` |
 | ConstantProductBondingCurve                  | `0xc8aDB35992054948333486621D1891D298f050Ad` |
 | LivoGraduatorUniswapV2                       | `0x042ed119F78b734407C6368A01D799C503df2E63` |
-| LivoGraduatorUniswapV4                       | `0xcac38cA0DA6C27f2DE69Acc87A4C63f73B2d49A4` |
-| LivoGraduatorUniswapV4 (0.5% hook)           | `0x966a0FB457c9D38a537D510530A717079cB8d416` |
+| LivoGraduatorUniswapV4                       | `0x86eDfc50E65233ff3e5b26DeeD49578a157565d7` |
 | LivoMasterFeeHandler                         | `0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC` |
-| LivoSwapHook                                 | `0x627FA6F76FA96b10BAe1B6Fba280A3c9264500Cc` |
-| LivoSwapHook (0.5%)                          | `0x068241d20c59980AbEAeDED990d2441F05f5C0Cc` |
+| LivoSwapHook                                 | `0x10392843021A1aF0abE3B1A21F14673DC05340cc` |
+| LivoLpFeeRouter (proxy)                      | `0xe229557449f65e20368c40B3fb7471CB50dcB3eA` |
+| LivoLpFeeRouter (impl)                       | `0xbbA67f3f1D2D1C17328eD9B02251b1b7Dc762E6C` |
 | LivoQuoter                                   | `0xBd208C238Dd7895a7b94833063C2397F10E056f1` |
 | LivoToken (impl)                             | `0xE26F3e1F8E49fD5FbB1fd35342Ec2a675b0C7012` |
 | LivoTaxableTokenUniV4 (impl)                 | `0x93AcF08eE9bABa0672bd1ae668dEbb5d9fdfE354` |
@@ -32,9 +32,7 @@
 | Creator-vault curve 25%                      | `0xcc78F1D12AdA3F83f5A90840b937D6ed30acE6D2` |
 | Creator-vault curve 30%                      | `0x79f75FB3C316f873cFEC5D35a6Be7d6825A140D5` |
 | LivoGraduatorUniV4 THIN                      | `0x580e2306EC530d74b7Ad5Da8A3fA31f8Ebbe39fF` |
-| LivoGraduatorUniV4 THIN (0.5%)               | `0x5c8e43bb035a412C5EE1B3AdfC16A33cBa62Dc59` |
 | LivoGraduatorUniV4 THICK                     | `0x5B1F8B2C562113F4F20B6E7eF1d24dB37839e3b6` |
-| LivoGraduatorUniV4 THICK (0.5%)              | `0x7e9249485462199201b8B763714b422511581A43` |
 | THIN-tier curve base                         | `0x1baDd69dCa006B79A95713B4e912e34cf98fe76B` |
 | THIN-tier curve 5%                           | `0x36Ae651E216d92b99A03ff6525951df3EC2B5DEa` |
 | THIN-tier curve 10%                          | `0xa3408533082e529D0Dbf740A2999E3c5f5d8dfc7` |

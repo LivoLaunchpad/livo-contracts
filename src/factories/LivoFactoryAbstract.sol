@@ -359,9 +359,11 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      venue policy (V2: always `address(0)`; V4: `msg.sender` unless renounced).
     ///
     ///      `graduator` is passed in by the caller (instead of read from the `GRADUATOR` immutable)
-    ///      so V4 can pick between multiple graduators per call based on `UniV4Configs.lpFeeBps`
-    ///      (one graduator per hardcoded LP-fee hook variant). V2 has a single graduator and
-    ///      always passes `address(GRADUATOR)`.
+    ///      so V4 can pick the graduator matching the token's liquidity tier. V2 has a single graduator
+    ///      and always passes `address(GRADUATOR)`. `swapLpFeeBps` is the per-swap LP fee the
+    ///      post-graduation `LivoSwapHook` charges, stored on the token and surfaced via `getSwapFees`:
+    ///      0 for V2 (no hook LP fee), 50 or 100 for V4. A single hook reads it from the token, so one
+    ///      V4 graduator per tier serves both fee tiers.
     /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
     ///      calldata args — can build a `TokenSetupTiered` in memory and call this same umbrella. The
     ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
@@ -373,6 +375,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         TokenSetupTiered memory tokenSetup,
         address tokenOwner,
         address graduator,
+        uint16 swapLpFeeBps,
         SupplyShare[] calldata buyOnDeployShares,
         TaxConfigs memory taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
@@ -394,6 +397,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             tokenSetup.salt,
             tokenOwner,
             graduator,
+            swapLpFeeBps,
             vaultAllocation,
             taxConfigs,
             antiSniperConfigs
@@ -540,6 +544,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
+        uint16 swapLpFeeBps,
         uint256 vaultAllocation
     ) internal returns (address token, ILivoToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, keccak256(abi.encodePacked(msg.sender, salt)));
@@ -563,7 +568,10 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
             // taxable variants store it from `TaxConfigs` in `_initializeTaxConfig`, and it applies
             // identically pre- and post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
             lpFeeBps: _launchpadLpFeeBps(graduator),
-            treasuryShareBps: _launchpadTreasuryShareBps()
+            treasuryShareBps: _launchpadTreasuryShareBps(),
+            // Post-graduation LP fee the `LivoSwapHook` charges on V4 swaps (50/100); 0 for V2. Surfaced
+            // by the token via `getSwapFees` so the single hook reads each token's fee tier directly.
+            swapLpFeeBps: swapLpFeeBps
         });
     }
 
@@ -704,6 +712,7 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         bytes32 salt,
         address tokenOwner,
         address graduator,
+        uint16 swapLpFeeBps,
         uint256 vaultAllocation,
         TaxConfigs memory taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
@@ -711,7 +720,8 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
 
         ILivoToken.InitializeParams memory params;
-        (token, params) = _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, vaultAllocation);
+        (token, params) =
+            _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, swapLpFeeBps, vaultAllocation);
 
         if (_isTaxConfigured(taxCfg)) {
             // Taxable impl: stores the tax rate from `taxCfg` in `_initializeTaxConfig`.

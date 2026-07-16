@@ -17,27 +17,25 @@ import {
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
-/// @title Upgrade the LivoFactoryUniV4Unified proxy to the dual-graduator implementation
-/// @notice Rolls out the 0.5% LP-fee variant: the new `LivoFactoryUniV4Unified` constructor now
-///         takes both `graduator` (100 bps) and `graduator0p5` (50 bps) and routes `createToken`
-///         calls between them based on `UniV4Configs.lpFeeBps`. Only the V4 unified factory proxy
-///         is touched — the V2 unified factory is untouched, and the launchpad's
-///         `whitelistedFactories` mapping is unchanged because the proxy address doesn't move.
+/// @title Upgrade the LivoFactoryUniV4Unified proxy to a fresh implementation
+/// @notice Redeploys the V4 unified factory implementation from the current manifest and points the
+///         existing proxy at it. `createToken` selects its graduator by liquidity tier alone: the
+///         single `SWAP_HOOK` is fee-agnostic (it reads the LP fee back from the token), so
+///         `UniV4Configs.lpFeeBps` is stored on the token rather than dispatching to a per-fee
+///         graduator. Only the V4 unified factory proxy is touched — the V2 unified factory is
+///         untouched, and the launchpad's `whitelistedFactories` mapping is unchanged because the
+///         proxy address doesn't move.
 ///
 ///         Single broadcast:
 ///         1. deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the addresses in
-///            the per-chain manifest (`src/config/manifest.{mainnet,sepolia}.sol`), including
-///            the new `GRADUATOR_UNIV4_0P5`.
+///            the per-chain manifest (`src/config/manifest.{mainnet,sepolia}.sol`).
 ///         2. calls `upgradeToAndCall(newImpl, "")` on the existing V4 factory proxy.
 ///
-///         No init data is passed — no new storage slots are added by this implementation
-///         (`GRADUATOR_0P5` is an immutable, baked into the bytecode).
+///         No init data is passed — the graduators this implementation wires in are immutables,
+///         baked into the bytecode, not new storage slots.
 ///
 ///         The broadcaster MUST be the proxy owner. If not, `_authorizeUpgrade` reverts with
 ///         `OwnableUnauthorizedAccount(broadcaster)` and no state changes.
-///
-///         Pre-flight: `GRADUATOR_UNIV4_0P5` must already be deployed and recorded in the manifest.
-///         Use `script/DeployUniV4Graduator0p5.s.sol` first if it's still `address(0)`.
 ///
 ///         Post-broadcast: update `FACTORY_UNIV4_UNIFIED_IMPL` in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`.
@@ -54,7 +52,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address launchpad;
         address bondingCurve;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
         address tokenImpl;
         address taxTokenImpl;
@@ -67,7 +64,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
                 taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL
@@ -83,7 +79,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
                 taxTokenImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL
@@ -101,7 +96,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing (deploy it first)");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(d.taxTokenImpl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
@@ -115,13 +109,12 @@ contract UpgradeUniV4UnifiedFactory is Script {
         address proxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(proxyOwner != address(0), "V4 proxy not initialized");
 
-        console.log("=== Livo UniV4 Unified Factory Upgrade (dual-graduator routing) ===");
+        console.log("=== Livo UniV4 Unified Factory Upgrade ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", proxyOwner);
         console.log("V4 factory proxy:        ", d.factoryV4Proxy);
-        console.log("Graduator (100 bps):     ", d.graduatorV4);
-        console.log("Graduator (50 bps):      ", d.graduatorV4_0p5);
+        console.log("Graduator (DEFAULT tier):", d.graduatorV4);
         console.log("");
 
         vm.startBroadcast();
@@ -135,7 +128,6 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor(),

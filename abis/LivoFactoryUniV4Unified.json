@@ -35,11 +35,6 @@
         "internalType": "address"
       },
       {
-        "name": "graduator0p5",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "masterFeeHandler",
         "type": "address",
         "internalType": "address"
@@ -111,17 +106,7 @@
                 "internalType": "address"
               },
               {
-                "name": "thin0p5",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
                 "name": "thick",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "thick0p5",
                 "type": "address",
                 "internalType": "address"
               }
@@ -186,19 +171,6 @@
   },
   {
     "type": "function",
-    "name": "GRADUATOR_0P5",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "GRADUATOR_THICK",
     "inputs": [],
     "outputs": [
@@ -212,33 +184,7 @@
   },
   {
     "type": "function",
-    "name": "GRADUATOR_THICK_0P5",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "GRADUATOR_THIN",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "GRADUATOR_THIN_0P5",
     "inputs": [],
     "outputs": [
       {

@@ -27,7 +27,8 @@ contract TaxDecayUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 feeHandler: address(feeHandler),
                 vaultAllocation: 0,
                 lpFeeBps: 100,
-                treasuryShareBps: 5_000
+                treasuryShareBps: 5_000,
+                swapLpFeeBps: 0
             }),
             cfg,
             _emptyAntiSniperCfg()
@@ -68,7 +69,8 @@ contract TaxDecayUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 feeHandler: address(feeHandler),
                 vaultAllocation: 0,
                 lpFeeBps: 100,
-                treasuryShareBps: 5_000
+                treasuryShareBps: 5_000,
+                swapLpFeeBps: 0
             }),
             _decayCfg(1000, 800, 1200, true),
             _emptyAntiSniperCfg()

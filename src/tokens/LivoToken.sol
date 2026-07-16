@@ -62,6 +62,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     ///         `accrueFees`. Fixed at launch.
     uint16 public treasuryShareBps;
 
+    /// @notice Post-graduation LP fee `LivoSwapHook` charges on every V4 swap (bps), surfaced via
+    ///         `getSwapFees`. 0 for Uniswap V2 (no hook LP fee); 50 or 100 for V4. Distinct from the
+    ///         pre-graduation `lpFeeBps` the launchpad charges on the bonding curve. Fixed at launch.
+    /// @dev Packs into the `feeHandler` + `launchTimestamp` slot alongside `lpFeeBps`/`treasuryShareBps`.
+    uint16 public swapLpFeeBps;
+
     /// @notice Timestamp of token creation (the `initialize` call). Anchors both the sniper-protection
     ///         window (passed into `SniperProtection`) and, on taxable variants, the creation-anchored
     ///         tax window. Set once at the end of `_initializeLivoToken`, after the initial mint, so the
@@ -173,6 +179,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
         // so the launchpad's per-trade `getLaunchpadFees` read is a single warm SLOAD.
         lpFeeBps = params.lpFeeBps;
         treasuryShareBps = params.treasuryShareBps;
+        swapLpFeeBps = params.swapLpFeeBps;
         emit LaunchpadFeesInitialized(params.lpFeeBps, params.treasuryShareBps);
 
         // Creation timestamp, set AFTER the initial mint so that mint still observes
@@ -258,7 +265,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     }
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
+    /// @dev LEGACY, superseded by `getSwapFees` — kept for backwards compatibility (see `ILivoToken`).
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+
+    /// @notice Default swap fees: the always-on post-graduation LP fee with zero tax. Taxable variants
+    ///         override to add the windowed tax for `isBuy`. `swapLpFeeBps` is set at init (0 for V2).
+    function getSwapFees(bool) external view virtual returns (ILivoToken.LivoTradeFees memory) {
+        return ILivoToken.LivoTradeFees({taxBps: 0, lpFeeBps: swapLpFeeBps});
+    }
 
     /// @notice Returns the pre-graduation fee policy for a trade. The base implementation returns the
     ///         configured LP fee with no tax (non-taxable tokens never have one); taxable variants

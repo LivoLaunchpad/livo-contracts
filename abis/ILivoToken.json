@@ -179,6 +179,37 @@
   },
   {
     "type": "function",
+    "name": "getSwapFees",
+    "inputs": [
+      {
+        "name": "isBuy",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct ILivoToken.LivoTradeFees",
+        "components": [
+          {
+            "name": "taxBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "lpFeeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getTaxConfig",
     "inputs": [],
     "outputs": [

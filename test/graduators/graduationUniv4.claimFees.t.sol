@@ -201,7 +201,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         // Creator claim includes graduation deposit; subtract it to isolate LP fees only
         uint256 creatorLpFees = creatorEthBalanceAfter - creatorEthBalanceBefore - graduationCreatorClaimable;
         // Treasury LP share sent during swap by hook, not during collect
-        assertApproxEqAbs(creatorLpFees, buyAmount / 200, 1, "creator LP fees should be 0.5%");
+        assertApproxEqAbs(creatorLpFees, _lpCreatorShareTier0(buyAmount), 1, "creator LP fees should be tier-0 share");
     }
 
     function test_claimFees_expectedTreasuryFeesIncrease()
@@ -291,15 +291,15 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceAfter = creator.balance;
         assertGt(creatorEthBalanceAfter, creatorEthBalanceBefore, "creator eth balance should increase");
 
-        // Creator gets 0.5% LP fees from each token (2 * 1-ether buys); treasury got its share during swaps
-        uint256 expectedCreatorLpFees = 2 * 1 ether / 200;
+        // Creator gets the tier-0 LP fee share from each token (2 * 1-ether buys); treasury got its share during swaps
+        uint256 expectedCreatorLpFees = 2 * _lpCreatorShareTier0(1 ether);
         uint256 totalGraduationDeposits = graduationCreatorClaimable1 + graduationCreatorClaimable2;
 
         assertApproxEqAbs(
             creatorEthBalanceAfter - creatorEthBalanceBefore - totalGraduationDeposits,
             expectedCreatorLpFees,
             2,
-            "creator LP fees should be 0.5% of total buys"
+            "creator LP fees should be tier-0 share of total buys"
         );
     }
 
@@ -316,15 +316,15 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         uint256 creatorEthBalanceAfter = creator.balance;
 
-        // Creator gets 0.5% LP fees from each token (2 * 1-ether buys); treasury got its share during swaps
-        uint256 expectedCreatorLpFees = 2 * 1 ether / 200;
+        // Creator gets the tier-0 LP fee share from each token (2 * 1-ether buys); treasury got its share during swaps
+        uint256 expectedCreatorLpFees = 2 * _lpCreatorShareTier0(1 ether);
         uint256 totalGraduationDeposits = graduationCreatorClaimable1 + graduationCreatorClaimable2;
 
         assertApproxEqAbs(
             creatorEthBalanceAfter - creatorEthBalanceBefore - totalGraduationDeposits,
             expectedCreatorLpFees,
             2,
-            "creator LP fees should be 0.5% of total buys"
+            "creator LP fees should be tier-0 share of total buys"
         );
     }
 
@@ -353,14 +353,17 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         assertGt(creatorEarned, 0, "creator eth balance should increase");
 
-        // Creator gets 0.5% LP fees (2 * 1 ether + 2 * 1 ether buys + 2 * 2 ether buys)
-        uint256 expectedCreatorLpFees = (2 + 2 + 4) * 1 ether / 200;
+        // The four 1-ether buys stay in tier 0 (marketcap ~15.7 / ~24.7 ETH), but the two 2-ether buys
+        // push the marketcap to ~41 ETH, crossing LP_TIER_THRESHOLD_1 (30 ETH) into tier 1.
+        uint256 tier1CreatorShare =
+            (2 ether * LP_FEE_BPS_DEFAULT * (10_000 - LP_TIER1_TREASURY_BPS)) / (10_000 * 10_000);
+        uint256 expectedCreatorLpFees = 4 * _lpCreatorShareTier0(1 ether) + 2 * tier1CreatorShare;
 
         assertApproxEqAbs(
             creatorLpEarned,
             expectedCreatorLpFees,
             10, // 10 wei error allowed
-            "creator LP fees should be 0.5% of total buys"
+            "creator LP fees should be tier-0 share of the 1-ether buys + tier-1 share of the 2-ether buys"
         );
     }
 
@@ -371,24 +374,29 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         uint256 claimableAfterGraduation = feeHandler.getClaimable(tokens, creator)[0];
         // Right after graduation the creator's claimable is the graduation compensation PLUS the
-        // creator's share of the pre-graduation LP fee on the graduating buy.
-        uint256 gradMissing = (GRADUATION_THRESHOLD * 10000) / (10000 - BASE_BUY_FEE_BPS);
-        uint256 gradTradingFee = (gradMissing * BASE_BUY_FEE_BPS) / 10000;
-        uint256 creatorGradTradingShare = gradTradingFee - _treasuryShareOf(gradTradingFee);
-        assertEq(
-            claimableAfterGraduation,
-            CREATOR_GRADUATION_COMPENSATION + creatorGradTradingShare,
-            "claimable should be graduation deposit right after graduation"
-        );
+        // creator's share of the pre-graduation LP fee on the graduating buy. Scoped in a block so the
+        // intermediate locals free their stack slots (avoids stack-too-deep without via-ir).
+        {
+            uint256 gradMissing = (GRADUATION_THRESHOLD * 10000) / (10000 - BASE_BUY_FEE_BPS);
+            uint256 gradTradingFee = (gradMissing * BASE_BUY_FEE_BPS) / 10000;
+            uint256 creatorGradTradingShare = gradTradingFee - _treasuryShareOf(gradTradingFee);
+            assertEq(
+                claimableAfterGraduation,
+                CREATOR_GRADUATION_COMPENSATION + creatorGradTradingShare,
+                "claimable should be graduation deposit right after graduation"
+            );
+        }
 
         // first, make the price dip below graduation price by selling a lot of tokens
         uint256 sellAmount = 10_000_000e18;
         uint256 ethReceived = _swapSell(buyer, sellAmount, 0.1 ether, true);
 
-        // Sell generates both LP creator share (0.5%) and sell tax (if applicable)
+        // Sell generates both LP creator share (tier-0) and sell tax (if applicable)
         // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS - SELL_TAX_BPS)
         uint256 denominator = 10000 - 100 - SELL_TAX_BPS;
-        uint256 sellCreatorShare = ethReceived * (50 + SELL_TAX_BPS) / denominator;
+        // BPS of gross taken by the creator's tier-0 LP share
+        uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TIER0_TREASURY_BPS)) / 10_000;
+        uint256 sellCreatorShare = ethReceived * (creatorLpBpsOfGross + SELL_TAX_BPS) / denominator;
         uint256 expectedClaimableAfterSell = claimableAfterGraduation + sellCreatorShare;
         assertApproxEqAbs(
             feeHandler.getClaimable(tokens, creator)[0],
@@ -401,13 +409,13 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 buyAmount = 4 ether;
         deal(buyer, 10 ether);
         _swapBuy(buyer, buyAmount, 10e18, true);
-        uint256 expectedExtraFees = buyAmount / 200;
+        uint256 expectedExtraFees = _lpCreatorShareTier0(buyAmount);
         uint256 expectedClaimableAfterBuy = expectedClaimableAfterSell + expectedExtraFees;
         assertApproxEqAbs(
             feeHandler.getClaimable(tokens, creator)[0],
             expectedClaimableAfterBuy,
             1,
-            "claimable fees should include graduation fees + LP creator share + sell taxes + 0.5% of buy amount"
+            "claimable fees should include graduation fees + LP creator share + sell taxes + tier-0 buy share"
         );
         uint256 claimableAfterBuy = feeHandler.getClaimable(tokens, creator)[0];
         uint256 expectedClaimable = expectedClaimableAfterSell + expectedExtraFees;
@@ -415,7 +423,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
             claimableAfterBuy,
             expectedClaimable,
             1,
-            "claimable fees should include graduation fees + LP creator share + sell taxes + 0.5% of buy amount"
+            "claimable fees should include graduation fees + LP creator share + sell taxes + tier-0 buy share"
         );
 
         // uint256 creatorBalanceBefore = creator.balance;
@@ -491,9 +499,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory fees = feeHandler.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
-        // Expected fees: graduation deposit + 0.5% LP fees from buy
-        uint256 expectedFees = graduationCreatorClaimable + buyAmount / 200;
-        assertApproxEqAbs(fees[0], expectedFees, 1, "creator fees should be graduation deposit + 0.5% of buy amount");
+        // Expected fees: graduation deposit + tier-0 creator LP share from buy
+        uint256 expectedFees = graduationCreatorClaimable + _lpCreatorShareTier0(buyAmount);
+        assertApproxEqAbs(fees[0], expectedFees, 1, "creator fees should be graduation deposit + tier-0 buy share");
     }
 
     /// @notice test that after one swapSell, getClaimable includes accrued creator tax
@@ -514,9 +522,12 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory fees = feeHandler.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
-        uint256 expectedCreatorFees = graduationCreatorClaimable + (buyAmount1 + buyAmount2) / 200;
+        uint256 expectedCreatorFees = graduationCreatorClaimable + _lpCreatorShareTier0(buyAmount1 + buyAmount2);
         assertApproxEqAbs(
-            fees[0], expectedCreatorFees, 2, "creator fees should be graduation deposit + 0.5% of total buy amounts"
+            fees[0],
+            expectedCreatorFees,
+            2,
+            "creator fees should be graduation deposit + tier-0 share of total buy amounts"
         );
     }
 
@@ -527,7 +538,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory fees = feeHandler.getClaimable(tokens, creator);
         assertApproxEqAbs(
             fees[0],
-            graduationCreatorClaimable + 1 ether / 200,
+            graduationCreatorClaimable + _lpCreatorShareTier0(1 ether),
             1,
             "creator fees should be graduation deposit + 0.5% of buy amount"
         );
@@ -553,7 +564,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory fees = feeHandler.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
-        assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
+        assertApproxEqAbs(
+            fees[0], _lpCreatorShareTier0(buyAmount2), 1, "creator fees should be tier-0 share of second buy amount"
+        );
     }
 
     /// @notice test that getClaimable works for multiple tokens
@@ -565,18 +578,18 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory fees = feeHandler.getClaimable(tokens, creator);
 
         assertEq(fees.length, 2, "should return two fee values");
-        // Expected fees: graduation deposit + 0.5% of 1 ether
+        // Expected fees: graduation deposit + tier-0 creator share of 1 ether
         assertApproxEqAbs(
             fees[0],
-            graduationCreatorClaimable1 + 1 ether / 200,
+            graduationCreatorClaimable1 + _lpCreatorShareTier0(1 ether),
             1,
-            "fees[0] should be graduation deposit + 0.5% of buy amount"
+            "fees[0] should be graduation deposit + tier-0 buy share"
         );
         assertApproxEqAbs(
             fees[1],
-            graduationCreatorClaimable2 + 1 ether / 200,
+            graduationCreatorClaimable2 + _lpCreatorShareTier0(1 ether),
             1,
-            "fees[1] should be graduation deposit + 0.5% of buy amount"
+            "fees[1] should be graduation deposit + tier-0 buy share"
         );
     }
 
@@ -590,21 +603,24 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory fees = feeHandler.getClaimable(tokens, creator);
 
         assertEq(fees.length, 3, "should return three fee values");
-        // Expected fees: graduation deposit + 0.5% of 1 ether
+        // Expected fees: graduation deposit + tier-0 creator share of 1 ether
         assertApproxEqAbs(
             fees[0],
-            graduationCreatorClaimable1 + 1 ether / 200,
+            graduationCreatorClaimable1 + _lpCreatorShareTier0(1 ether),
             1,
-            "fees[0] should be graduation deposit + 0.5% of buy amount"
+            "fees[0] should be graduation deposit + tier-0 buy share"
         );
         assertApproxEqAbs(
             fees[1],
-            graduationCreatorClaimable2 + 1 ether / 200,
+            graduationCreatorClaimable2 + _lpCreatorShareTier0(1 ether),
             1,
-            "fees[1] should be graduation deposit + 0.5% of buy amount"
+            "fees[1] should be graduation deposit + tier-0 buy share"
         );
         assertApproxEqAbs(
-            fees[2], graduationCreatorClaimable1 + 1 ether / 200, 1, "fees[2] should match fees[0] for repeated token"
+            fees[2],
+            graduationCreatorClaimable1 + _lpCreatorShareTier0(1 ether),
+            1,
+            "fees[2] should match fees[0] for repeated token"
         );
         assertEq(fees[0], fees[2], "repeated token should return same fees");
     }
@@ -624,7 +640,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         uint256 feeDelta = _claimable(testToken, creator) - claimableBefore;
 
-        uint256 expectedFeeDelta = buyAmount / 200;
+        uint256 expectedFeeDelta = _lpCreatorShareTier0(buyAmount);
 
         assertApproxEqAbsDecimal(
             feeDelta, expectedFeeDelta, 1, 18, "claimable fees should include buy fees and pending taxes"
@@ -752,21 +768,21 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_1, 10e18, true);
 
-        // Treasury should have received 0.5% of buy amount as LP fee share during the swap
+        // Treasury should have received its tier-0 share of the LP fee during the swap
         assertApproxEqAbs(
             treasury.balance - treasuryEthBefore,
-            MATRIX_BUY_AMOUNT_1 / 200,
+            _lpTreasuryShareTier0(MATRIX_BUY_AMOUNT_1),
             1,
-            "treasury should receive 0.5% LP fee share during swap"
+            "treasury should receive tier-0 LP fee share during swap"
         );
 
-        // Creator pending should increase by 0.5% of buy amount (deposited during swap by the hook)
+        // Creator pending should increase by its tier-0 LP fee share (deposited during swap by the hook)
         assertEq(creator.balance, creatorEthBefore, "creator ETH balance should not change (fees are pending)");
         assertApproxEqAbs(
             _claimable(testToken, creator) - creatorPendingBefore,
-            MATRIX_BUY_AMOUNT_1 / 200,
+            _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_1),
             1,
-            "creator pending should increase by 0.5% of buy amount"
+            "creator pending should increase by its tier-0 LP fee share"
         );
     }
 
@@ -806,9 +822,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
             fees,
-            graduationCreatorClaimable + MATRIX_BUY_AMOUNT_1 / 200,
+            graduationCreatorClaimable + _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_1),
             1,
-            "creator claimable should be graduation deposit + 0.5% of buy amount"
+            "creator claimable should be graduation deposit + tier-0 buy share"
         );
     }
 
@@ -821,7 +837,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
             fees,
-            graduationCreatorClaimable + MATRIX_BUY_AMOUNT_1 / 200,
+            graduationCreatorClaimable + _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_1),
             1,
             "accrued creator claimable should match graduation deposit + buy creator share"
         );
@@ -836,7 +852,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
             fees,
-            graduationCreatorClaimable + MATRIX_BUY_AMOUNT_1 / 200,
+            graduationCreatorClaimable + _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_1),
             1,
             "owner claimable should not depend on caller"
         );
@@ -874,7 +890,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
 
         uint256 fees = _creatorClaimable();
-        assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_2 / 200, 1, "claimable should reflect only second buy");
+        assertApproxEqAbs(
+            fees, _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_2), 1, "claimable should reflect only second buy"
+        );
     }
 
     /// @dev when state is swap-buy, accrue, claim, swap-buy, accrue, then `getClaimable()` matches second-swap creator share
@@ -888,7 +906,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
-            fees, MATRIX_BUY_AMOUNT_2 / 200, 1, "claimable should remain second buy creator share after accrue"
+            fees,
+            _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_2),
+            1,
+            "claimable should remain second buy creator share after accrue"
         );
     }
 
@@ -936,7 +957,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         afterOneSwapSell(buyer)
     {
         uint256 fees = _creatorClaimable();
-        // Both normal and tax tokens get LP creator share (0.5%) on sells; tax tokens also get sell tax
+        // Both normal and tax tokens get the tier-0 LP creator share on sells; tax tokens also get sell tax
         assertGt(fees, graduationCreatorClaimable, "creator should have LP fees beyond graduation deposit");
     }
 
@@ -947,7 +968,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         afterOneSwapSell(buyer)
     {
         uint256 claimableWithFees = _creatorClaimable();
-        // Both normal and tax tokens get LP creator share (0.5%) on sells
+        // Both normal and tax tokens get the tier-0 LP creator share on sells
         assertGt(
             claimableWithFees,
             graduationCreatorClaimable,
@@ -984,7 +1005,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _creatorClaimAs(creator);
 
-        // Both normal and tax tokens receive LP creator share (0.5%) on sells; tax tokens also get sell tax
+        // Both normal and tax tokens receive the tier-0 LP creator share on sells; tax tokens also get sell tax
         assertGt(
             creator.balance,
             creatorEthBefore + graduationCreatorClaimable,
@@ -1116,7 +1137,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         uint256 newOwnerClaimable = _claimableFor(alice);
         // Expected: graduation deposit (held by old owner) + LP fees from both buys
-        uint256 expectedCreatorFees = graduationCreatorClaimable + (MATRIX_BUY_AMOUNT_1 + MATRIX_BUY_AMOUNT_2) / 200;
+        uint256 expectedCreatorFees =
+            graduationCreatorClaimable + _lpCreatorShareTier0(MATRIX_BUY_AMOUNT_1 + MATRIX_BUY_AMOUNT_2);
 
         assertApproxEqAbs(
             oldOwnerClaimable + newOwnerClaimable,

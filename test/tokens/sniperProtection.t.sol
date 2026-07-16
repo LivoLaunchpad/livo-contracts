@@ -599,7 +599,8 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
                 lpFeeBps: 100,
-                treasuryShareBps: 10_000
+                treasuryShareBps: 10_000,
+                swapLpFeeBps: 0
             }),
             _defaultCfg()
         );
@@ -628,7 +629,8 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
                     lpFeeBps: 100,
-                    treasuryShareBps: 10_000
+                    treasuryShareBps: 10_000,
+                    swapLpFeeBps: 0
                 }),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: maxBuyBps,
@@ -665,7 +667,8 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                 feeHandler: feeHandler,
                 vaultAllocation: 0,
                 lpFeeBps: 100,
-                treasuryShareBps: 10_000
+                treasuryShareBps: 10_000,
+                swapLpFeeBps: 100
             }),
             TaxConfigs({
                 buyTaxBps: 100,
@@ -703,7 +706,8 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
                     feeHandler: feeHandler,
                     vaultAllocation: 0,
                     lpFeeBps: 100,
-                    treasuryShareBps: 10_000
+                    treasuryShareBps: 10_000,
+                    swapLpFeeBps: 100
                 }),
                 TaxConfigs({
                     buyTaxBps: 100,

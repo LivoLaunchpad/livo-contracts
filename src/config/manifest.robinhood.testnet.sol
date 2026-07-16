@@ -16,12 +16,18 @@ library DeploymentsRobinhoodTestnet {
     address internal constant BONDING_CURVE = 0xF3303E03aa58B1366652E883326675E67E20423f;
     address internal constant GRADUATOR_UNIV2 = 0x57aA990063b49cABf3EE9FeB49dca8DADc9511cD;
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
-    /// @notice V4 graduator paired with the 50-bps `SWAP_HOOK_0P5` variant. Update after deploying.
-    address internal constant GRADUATOR_UNIV4_0P5 = 0x2DBfc52A893BdFd8c0d3CbAA0a1e046211d82853;
     address internal constant MASTER_FEE_HANDLER = 0xFF076a7110A404674Af27EC9749CB021699890EA;
 
+    /// @notice ⚠️ LEGACY HOOK: Robinhood has NOT been migrated to the marketcap-tiered `LivoSwapHook` yet.
+    ///         This is the previously-deployed fee-hardcoded hook, still live and serving the tokens
+    ///         already graduated on this chain. The graduators above/below are paired with it. Deploying a
+    ///         factory from this manifest today wires tokens (which now carry `swapLpFeeBps`) to a hook
+    ///         that ignores it. Redeploy the hook + router + graduators here before creating new V4 tokens.
+    ///         The retired 0.5% hook/graduator variants are recorded in `deployments.robinhood.testnet.md`.
     address internal constant SWAP_HOOK = 0x64c5fAE1c446FEE704BF63e8b1e4A004168740Cc;
-    address internal constant SWAP_HOOK_0P5 = 0xa8B1D7763B5De2112AbFaA74c26c443681A180Cc;
+    /// @notice Not deployed on Robinhood yet — placeholder. Fill in after deploying `LivoLpFeeRouter`.
+    address internal constant LP_FEE_ROUTER = address(0);
+    address internal constant LP_FEE_ROUTER_IMPL = address(0);
     address internal constant QUOTER = 0xaA9c5758D8E5804dbbC4c931C6EAf1Be68DD30CD;
 
     // --- Token implementations (cloned by factories) ---
@@ -70,13 +76,11 @@ library DeploymentsRobinhoodTestnet {
     }
 
     // --- Liquidity tiers (THIN + THICK) ---
-    /// @notice THIN/THICK V4 graduators, one per (tier x hook fee). The DEFAULT tier reuses
-    ///         `GRADUATOR_UNIV4` / `GRADUATOR_UNIV4_0P5`. Update after deploying with
-    ///         `DeployTierLiquiditySystem`.
+    /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
+    ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
+    ///         `DeployTierLiquiditySystem`. ⚠️ Still paired with the legacy hook — see `SWAP_HOOK` above.
     address internal constant GRADUATOR_UNIV4_THIN = 0x51fD501d1D866177E209eAa357C515578Df1C766;
-    address internal constant GRADUATOR_UNIV4_THIN_0P5 = 0xEd16647144C099E3Ef5B60a6714c5C42E15f61Bb;
     address internal constant GRADUATOR_UNIV4_THICK = 0x4AdcBa218E3F6615C642B4eDe6c22A7229330e33;
-    address internal constant GRADUATOR_UNIV4_THICK_0P5 = 0xD2c2af16c76f2640fDF1208B6fEA107059079ffc;
 
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with

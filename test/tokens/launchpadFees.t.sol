@@ -28,7 +28,8 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 feeHandler: address(feeHandler),
                 vaultAllocation: 0,
                 lpFeeBps: lpFee,
-                treasuryShareBps: treasuryShare
+                treasuryShareBps: treasuryShare,
+                swapLpFeeBps: 0
             }),
             _emptyAntiSniperCfg()
         );
@@ -65,7 +66,8 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
                 feeHandler: address(feeHandler),
                 vaultAllocation: 0,
                 lpFeeBps: 150,
-                treasuryShareBps: 4000
+                treasuryShareBps: 4000,
+                swapLpFeeBps: 0
             }),
             _emptyAntiSniperCfg()
         );

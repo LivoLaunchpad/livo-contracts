@@ -180,22 +180,22 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
         return ILivoToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: taxBps});
     }
 
-    /// @notice Returns the effective tax configuration for the deployed `LivoSwapHook` (and off-chain
-    ///         readers). Reports the CURRENT effective rates — `max(decay, static)` per direction, which
-    ///         change every second while the decay window is open — so the hook, which re-reads this on
-    ///         every swap, applies the right (possibly decaying) rate.
-    /// @dev The hook expires tax when `block.timestamp > graduationTimestamp + taxDurationSeconds`. Both
+    /// @notice Returns the effective tax configuration for the PREVIOUSLY-deployed `LivoSwapHook` (and
+    ///         off-chain readers). Reports the CURRENT effective rates — `max(decay, static)` per direction,
+    ///         which change every second while the decay window is open — so that hook, which re-reads this
+    ///         on every swap, applies the right (possibly decaying) rate.
+    /// @dev LEGACY, kept for backwards compatibility — do not remove. The CURRENT `LivoSwapHook` reads
+    ///      `getSwapFees(isBuy)` below instead. This stays live for two readers that cannot be migrated:
+    ///      off-chain integrators, and the older hook still serving every token already graduated onto it
+    ///      (dropping this would break their swaps). That older hook applies the tax expiry itself, hence
+    ///      the both-directions + synthetic-duration shape retained here.
+    /// @dev That hook expires tax when `block.timestamp > graduationTimestamp + taxDurationSeconds`. Both
     ///      windows are anchored per `startTaxFromLaunch` (at `launchTimestamp` or `graduationTimestamp`),
     ///      so the returned `taxDurationSeconds` is SYNTHETIC: the seconds from `graduationTimestamp` to
     ///      the latest window end (`anchor + max(static, decay) duration`), keeping the hook open for the
     ///      whole effective window regardless of anchor. Once both windows close this returns a fully
     ///      zeroed tax (rates AND duration), so the hook stops taxing; the zeroed rates also cover the
     ///      edge where the window expires before graduation and a swap lands in the graduation block.
-    /// @dev FUTURE: this returns both directions because the CURRENTLY-deployed `LivoSwapHook` reads a full
-    ///      `TaxConfig` (rates + synthetic duration) and applies the expiry itself. A future hook is planned
-    ///      that reads only the INSTANT tax for the trade's direction. When it lands, prefer routing that
-    ///      hook through the single-direction `_effectiveTaxBps(isBuy)` (as `getLaunchpadFees` already does)
-    ///      so the synthetic-duration plumbing and the opposite-direction read can be dropped on that path.
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
         uint40 graduationTs = graduationTimestamp;
         (uint16 effBuy, uint16 effSell) = _effectiveTaxBps();
@@ -224,6 +224,23 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
             taxDurationSeconds: uint40(anchor + _maxWindowDuration() - referenceTime),
             graduationTimestamp: graduationTs
         });
+    }
+
+    /// @notice Returns the fees `LivoSwapHook` charges on a V4 swap in direction `isBuy` right now (see
+    ///         `ILivoToken`): the always-on post-graduation LP fee, plus the CURRENT effective tax —
+    ///         `max(decay, static)` for that direction, which changes every second while the decay window
+    ///         is open — so the hook, which re-reads this on every swap, applies the right (possibly
+    ///         decaying) rate.
+    /// @dev The tax-window (and decay) logic lives here, in `_effectiveTaxBps(isBuy)`, so the hook stays
+    ///      agnostic to the schedule: it gets zero tax once the window closes (or before a
+    ///      graduation-anchored token graduates). The LP fee is always effective.
+    function getSwapFees(bool isBuy)
+        external
+        view
+        override(ILivoToken, LivoToken)
+        returns (ILivoToken.LivoTradeFees memory)
+    {
+        return ILivoToken.LivoTradeFees({taxBps: _effectiveTaxBps(isBuy), lpFeeBps: swapLpFeeBps});
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

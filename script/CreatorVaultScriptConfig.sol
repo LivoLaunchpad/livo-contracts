@@ -107,36 +107,28 @@ library CreatorVaultScriptConfig {
         if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
             v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THIN,
-                thin0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THIN_0P5,
-                thick: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK,
-                thick0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK_0P5
+                thick: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN,
-                thin0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN_0P5,
-                thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK,
-                thick0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK_0P5
+                thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
             v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
-                thin0p5: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN_0P5,
-                thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK,
-                thick0p5: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK_0P5
+                thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
             v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
-                thin0p5: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN_0P5,
-                thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK,
-                thick0p5: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK_0P5
+                thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }

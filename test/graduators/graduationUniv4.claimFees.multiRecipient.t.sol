@@ -98,7 +98,7 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
         assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 
-    /// @notice Total fees across shareholders match expected 0.5% creator LP fee
+    /// @notice Total fees across shareholders match the expected tier-0 creator LP share
     function test_totalFeesMatchExpected() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 s1Before = shareholder1.balance;
         uint256 s2Before = shareholder2.balance;
@@ -115,8 +115,10 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
             CREATOR_GRADUATION_COMPENSATION + (gradTradingFee - _treasuryShareOf(gradTradingFee));
         uint256 lpFeesOnly = totalShareholderFees - graduationDeposits;
 
-        // Treasury LP share sent during swap by hook; shareholders get creator's 0.5% share
-        assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 2, "shareholder LP fees should be 0.5% of buy amount");
+        // Treasury LP share sent during swap by hook; shareholders get the creator's tier-0 share
+        assertApproxEqAbs(
+            lpFeesOnly, _lpCreatorShareTier0(1 ether), 2, "shareholder LP fees should be the tier-0 creator share"
+        );
     }
 
     /// @notice getClaimable on master handler returns correct values before claim

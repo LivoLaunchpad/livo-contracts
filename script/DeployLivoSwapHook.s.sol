@@ -16,8 +16,8 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 
 /// @notice Deploys `LivoSwapHook` via CREATE2 after mining a salt that encodes the four
 ///         required Uniswap V4 permission flags into the address.
-/// @dev Runs against Sepolia (chain id 11155111) or Mainnet (chain id 1). Pool manager comes
-///      from `DeploymentAddresses*`; launchpad comes from `Deployments*`. Required flags
+/// @dev Runs against Sepolia (chain id 11155111) or Mainnet (chain id 1). Pool manager and treasury
+///      come from `DeploymentAddresses*`; the LP fee router comes from `Deployments*`. Required flags
 ///      mirror `LivoSwapHook.getHookPermissions()`: BEFORE_SWAP, AFTER_SWAP, BEFORE_SWAP_RETURNS_DELTA,
 ///      AFTER_SWAP_RETURNS_DELTA → mask 0xCC.
 ///
@@ -29,19 +29,22 @@ contract DeployLivoSwapHook is Script {
     address internal constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
-        (address poolManager, address launchpad) = _resolveAddresses();
+        (address poolManager, address router, address treasury) = _resolveAddresses();
+        require(router != address(0), "LP_FEE_ROUTER not set; deploy LivoLpFeeRouter first");
+        require(treasury != address(0), "LIVO_TREASURY not set");
 
         console.log("=== Deploy LivoSwapHook ===");
         console.log("Chain ID:    %d", block.chainid);
         console.log("PoolManager: %s", poolManager);
-        console.log("Launchpad:   %s", launchpad);
+        console.log("LpFeeRouter: %s", router);
+        console.log("Treasury:    %s", treasury);
 
         uint160 flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                 | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
 
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), launchpad);
+        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), router, treasury);
         bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining hook salt (this may take 30-60s)...");
@@ -50,7 +53,7 @@ contract DeployLivoSwapHook is Script {
         console.log("Salt:          %x", uint256(salt));
 
         vm.startBroadcast();
-        LivoSwapHook hook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), launchpad);
+        LivoSwapHook hook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), router, treasury);
         vm.stopBroadcast();
 
         require(address(hook) == minedAddress, "Deployed address mismatch");
@@ -60,19 +63,21 @@ contract DeployLivoSwapHook is Script {
         console.log("LivoSwapHook: %s", address(hook));
         console.log("");
         console.log(
-            "Next: paste this address into SWAP_HOOK in src/config/manifest.%s.sol",
+            "Next: paste this address into SWAP_HOOK in src/config/manifest.ethereum.%s.sol",
             block.chainid == 1 ? "mainnet" : "sepolia"
         );
         console.log("Then: just export-deployments");
     }
 
-    function _resolveAddresses() internal view returns (address poolManager, address launchpad) {
+    function _resolveAddresses() internal view returns (address poolManager, address router, address treasury) {
         if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
-            launchpad = DeploymentsEthereumMainnet.LAUNCHPAD;
+            router = DeploymentsEthereumMainnet.LP_FEE_ROUTER;
+            treasury = DeploymentAddressesEthereumMainnet.LIVO_TREASURY;
         } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
-            launchpad = DeploymentsEthereumSepolia.LAUNCHPAD;
+            router = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
+            treasury = DeploymentAddressesEthereumSepolia.LIVO_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }

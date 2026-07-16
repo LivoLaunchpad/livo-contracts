@@ -10,10 +10,10 @@
 | ConstantProductBondingCurve                  | `0xF3303E03aa58B1366652E883326675E67E20423f` |
 | LivoGraduatorUniswapV2                       | `0x57aA990063b49cABf3EE9FeB49dca8DADc9511cD` |
 | LivoGraduatorUniswapV4                       | `0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944` |
-| LivoGraduatorUniswapV4 (0.5% hook)           | `0x2DBfc52A893BdFd8c0d3CbAA0a1e046211d82853` |
 | LivoMasterFeeHandler                         | `0xFF076a7110A404674Af27EC9749CB021699890EA` |
 | LivoSwapHook                                 | `0x64c5fAE1c446FEE704BF63e8b1e4A004168740Cc` |
-| LivoSwapHook (0.5%)                          | `0xa8B1D7763B5De2112AbFaA74c26c443681A180Cc` |
+| LivoLpFeeRouter (proxy)                      | _(not deployed)_                             |
+| LivoLpFeeRouter (impl)                       | _(not deployed)_                             |
 | LivoQuoter                                   | `0xaA9c5758D8E5804dbbC4c931C6EAf1Be68DD30CD` |
 | LivoToken (impl)                             | `0x913412A11a33ad2381B08Dc287be476878d4a5b7` |
 | LivoTaxableTokenUniV4 (impl)                 | `0x812Cc2479174d1BA07Bb8788A09C6fe6dCD20e33` |
@@ -32,9 +32,7 @@
 | Creator-vault curve 25%                      | `0x8A625e68c0705dBfFD2A3222fd2694651bAf4535` |
 | Creator-vault curve 30%                      | `0x653241bD3F700678f6D60C0d3eD606FA76Dd605B` |
 | LivoGraduatorUniV4 THIN                      | `0x51fD501d1D866177E209eAa357C515578Df1C766` |
-| LivoGraduatorUniV4 THIN (0.5%)               | `0xEd16647144C099E3Ef5B60a6714c5C42E15f61Bb` |
 | LivoGraduatorUniV4 THICK                     | `0x4AdcBa218E3F6615C642B4eDe6c22A7229330e33` |
-| LivoGraduatorUniV4 THICK (0.5%)              | `0xD2c2af16c76f2640fDF1208B6fEA107059079ffc` |
 | THIN-tier curve base                         | `0x82A07D5A619AAa1125114d6eD746870B0Cc40edD` |
 | THIN-tier curve 5%                           | `0x0211C3577F35b625653f0660982BfFBcF0916F03` |
 | THIN-tier curve 10%                          | `0xD2485f8b2BA952CB9df5BF86Fae0b01950b1f5b3` |

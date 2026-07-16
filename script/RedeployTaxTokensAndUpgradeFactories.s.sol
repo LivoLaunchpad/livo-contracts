@@ -65,7 +65,6 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
         // Unchanged non-tax base token impl — reused as-is when wiring the new factories
         address tokenImpl;
@@ -88,7 +87,6 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL
             });
@@ -108,7 +106,6 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL
             });
@@ -130,7 +127,6 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(d.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
     }
@@ -189,7 +185,6 @@ contract RedeployTaxTokensAndUpgradeFactories is Script {
                 ILivoFactory.TokenImpls({base: d.tokenImpl, tax: fresh.taxTokenV4Impl}),
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor(),
