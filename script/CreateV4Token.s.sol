@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
@@ -20,18 +21,20 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         selected liquidity tier (THIN by default), empty tax/anti-sniper config, no creator vaults
 ///         and no deployer buy.
 ///
-///         The factory namespaces the CREATE2 salt by the deployer, so the mined salt is only valid
-///         for the broadcasting account (`--account`/`--sender`). Set `DEPLOYER` when the simulation's
-///         `msg.sender` differs from the account that will actually broadcast, or the on-chain
-///         `0x1110` check reverts.
+///         The factory namespaces the CREATE2 salt by `msg.sender`, so the mined salt is only valid for
+///         the account that actually broadcasts. That account is read back from `vm.readCallers()` inside
+///         the broadcast rather than from the script frame's `msg.sender` — outside a broadcast the latter
+///         is forge's `DEFAULT_SENDER` (`0x1804c8AB...`), NOT the `--account` being used, so mining
+///         against it silently produces a salt for the wrong namespace and the on-chain `0x1110` check
+///         reverts with `InvalidTokenAddress()`.
 ///
 ///         Env vars:
 ///         - `FACTORY_ADDRESS` (required)        the V4 factory proxy to create the token through
-///         - `TOKEN_NAME`      (default: "Livo V4 Test Token")
-///         - `TOKEN_SYMBOL`    (default: "LIVOV4")
+///         - `TOKEN_NAME`      (default: "FooHook TestV4Token")
+///         - `TOKEN_SYMBOL`    (default: "FooHook")
 ///         - `FEE_RECEIVER`    (default: the broadcaster) gets 100% of the token's fee shares
 ///         - `SALT_START`      (default: 0) salt search offset, in case a lower salt was already used
-///         - `DEPLOYER`        (default: the broadcaster) account the salt is namespaced to
+///         - `DEPLOYER`        (default: the broadcaster) escape hatch to override the salt namespace
 ///         - `LIQUIDITY_TIER`  (default: 0 = THIN) 0 THIN, 1 DEFAULT, 2 THICK
 ///         - `LP_FEE_BPS`      (default: 100) post-graduation swap fee stored on the token; 100 or 50
 ///
@@ -43,16 +46,20 @@ contract CreateV4Token is Script {
         address factory = vm.envAddress("FACTORY_ADDRESS");
         require(factory.code.length > 0, "FACTORY_ADDRESS has no code");
 
-        string memory name = vm.envOr("TOKEN_NAME", string("Foo TestV4Token"));
-        string memory symbol = vm.envOr("TOKEN_SYMBOL", string("Foo"));
+        string memory name = vm.envOr("TOKEN_NAME", string("FooHook TestV4Token"));
+        string memory symbol = vm.envOr("TOKEN_SYMBOL", string("FooHook"));
         uint256 saltStart = vm.envOr("SALT_START", uint256(0));
-        address feeReceiver = vm.envOr("FEE_RECEIVER", msg.sender);
         LiquidityTier tier = LiquidityTier(uint8(vm.envOr("LIQUIDITY_TIER", uint256(uint8(LiquidityTier.THIN)))));
         uint16 lpFeeBps = uint16(vm.envOr("LP_FEE_BPS", uint256(100)));
 
-        address deployer = vm.envOr("DEPLOYER", msg.sender);
-
         address tokenImplBase = LivoFactoryUniV4Unified(factory).TOKEN_IMPL_BASE();
+
+        // Open the broadcast BEFORE mining: the salt namespace is the account that sends the tx, which
+        // `readCallers` only reports once the broadcast is active. Reading `msg.sender` out here would
+        // give forge's DEFAULT_SENDER instead — see the note above.
+        vm.startBroadcast();
+        (address deployer, address feeReceiver) = _accounts();
+
         bytes32 salt = _mineSalt(factory, tokenImplBase, deployer, saltStart);
         address predicted = _predictToken(factory, tokenImplBase, deployer, salt);
 
@@ -71,7 +78,6 @@ contract CreateV4Token is Script {
         ILivoFactory.FeeShare[] memory feeShares = new ILivoFactory.FeeShare[](1);
         feeShares[0] = ILivoFactory.FeeShare({account: feeReceiver, shares: 10_000, directFeesEnabled: false});
 
-        vm.startBroadcast();
         address token = LivoFactoryUniV4Unified(factory)
             .createToken(
                 ILivoFactory.TokenSetupTiered({
@@ -101,6 +107,30 @@ contract CreateV4Token is Script {
         console.log("Token:", token);
         console.log("");
         console.log("Next: buy through the launchpad until it crosses the graduation threshold.");
+    }
+
+    /// @dev The account the CREATE2 salt is namespaced to, and the token's fee receiver. MUST be called
+    ///      inside an active broadcast: `readCallers` is what reports the account forge will actually
+    ///      send from (`--account`/`--sender`/`--private-key`). Kept in its own frame so `broadcaster`
+    ///      doesn't occupy a stack slot in `run()`, which is at the `via_ir`-free limit.
+    function _accounts() internal returns (address deployer, address feeReceiver) {
+        (VmSafe.CallerMode mode, address broadcaster,) = vm.readCallers();
+        require(
+            mode == VmSafe.CallerMode.Broadcast || mode == VmSafe.CallerMode.RecurrentBroadcast,
+            "_accounts must be called inside a broadcast"
+        );
+        deployer = vm.envOr("DEPLOYER", broadcaster);
+        feeReceiver = vm.envOr("FEE_RECEIVER", broadcaster);
+
+        // `--account <keystore>` alone does NOT set the script's sender: forge still reports its
+        // DEFAULT_SENDER here, so the salt would be mined for an account that never signs the tx and the
+        // factory's `0x1110` check would revert with a bare `InvalidTokenAddress()`. Fail with something
+        // actionable instead. Pass `--sender <addr>` alongside `--account` (as the repo's other deploy
+        // recipes do), or set `DEPLOYER` explicitly.
+        require(
+            deployer != DEFAULT_SENDER,
+            "salt would be mined for forge's DEFAULT_SENDER: pass --sender <your address> (alongside --account), or set DEPLOYER"
+        );
     }
 
     /// @dev Mirrors `test/launchpad/base.t.sol::_nextValidSalt` — searches for a salt whose

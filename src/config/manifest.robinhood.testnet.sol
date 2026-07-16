@@ -18,16 +18,18 @@ library DeploymentsRobinhoodTestnet {
     address internal constant GRADUATOR_UNIV4 = 0x3b6f7a54F3225B9D1B546E0138a2e3D140D89944;
     address internal constant MASTER_FEE_HANDLER = 0xFF076a7110A404674Af27EC9749CB021699890EA;
 
-    /// @notice ⚠️ LEGACY HOOK: Robinhood has NOT been migrated to the marketcap-tiered `LivoSwapHook` yet.
-    ///         This is the previously-deployed fee-hardcoded hook, still live and serving the tokens
-    ///         already graduated on this chain. The graduators above/below are paired with it. Deploying a
-    ///         factory from this manifest today wires tokens (which now carry `swapLpFeeBps`) to a hook
-    ///         that ignores it. Redeploy the hook + router + graduators here before creating new V4 tokens.
-    ///         The retired 0.5% hook/graduator variants are recorded in `deployments.robinhood.testnet.md`.
-    address internal constant SWAP_HOOK = 0x64c5fAE1c446FEE704BF63e8b1e4A004168740Cc;
-    /// @notice Not deployed on Robinhood yet — placeholder. Fill in after deploying `LivoLpFeeRouter`.
-    address internal constant LP_FEE_ROUTER = address(0);
-    address internal constant LP_FEE_ROUTER_IMPL = address(0);
+    /// @notice Marketcap-tiered `LivoSwapHook`: fee-agnostic, reads each token's `swapLpFeeBps` via
+    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. Wired to the router + treasury below.
+    /// @dev ⚠️ The `GRADUATOR_UNIV4*` addresses in this manifest still point at graduators built around the
+    ///      RETIRED fee-hardcoded hook (`0x64c5fAE1c446FEE704BF63e8b1e4A004168740Cc`, still live and serving
+    ///      the tokens already graduated on it). A token graduated through those graduators will NOT use
+    ///      this hook. Deploy a graduator against this hook (`DeployHookGraduatorFactory`) before creating
+    ///      new V4 tokens. The retired 0.5% hook/graduator variants are recorded in the legacy git history
+    ///      of `deployments.robinhood.testnet.md`.
+    address internal constant SWAP_HOOK = 0xc6A488bE0F7e7622aa42370De70Ee8f7bB4040cc;
+    /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`; splits LP fees treasury/creator by marketcap tier.
+    address internal constant LP_FEE_ROUTER = 0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565;
+    address internal constant LP_FEE_ROUTER_IMPL = 0x75A42715c6B8912631971c0737E523a662Ec7064;
     address internal constant QUOTER = 0xaA9c5758D8E5804dbbC4c931C6EAf1Be68DD30CD;
 
     // --- Token implementations (cloned by factories) ---
@@ -78,7 +80,8 @@ library DeploymentsRobinhoodTestnet {
     // --- Liquidity tiers (THIN + THICK) ---
     /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
     ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployTierLiquiditySystem`. ⚠️ Still paired with the legacy hook — see `SWAP_HOOK` above.
+    ///         `DeployTierLiquiditySystem`. ⚠️ These still point at the RETIRED fee-hardcoded hook, NOT at
+    ///         `SWAP_HOOK` above — see the note there.
     address internal constant GRADUATOR_UNIV4_THIN = 0x51fD501d1D866177E209eAa357C515578Df1C766;
     address internal constant GRADUATOR_UNIV4_THICK = 0x4AdcBa218E3F6615C642B4eDe6c22A7229330e33;
 
