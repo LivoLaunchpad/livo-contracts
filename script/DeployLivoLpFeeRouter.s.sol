@@ -8,7 +8,9 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 import {LivoLpFeeRouter} from "src/feeRouters/LivoLpFeeRouter.sol";
 import {
     DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
+    DeploymentAddressesEthereumSepolia,
+    DeploymentAddressesRobinhoodMainnet,
+    DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @notice Deploys the `LivoLpFeeRouter` implementation + UUPS proxy with the initial tier policy.
@@ -71,8 +73,13 @@ contract DeployLivoLpFeeRouter is Script {
             treasury = DeploymentAddressesEthereumMainnet.LIVO_TREASURY;
         } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             treasury = DeploymentAddressesEthereumSepolia.LIVO_TREASURY;
+        } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
+            treasury = DeploymentAddressesRobinhoodMainnet.LIVO_TREASURY;
+        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
+            treasury = DeploymentAddressesRobinhoodTestnet.LIVO_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }
+        require(treasury != address(0), "LIVO_TREASURY missing");
     }
 }
