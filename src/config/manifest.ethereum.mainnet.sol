@@ -14,7 +14,7 @@ library DeploymentsEthereumMainnet {
     address internal constant LAUNCHPAD = 0xaA74Aa89590E3B50BE178eA970E490c173b61110;
     address internal constant BONDING_CURVE = 0xc8aDB35992054948333486621D1891D298f050Ad;
     address internal constant GRADUATOR_UNIV2 = 0x042ed119F78b734407C6368A01D799C503df2E63;
-    address internal constant GRADUATOR_UNIV4 = 0x86eDfc50E65233ff3e5b26DeeD49578a157565d7;
+    address internal constant GRADUATOR_UNIV4 = 0x1bB406cD19175FD707Bae63aA1410F7621fAc71D;
     address internal constant MASTER_FEE_HANDLER = 0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC;
 
     address internal constant SWAP_HOOK = 0x10392843021A1aF0abE3B1A21F14673DC05340cc;
@@ -24,11 +24,11 @@ library DeploymentsEthereumMainnet {
     address internal constant QUOTER = 0xBd208C238Dd7895a7b94833063C2397F10E056f1;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0xE26F3e1F8E49fD5FbB1fd35342Ec2a675b0C7012;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x93AcF08eE9bABa0672bd1ae668dEbb5d9fdfE354;
+    address internal constant TOKEN_IMPL = 0x94D150d4FBd8e3206Ad5b9882382Ad045e54a0f1;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x11f00757Fe8D9a3cC71181232107D26e87e6e61F;
 
     /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x79ab23C9f95D8B7ae96EA789F20a81A945C7cca9;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x57a62Ad2E67D02a5b3c78cbC0F979f7aE75446A6;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -38,8 +38,8 @@ library DeploymentsEthereumMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x25A30503E2680CEDA6fa5b5d966Bc2219C37F464;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x81597b85f2C760d0960C84E4DAd8a5b4E9EeF0A5;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x33033F027f953458301143654c124AC7aE990228;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xe507D3Fa961b178fB9e4f445dE7BD75F42C99289;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -71,9 +71,9 @@ library DeploymentsEthereumMainnet {
     // --- Liquidity tiers (THIN + THICK) ---
     /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
     ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployTierLiquiditySystem`.
-    address internal constant GRADUATOR_UNIV4_THIN = 0x580e2306EC530d74b7Ad5Da8A3fA31f8Ebbe39fF;
-    address internal constant GRADUATOR_UNIV4_THICK = 0x5B1F8B2C562113F4F20B6E7eF1d24dB37839e3b6;
+    ///         `RedeployUniV4Graduators`. Both point at `SWAP_HOOK` above.
+    address internal constant GRADUATOR_UNIV4_THIN = 0xe1F056fF67843E7cFB0DcF2e7dc4aF36bB34D57D;
+    address internal constant GRADUATOR_UNIV4_THICK = 0xe9C9401Bc17143aAD13376b755812e0E515aE97E;
 
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with
