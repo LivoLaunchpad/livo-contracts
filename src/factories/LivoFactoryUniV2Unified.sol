@@ -89,7 +89,14 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxCfg);
         _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
         token = _createToken(
-            tokenSetup, address(0), address(GRADUATOR), supplyShares, taxConfigs, antiSniperCfg, new CreatorVault[](0)
+            tokenSetup,
+            address(0),
+            address(GRADUATOR),
+            V2_POST_GRADUATION_LP_FEE_BPS,
+            supplyShares,
+            taxConfigs,
+            antiSniperCfg,
+            new CreatorVault[](0)
         );
     }
 
@@ -107,7 +114,14 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
         token = _createToken(
-            tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
+            tokenSetup,
+            address(0),
+            address(GRADUATOR),
+            V2_POST_GRADUATION_LP_FEE_BPS,
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
         );
     }
 
@@ -126,7 +140,14 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
         token = _createToken(
-            tokenSetup, address(0), address(GRADUATOR), buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults
+            tokenSetup,
+            address(0),
+            address(GRADUATOR),
+            V2_POST_GRADUATION_LP_FEE_BPS,
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
         );
         if (referral != address(0)) emit TokenReferral(token, referral);
     }

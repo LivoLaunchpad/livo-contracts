@@ -17,10 +17,14 @@ import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens
 
 import {
     DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
+    DeploymentAddressesEthereumSepolia,
+    DeploymentAddressesRobinhoodMainnet,
+    DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Redeploy every token implementation + both unified factory implementations and upgrade
 ///        the unified factory proxies
@@ -42,8 +46,8 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
 ///
 ///         Pre-broadcast sanity: confirms that `LivoTaxableTokenUniV2` and `LivoTaxableTokenUniV4`
-///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run
-///         `just taxtoken-sepolia` before deploying to Sepolia).
+///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run the
+///         matching `just taxtoken-{mainnet,sepolia,robinhood,robintest}` recipe BEFORE building).
 ///
 ///         Post-broadcast: update these five address constants in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`:
@@ -54,8 +58,11 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         - `FACTORY_UNIV4_UNIFIED_IMPL`
 ///
 /// @dev    Run with:
-///         forge script RedeployAllTokensAndUpgradeFactories --rpc-url <mainnet|sepolia> \
+///         forge script RedeployAllTokensAndUpgradeFactories \
+///             --rpc-url <mainnet|sepolia|robinhood-mainnet|robinhood-testnet> \
 ///             --verify --account livo.dev --slow --broadcast
+///         On Robinhood drop `--verify` (Blockscout, not the `[etherscan]` table) and add
+///         `--gas-estimate-multiplier 300` (Arbitrum L2: forge under-provisions creation gas).
 contract RedeployAllTokensAndUpgradeFactories is Script {
     /// @dev Per-chain addresses needed to wire the new factory implementations and target the proxy
     ///      upgrades. Pulled from `src/config/manifest.<chain>.sol`. No token impls listed here —
@@ -67,7 +74,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
-        address graduatorV4_0p5;
         address masterFeeHandler;
     }
 
@@ -89,7 +95,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER
             });
             require(
@@ -109,7 +114,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
-                graduatorV4_0p5: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_0P5,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER
             });
             require(
@@ -121,6 +125,44 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
             );
+        } else if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                factoryV2Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsRobinhoodMainnet.LAUNCHPAD,
+                bondingCurve: DeploymentsRobinhoodMainnet.BONDING_CURVE,
+                graduatorV2: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4,
+                masterFeeHandler: DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER
+            });
+            require(
+                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV2 import is not Robinhood mainnet (run `just taxtoken-robinhood`)"
+            );
+            require(
+                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                    == DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
+                "LivoTaxableTokenUniV4 import is not Robinhood mainnet (run `just taxtoken-robinhood`)"
+            );
+        } else if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                factoryV2Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED,
+                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
+                bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
+                graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
+                masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER
+            });
+            require(
+                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV2 import is not Robinhood testnet (run `just taxtoken-robintest`)"
+            );
+            require(
+                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                    == DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
+                "LivoTaxableTokenUniV4 import is not Robinhood testnet (run `just taxtoken-robintest`)"
+            );
         } else {
             revert("Unsupported chain");
         }
@@ -131,7 +173,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(d.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(d.graduatorV4_0p5 != address(0), "manifest: GRADUATOR_UNIV4_0P5 missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
     }
 
@@ -190,7 +231,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
                 d.bondingCurve,
                 d.graduatorV4,
-                d.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor(),

@@ -152,37 +152,11 @@ deploy-tiers-sepolia:
 deploy-tiers-mainnet:
     forge script DeployTierLiquiditySystem --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
-# ##################### Full-stack deploy (launchpad v2, from scratch, TWO parts) #######################
-# The 1% and 0.5% swap hooks bake their fee as a `constant`, so each needs its OWN build (so its bytecode
-# matches the audited mainnet hook Uniswap verifies against). The from-scratch deploy is therefore two
-# passes, see script/DeployFullStack.s.sol + DeployFullStackPart2.s.sol. Needs ROBINHOOD_RPC_URL /
-# ROBINHOOD_TESTNET_RPC_URL exported (public RPCs are in foundry.toml).
-# `--gas-estimate-multiplier 300` is required: Robinhood is an Arbitrum L2 and forge's default estimate
-# under-provisions contract-creation gas ("code storage out of gas"). Extra gas limit is refunded, not spent.
-#
-#   PART 1 — committed LivoSwapHook (LP_FEE_BPS = 100 = 1%):
-#     just deploy-robinhood-part1                 (or deploy-robinhood-testnet-part1)
-#   then paste the printed addresses into src/config/manifest.robinhood.<net>.sol + `just export-deployments`.
-#
-#   PART 2 — set LivoSwapHook `LP_FEE_BPS` to 50 (0.5%) and rebuild first:
-#     just deploy-robinhood-part2                 (or deploy-robinhood-testnet-part2)
-#   then paste + export, and REVERT LP_FEE_BPS back to 100 so the committed source stays the 1% hook.
-
-deploy-robinhood-part1: taxtoken-robinhood
-    forge script DeployFullStack --rpc-url robinhood --account livo.dev --sender {{livodev}} --slow --broadcast --gas-estimate-multiplier 300 \
-        --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/
-
-deploy-robinhood-part2: taxtoken-robinhood
-    forge script DeployFullStackPart2 --rpc-url robinhood --account livo.dev --slow --broadcast --gas-estimate-multiplier 300 \
-        --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/
-
-deploy-robinhood-testnet-part1: taxtoken-robintest
-    forge script DeployFullStack --rpc-url robinhood_testnet --account livo.dev --sender {{livodev}} --slow --broadcast --gas-estimate-multiplier 300 \
-        --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
-
-deploy-robinhood-testnet-part2: taxtoken-robintest
-    forge script DeployFullStackPart2 --rpc-url robinhood_testnet --account livo.dev --slow --broadcast --gas-estimate-multiplier 300 \
-        --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
+# The from-scratch two-part full-stack deploy (`DeployFullStack` + `DeployFullStackPart2`, and the
+# `deploy-robinhood-part1/part2` recipes) was removed: both Robinhood chains are already deployed, and the
+# two-pass flow only existed because the old swap hooks baked their LP fee in as a `constant`, needing one
+# build per fee variant. The current `LivoSwapHook` is fee-agnostic (it reads `swapLpFeeBps` off the token),
+# so a single build serves both fees. Recover the scripts from git history if a new chain ever needs one.
 
 # Robinhood TESTNET has no Uniswap V2, so the V2 graduation path is skipped there
 # (hasV2 = UNIV2_ROUTER != address(0)). Deploy a stock V2 instance ONCE, then paste the

@@ -81,8 +81,13 @@ contract LaunchpadInvariants is Test {
         graduatorV2 = new LivoGraduatorUniswapV2(
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
+        // These invariants only exercise pre-graduation bonding-curve trades, so the hook never routes a
+        // fee and its LP-fee router is a dummy. Deploy a real `LivoLpFeeRouter` here if a handler ever
+        // starts performing post-graduation V4 swaps.
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
+            "LivoSwapHook.sol:LivoSwapHook",
+            abi.encode(poolManagerAddress, makeAddr("lpFeeRouterDummy"), treasury),
+            TEST_HOOK_ADDRESS
         );
         feeHandler = new LivoMasterFeeHandler();
 
@@ -125,7 +130,6 @@ contract LaunchpadInvariants is Test {
                 address(launchpad),
                 ILivoFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
                 address(bondingCurve),
-                address(graduatorV4),
                 address(graduatorV4),
                 address(feeHandler),
                 address(0),

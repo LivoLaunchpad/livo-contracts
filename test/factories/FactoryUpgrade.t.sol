@@ -23,7 +23,6 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
                 ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxToken)}),
                 address(bondingCurve),
                 newGraduator,
-                newGraduator,
                 address(feeHandler),
                 address(creatorVaultFactory),
                 vaultCurves,

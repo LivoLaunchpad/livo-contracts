@@ -30,9 +30,12 @@ interface ILivoToken is IERC20 {
         uint256 vaultAllocation;
         uint16 lpFeeBps; // pre-graduation LP/trading fee on buys and sells (bps), split treasury/creator
         uint16 treasuryShareBps; // share of the LP fee routed to the treasury (bps); remainder to creator
+        uint16 swapLpFeeBps; // post-graduation LP fee `LivoSwapHook` charges on V4 swaps (bps); 0 for V2, 50/100 for V4
     }
 
-    /// @notice Tax configuration for a token
+    /// @notice Tax configuration for a token.
+    /// @dev LEGACY: superseded by `LivoTradeFees` / `getSwapFees`. Kept for backwards compatibility —
+    ///      see `getTaxConfig`.
     struct TaxConfig {
         uint16 buyTaxBps; // Buy tax in basis points (max 500 = 5%)
         uint16 sellTaxBps; // Sell tax in basis points (max 500 = 5%)
@@ -65,6 +68,14 @@ interface ILivoToken is IERC20 {
         uint16 taxBps; // creator tax for THIS trade (0 if none), in bps of gross ETH; 100% to creator
     }
 
+    /// @notice Fees `LivoSwapHook` charges on a single post-graduation V4 swap leg, for one direction.
+    /// @dev Post-graduation analogue of `LaunchpadFees`, without `treasuryShareBps`: the LP-fee split is
+    ///      performed downstream by `LivoLpFeeRouter`'s marketcap tiers, not by the token.
+    struct LivoTradeFees {
+        uint16 taxBps; // currently-effective creator tax for this leg (bps of gross ETH); 0 outside the tax window
+        uint16 lpFeeBps; // post-graduation LP fee (bps); always effective; 0 for V2 tokens
+    }
+
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
 
     function markGraduated() external;
@@ -92,7 +103,21 @@ interface ILivoToken is IERC20 {
 
     /// @notice Returns the tax configuration for this token
     /// @return config The complete tax configuration
+    /// @dev LEGACY, kept for backwards compatibility — do not remove. Superseded by `getSwapFees`, which
+    ///      the current `LivoSwapHook` reads instead. Two live readers still depend on this: off-chain
+    ///      integrators, and the PREVIOUSLY-DEPLOYED `LivoSwapHook` (which applies the tax expiry itself
+    ///      from the returned rates + synthetic duration) — every token already graduated onto that hook
+    ///      would break if this were dropped. New integrations should use `getSwapFees`.
     function getTaxConfig() external view returns (TaxConfig memory config);
+
+    /// @notice Returns the fees `LivoSwapHook` charges right now on a V4 swap in the given direction:
+    ///         the always-on LP fee plus the effective tax (non-zero only while the post-graduation tax
+    ///         window is open).
+    /// @dev Non-taxable tokens return only the LP fee (zero tax); taxable variants override to add the
+    ///      windowed/decaying tax for `isBuy`. The hook passes the swap direction so the token reads only
+    ///      the relevant side (mirroring `getLaunchpadFees`). Supersedes `getTaxConfig`.
+    /// @param isBuy True for a buy (ETH->token), false for a sell (token->ETH).
+    function getSwapFees(bool isBuy) external view returns (LivoTradeFees memory);
 
     /// @notice Returns the pre-graduation fee policy for a given trade.
     /// @dev Read by the launchpad on every pre-graduation buy/sell. `virtual` implementations may

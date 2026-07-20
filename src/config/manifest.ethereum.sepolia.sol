@@ -15,21 +15,21 @@ library DeploymentsEthereumSepolia {
     address internal constant LAUNCHPAD = 0x0f82BE05B136266203FcAD79A951bDbBB4f31110;
     address internal constant BONDING_CURVE = 0x523C474aB6C177B3A4eF9aeF226998eC3f35ae27;
     address internal constant GRADUATOR_UNIV2 = 0xdf2A4F12Af6Cce0588678FdA7ce69D5Edc7d0897;
-    address internal constant GRADUATOR_UNIV4 = 0xd54a2f50Fc588698D965B9764F592C76c89Cab3f;
-    /// @notice V4 graduator paired with the 50-bps `SWAP_HOOK_0P5` variant. Update after deploying.
-    address internal constant GRADUATOR_UNIV4_0P5 = 0x67E92ad7d1BB9D380802217232Dd6116B88bfb91;
+    address internal constant GRADUATOR_UNIV4 = 0xa88eAEA0218F0c0E9cbeec17c3CF449379374Cc7;
     address internal constant MASTER_FEE_HANDLER = 0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f;
 
-    address internal constant SWAP_HOOK = 0x0591a87D3a56797812C4DA164C1B005c545400Cc;
-    address internal constant SWAP_HOOK_0P5 = 0xC04Bb5bA43795330e54efaC7244ce40318FD80cc;
+    address internal constant SWAP_HOOK = 0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC;
+    /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`; splits LP fees treasury/creator by marketcap tier.
+    address internal constant LP_FEE_ROUTER = 0x0cEC114e1b8712EBd9d67a773381410F0F78985A;
+    address internal constant LP_FEE_ROUTER_IMPL = 0x215a7Cf7Cb881f52CA5350032ae56d27018A5889;
     address internal constant QUOTER = 0x17b8f037a261344714A64643Bde0Bd7C5745b3BE;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0xb653e5036689eAcBd518B5Cf7AAD48FA6d03a10C;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x61054ec92636c2e4eE1ecE05F7F9bE7D240F24dA;
+    address internal constant TOKEN_IMPL = 0xaa4331d36F360DCed845541348A33e64e6F9619c;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x202fA5672BA4840c08dd2aAD66C41937D86f2128;
 
     /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x76bA7d2d05b76CA78bF7504ede5c2E607Acfc328;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x0152D42953E8aCC7d1Ad941E7761615040DB04FC;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -39,8 +39,8 @@ library DeploymentsEthereumSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x2Fb8Bf5df18F215e22D9D91A82cE6D5Dd8121De3;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x17E8AD9f793b63C60725051eE4048928eCD2171F;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xE73fE61298C5069137BD425BA9305EabDc476fa2;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xa405E52A21ed5CA5401A51264d071F2E995D6772;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -70,13 +70,11 @@ library DeploymentsEthereumSepolia {
     }
 
     // --- Liquidity tiers (THIN + THICK) ---
-    /// @notice THIN/THICK V4 graduators, one per (tier x hook fee). The DEFAULT tier reuses
-    ///         `GRADUATOR_UNIV4` / `GRADUATOR_UNIV4_0P5`. Update after deploying with
-    ///         `DeployTierLiquiditySystem`.
-    address internal constant GRADUATOR_UNIV4_THIN = 0x19c6FF2c85017c2A6D9Eb8da147631193e8E3FB6;
-    address internal constant GRADUATOR_UNIV4_THIN_0P5 = 0x5DcFBeD954968431bf1d85E99F18c6b4fC864bFA;
-    address internal constant GRADUATOR_UNIV4_THICK = 0xbD2b4b5633B90fBD5BAC5144c02101201aB0E84F;
-    address internal constant GRADUATOR_UNIV4_THICK_0P5 = 0xB476163a1fb3aBCD4fa3C9BF65eBA90C1Dc55A8d;
+    /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
+    ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
+    ///         `RedeployUniV4Graduators`. Both point at `SWAP_HOOK` above.
+    address internal constant GRADUATOR_UNIV4_THIN = 0xcfcD21eb40212779F29f3C8e063F3Fc0595635A4;
+    address internal constant GRADUATOR_UNIV4_THICK = 0xfE99fE47FA6f0860FD7a09fa5245a429EE75D330;
 
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with

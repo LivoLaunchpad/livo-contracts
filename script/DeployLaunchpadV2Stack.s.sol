@@ -36,20 +36,18 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///             `0x1110` AND is identical on mainnet and sepolia (see "Cross-chain address parity").
 ///         2.  `LivoQuoter` — immutable `launchpad`, must follow the launchpad.
 ///         3.  `LivoGraduatorUniswapV2` — immutable `LIVO_LAUNCHPAD`.
-///         4.  `LivoGraduatorUniswapV4` (1% hook) — immutable `LIVO_LAUNCHPAD`; reuses the existing
-///             `SWAP_HOOK` (the hook only reads `treasury()` from its old-launchpad immutable, so it
-///             keeps working as long as the old launchpad stays deployed with a current treasury —
-///             enforced below: both launchpads must report the same treasury).
-///         5.  `LivoGraduatorUniswapV4` (0.5% hook) — same, reusing `SWAP_HOOK_0P5`.
-///         6.  The three token implementations (interface changed: `getLaunchpadFees`, lp-fee init
+///         4.  `LivoGraduatorUniswapV4` — immutable `LIVO_LAUNCHPAD`; reuses the existing
+///             `SWAP_HOOK`. One graduator serves every LP fee: the hook is fee-agnostic and reads the
+///             rate back from the token, so there is no per-fee graduator to deploy.
+///         5.  The three token implementations (interface changed: `getLaunchpadFees`, lp-fee init
 ///             params, creation-anchored tax window):
 ///             `LivoToken`, `LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV4`.
-///         7.  Both unified factory IMPLEMENTATIONS — `LivoFactoryUniV2Unified` and
+///         6.  Both unified factory IMPLEMENTATIONS — `LivoFactoryUniV2Unified` and
 ///             `LivoFactoryUniV4Unified` — wired to the launchpad / graduators / token impls deployed
-///             above (1–6) plus the reused bonding curve / master fee handler / creator-vault stack
+///             above (1–5) plus the reused bonding curve / master fee handler / creator-vault stack
 ///             from the manifest. These are plain implementation contracts; the proxies are NOT
 ///             pointed at them here (phase 2 does that), so nothing changes for token creators yet.
-///         8.  `whitelistFactory` for both (unchanged) factory proxies on the NEW launchpad.
+///         7.  `whitelistFactory` for both (unchanged) factory proxies on the NEW launchpad.
 ///             Harmless ahead of time: the proxies don't talk to the new launchpad until phase 2.
 ///
 ///         ## Phase 2 — factory proxy flip (separate run, after updating the manifest)
@@ -61,7 +59,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         to the v2 stack.
 ///
 ///         NOT redeployed: bonding curves (stateless, no launchpad reference), master fee handler,
-///         swap hooks (reused, see above), the factory proxies, and the whole creator-vault stack.
+///         the swap hook (reused, see above), the factory proxies, and the whole creator-vault stack.
 ///
 ///         The OLD launchpad is left untouched: tokens already registered there keep trading and
 ///         graduating against it through the old graduators. Optionally blacklist the factory
@@ -83,15 +81,16 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         The broadcaster MUST be `LAUNCHPAD_OWNER` (it whitelists factories and, on sepolia,
 ///         retargets the treasury). No factory-proxy ownership is needed in this phase.
 ///
-///         Treasury invariant: `oldLaunchpad.treasury() == newLaunchpad.treasury()` — the reused
-///         swap hooks read the treasury from the OLD launchpad, so the two must agree. Checked
+///         Treasury invariant: `oldLaunchpad.treasury() == newLaunchpad.treasury()`. Checked
 ///         pre-broadcast against the manifest launchpad; any future treasury change must be applied
-///         on BOTH launchpads.
+///         on BOTH launchpads. Note the reused `SWAP_HOOK` no longer reads the treasury from a
+///         launchpad at all — it takes it as a constructor immutable — so redirecting the hook's LP
+///         fees means redeploying the hook, not retargeting a launchpad treasury.
 ///
 ///         Post-broadcast: update these constants in `src/config/manifest.<chain>.sol`, then run
 ///         `just export-deployments` (and mirror the new addresses in the envio-indexer configs):
 ///         - `LAUNCHPAD`, `QUOTER`
-///         - `GRADUATOR_UNIV2`, `GRADUATOR_UNIV4`, `GRADUATOR_UNIV4_0P5`
+///         - `GRADUATOR_UNIV2`, `GRADUATOR_UNIV4`
 ///         - `TOKEN_IMPL`
 ///         - `TAXABLE_TOKEN_V4_IMPL`
 ///         - `TAXABLE_TOKEN_V2_IMPL`
@@ -139,7 +138,6 @@ contract DeployLaunchpadV2Stack is Script {
         address factoryV2Proxy;
         address factoryV4Proxy;
         address swapHook;
-        address swapHook0p5;
         // reused (not redeployed) deps the fresh factory impls are wired to
         address bondingCurve;
         address masterFeeHandler;
@@ -160,7 +158,6 @@ contract DeployLaunchpadV2Stack is Script {
         address quoter;
         address graduatorV2;
         address graduatorV4;
-        address graduatorV4_0p5;
         address tokenImpl;
         address taxTokenV2Impl;
         address taxTokenV4Impl;
@@ -175,7 +172,6 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsEthereumMainnet.SWAP_HOOK,
-                swapHook0p5: DeploymentsEthereumMainnet.SWAP_HOOK_0P5,
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesEthereumMainnet.UNIV2_ROUTER,
@@ -200,7 +196,6 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsEthereumSepolia.SWAP_HOOK,
-                swapHook0p5: DeploymentsEthereumSepolia.SWAP_HOOK_0P5,
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesEthereumSepolia.UNIV2_ROUTER,
@@ -228,7 +223,6 @@ contract DeployLaunchpadV2Stack is Script {
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
         require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
         require(d.swapHook != address(0), "manifest: SWAP_HOOK missing");
-        require(d.swapHook0p5 != address(0), "manifest: SWAP_HOOK_0P5 missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
     }
@@ -312,7 +306,7 @@ contract DeployLaunchpadV2Stack is Script {
         fresh.quoter = address(new LivoQuoter(fresh.launchpad));
         console.log("| LivoQuoter                                    |", fresh.quoter);
 
-        // --- Graduators (hooks are reused from the manifest) ---
+        // --- Graduators (the hook is reused from the manifest) ---
         fresh.graduatorV2 = address(new LivoGraduatorUniswapV2(d.univ2Router, fresh.launchpad, d.univ2PairInitCodeHash));
         console.log("| LivoGraduatorUniswapV2                        |", fresh.graduatorV2);
 
@@ -328,19 +322,6 @@ contract DeployLaunchpadV2Stack is Script {
             )
         );
         console.log("| LivoGraduatorUniswapV4                        |", fresh.graduatorV4);
-
-        fresh.graduatorV4_0p5 = address(
-            new LivoGraduatorUniswapV4(
-                fresh.launchpad,
-                d.univ4PoolManager,
-                d.univ4PositionManager,
-                d.permit2,
-                d.swapHook0p5,
-                DEFAULT_GRAD_SQRT_PRICE_X96,
-                UniswapV4PoolConstants.TICK_UPPER
-            )
-        );
-        console.log("| LivoGraduatorUniswapV4 (0p5 hook)             |", fresh.graduatorV4_0p5);
 
         // --- Token implementations (3) ---
         fresh.tokenImpl = address(new LivoToken());
@@ -375,7 +356,6 @@ contract DeployLaunchpadV2Stack is Script {
                 ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
                 d.bondingCurve,
                 fresh.graduatorV4,
-                fresh.graduatorV4_0p5,
                 d.masterFeeHandler,
                 CreatorVaultScriptConfig.factoryFor(),
                 CreatorVaultScriptConfig.curvesFor(),
@@ -405,7 +385,6 @@ contract DeployLaunchpadV2Stack is Script {
         console.log("  QUOTER                                  :", fresh.quoter);
         console.log("  GRADUATOR_UNIV2                         :", fresh.graduatorV2);
         console.log("  GRADUATOR_UNIV4                         :", fresh.graduatorV4);
-        console.log("  GRADUATOR_UNIV4_0P5                     :", fresh.graduatorV4_0p5);
         console.log("  TOKEN_IMPL                              :", fresh.tokenImpl);
         console.log("  TAXABLE_TOKEN_V4_IMPL                      :", fresh.taxTokenV4Impl);
         console.log("  TAXABLE_TOKEN_V2_IMPL                   :", fresh.taxTokenV2Impl);
@@ -423,7 +402,7 @@ contract DeployLaunchpadV2Stack is Script {
         LivoLaunchpad launchpad = LivoLaunchpad(fresh.launchpad);
         require(launchpad.owner() == LAUNCHPAD_OWNER, "launchpad: wrong owner");
         require(launchpad.treasury() == d.chainTreasury, "launchpad: wrong treasury");
-        // the reused swap hooks read treasury() from the old launchpad — both must agree
+        // both launchpads must report the same treasury
         require(
             launchpad.treasury() == LivoLaunchpad(d.oldLaunchpad).treasury(), "launchpad: treasury diverges from old"
         );
@@ -440,18 +419,10 @@ contract DeployLaunchpadV2Stack is Script {
             LivoGraduatorUniswapV4(payable(fresh.graduatorV4)).LIVO_LAUNCHPAD() == fresh.launchpad,
             "graduatorV4: wrong launchpad"
         );
-        require(
-            LivoGraduatorUniswapV4(payable(fresh.graduatorV4_0p5)).LIVO_LAUNCHPAD() == fresh.launchpad,
-            "graduatorV4_0p5: wrong launchpad"
-        );
 
-        // graduators keep the existing hooks
+        // the graduator keeps the existing hook
         require(
             LivoGraduatorUniswapV4(payable(fresh.graduatorV4)).HOOK_ADDRESS() == d.swapHook, "graduatorV4: wrong hook"
-        );
-        require(
-            LivoGraduatorUniswapV4(payable(fresh.graduatorV4_0p5)).HOOK_ADDRESS() == d.swapHook0p5,
-            "graduatorV4_0p5: wrong hook"
         );
 
         // factory proxies are intentionally untouched in this phase: still on the old impls,
@@ -482,10 +453,6 @@ contract DeployLaunchpadV2Stack is Script {
         require(
             address(LivoFactoryUniV4Unified(fresh.factoryV4Impl).GRADUATOR()) == fresh.graduatorV4,
             "factoryV4 impl: wrong graduator"
-        );
-        require(
-            LivoFactoryUniV4Unified(fresh.factoryV4Impl).GRADUATOR_0P5() == fresh.graduatorV4_0p5,
-            "factoryV4 impl: wrong 0p5 graduator"
         );
     }
 }

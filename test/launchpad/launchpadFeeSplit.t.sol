@@ -50,7 +50,8 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
                     feeHandler: address(feeHandler),
                     vaultAllocation: 0,
                     lpFeeBps: lpFee,
-                    treasuryShareBps: treasuryShare
+                    treasuryShareBps: treasuryShare,
+                    swapLpFeeBps: 0
                 }),
                 TaxConfigs({
                     buyTaxBps: taxBuy,

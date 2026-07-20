@@ -199,33 +199,51 @@ Livo event order:
 
 V4 swaps are mediated by `LivoSwapHook`. Swaps before graduation revert with `NoSwapsBeforeGraduation` and emit no Livo swap/fee events.
 
+The hook reads the per-token fees via `LivoToken.getSwapFees(isBuy)` (LP fee + currently-effective tax for
+that direction). The LP fee is forwarded whole to `LivoLpFeeRouter`, which splits it between treasury and
+creator by a marketcap tier; the tax (if any) is forwarded to the token's master fee handler. The LP fee and
+the tax are accrued in **separate** `accrueFees` calls, so the creator can see up to two
+`CreatorFeesDeposited`.
+
 ### 6.1 Buy (`ETH -> token`)
 
-Fees are taken in `beforeSwap`; the final trade event is emitted in `afterSwap`.
+The fee is withheld from the ETH leg (`beforeSwap` for exact-input, `afterSwap` for exact-output); the
+routing and all events below are emitted in `afterSwap`.
 
-Livo event order:
+Livo event order (LP fee `> 0`, buy tax active, router healthy):
 
-1. **`LivoSwapHook.LpFeesAccrued`** (`token, creatorShare, treasuryShare`).
-2. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if buy tax is active and non-zero.
-3. Creator LP share plus any buy tax is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
-   - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare + taxAmount`).
-   - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
-4. Treasury LP share is sent directly via native ETH call.
-5. **`LivoSwapHook.LivoSwapBuy`** (`token, txOrigin, ethIn, tokensOut, ethFees`).
+1. **`LivoSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
+2. **`LivoLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
+3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
+4. Creator LP share is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
+   - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
+   - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) per successful direct forward.
+5. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if buy tax is active and non-zero, then the
+   tax is routed through `LivoToken.accrueFees()` (a second **`CreatorFeesDeposited`** / optional `CreatorClaimed`).
+6. **`LivoSwapHook.LivoSwapBuy`** (`token, txOrigin, ethIn, tokensOut, ethFees`).
+
+Router-failure fallback: if `LivoLpFeeRouter.depositLpFees` reverts, step 2 (`LpFeesRouted`) and step 4 are
+absent — the hook instead pushes the **entire** LP fee to the protocol treasury via a native ETH call (no
+event). Indexers detect the fallback by the presence of `LpFeesForwarded` without a matching `LpFeesRouted`.
 
 ### 6.2 Sell (`token -> ETH`)
 
-Fees are computed and taken in `afterSwap`.
+The fee is taken from the ETH leg (`afterSwap` for exact-input, withheld in `beforeSwap` for exact-output);
+the routing and all events below are emitted in `afterSwap`.
 
-Livo event order:
+Livo event order (LP fee `> 0`, sell tax active, router healthy):
 
-1. **`LivoSwapHook.LpFeesAccrued`** (`token, creatorShare, treasuryShare`).
-2. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if sell tax is active and non-zero.
-3. Creator LP share plus any sell tax is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
-   - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare + taxAmount`).
-   - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
-4. Treasury LP share is sent directly via native ETH call.
-5. **`LivoSwapHook.LivoSwapSell`** (`token, txOrigin, tokensIn, ethOut, ethFees`).
+1. **`LivoSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
+2. **`LivoLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
+3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
+4. Creator LP share is routed through `LivoToken.accrueFees()` into `LivoMasterFeeHandler.depositFees(token)`:
+   - **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
+   - Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) per successful direct forward.
+5. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if sell tax is active and non-zero, then the
+   tax is routed through `LivoToken.accrueFees()` (a second **`CreatorFeesDeposited`** / optional `CreatorClaimed`).
+6. **`LivoSwapHook.LivoSwapSell`** (`token, txOrigin, tokensIn, ethOut, ethFees`).
+
+Router-failure fallback: same as §6.1 — `LpFeesRouted` + step 4 absent, full LP fee pushed to treasury.
 
 ### 6.3 V2 post-graduation swaps on tax variants
 

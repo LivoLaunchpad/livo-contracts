@@ -25,14 +25,15 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///            the indexer. DEFAULT's base is the hardcoded `ConstantProductBondingCurve`
 ///            (manifest slot `BONDING_CURVE`); its six vault curves are `ConstantProductBondingCurveConfigurable`
 ///            (`VAULT_CURVE_5..30`). THIN/THICK are all `ConstantProductBondingCurveConfigurable`.
-///         2. The four THIN/THICK Uniswap V4 graduators (one per tier x hook fee: 100 / 50 bps).
-///            The DEFAULT graduators (`GRADUATOR_UNIV4`, `GRADUATOR_UNIV4_0P5`) are reused as-is.
+///         2. The two THIN/THICK Uniswap V4 graduators, one per tier: the single `SWAP_HOOK` is
+///            fee-agnostic (it reads the LP fee from the token), so a tier needs only one graduator.
+///            The DEFAULT graduator (`GRADUATOR_UNIV4`) is reused as-is.
 ///
 ///         Curves are venue-agnostic: the same addresses feed both the V2 and V4 factory tier
 ///         configs (V2 needs no tier graduators — its depth is set entirely by the curve).
 ///
 ///         After running, paste the printed addresses into `src/config/manifest.{mainnet,sepolia}.sol`
-///         (the `BONDING_CURVE` + `VAULT_CURVE_*`, the `GRADUATOR_UNIV4_{THIN,THICK}*`, and the
+///         (the `BONDING_CURVE` + `VAULT_CURVE_*`, the `GRADUATOR_UNIV4_{THIN,THICK}`, and the
 ///         `{THIN,THICK}_*_CURVE_*` slots), run `just export-deployments`, and only THEN upgrade the
 ///         unified factories so they pick the new curves/tier config up (`RedeployUnifiedFactoriesOnly`,
 ///         or a `Redeploy*Tokens*` variant).
@@ -50,8 +51,7 @@ contract DeployTierLiquiditySystem is Script {
         address poolManager;
         address positionManager;
         address permit2;
-        address hook100; // 100-bps LivoSwapHook
-        address hook50; // 50-bps LivoSwapHook
+        address hook; // fee-agnostic LivoSwapHook (reads the LP fee from the token)
     }
 
     function run() public {
@@ -72,12 +72,8 @@ contract DeployTierLiquiditySystem is Script {
         address[7] memory thick = _deployTierCurves(LiquidityTier.THICK, bpsList);
 
         address gradSmall =
-            _deployGraduator(d, d.hook100, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
-        address gradSmall0p5 =
-            _deployGraduator(d, d.hook50, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
-        address gradLarge = _deployGraduator(d, d.hook100, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
-        address gradLarge0p5 =
-            _deployGraduator(d, d.hook50, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
+            _deployGraduator(d, d.hook, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
+        address gradLarge = _deployGraduator(d, d.hook, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
 
         vm.stopBroadcast();
 
@@ -86,10 +82,8 @@ contract DeployTierLiquiditySystem is Script {
         _printDefaultCurves(def);
         _printTierCurves("THIN", thin);
         _printTierCurves("THICK", thick);
-        console.log("GRADUATOR_UNIV4_THIN    ", gradSmall);
-        console.log("GRADUATOR_UNIV4_THIN_0P5", gradSmall0p5);
-        console.log("GRADUATOR_UNIV4_THICK    ", gradLarge);
-        console.log("GRADUATOR_UNIV4_THICK_0P5", gradLarge0p5);
+        console.log("GRADUATOR_UNIV4_THIN ", gradSmall);
+        console.log("GRADUATOR_UNIV4_THICK", gradLarge);
         console.log("");
         console.log("Next: update the manifest, `just export-deployments`, then RedeployUnifiedFactoriesOnly.");
     }
@@ -169,8 +163,7 @@ contract DeployTierLiquiditySystem is Script {
                 poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
                 positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-                hook100: DeploymentsEthereumMainnet.SWAP_HOOK,
-                hook50: DeploymentsEthereumMainnet.SWAP_HOOK_0P5
+                hook: DeploymentsEthereumMainnet.SWAP_HOOK
             });
         } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -178,15 +171,13 @@ contract DeployTierLiquiditySystem is Script {
                 poolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 positionManager: DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
-                hook100: DeploymentsEthereumSepolia.SWAP_HOOK,
-                hook50: DeploymentsEthereumSepolia.SWAP_HOOK_0P5
+                hook: DeploymentsEthereumSepolia.SWAP_HOOK
             });
         } else {
             revert("Unsupported chain ID");
         }
 
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
-        require(d.hook100 != address(0), "manifest: SWAP_HOOK missing");
-        require(d.hook50 != address(0), "manifest: SWAP_HOOK_0P5 missing");
+        require(d.hook != address(0), "manifest: SWAP_HOOK missing");
     }
 }
