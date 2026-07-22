@@ -43,6 +43,32 @@ struct TaxConfigs {
     uint32 taxDecayDuration; // seconds over which the decay rate falls from its start to 0; 0 = no decay
 }
 
+/// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
+///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions. The
+///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
+struct EarningsAllocationConfig {
+    uint16 burnBps;
+    uint16 dividendsBps;
+    uint16 liquidityBps;
+}
+
+/// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split. Consumed
+///         by the allocation-aware `createToken` overload, which lifts the tax fields back into a
+///         `TaxConfigs` for the shared creation pipeline and forwards `earningsAllocation` to
+///         `initializeEarningsAllocation` at creation.
+/// @dev A non-zero allocation requires a taxable token — the split machinery lives on the taxable impl.
+///      The leading fields mirror `TaxConfigs` exactly.
+struct TaxConfigsWithAllocation {
+    uint16 buyTaxBps;
+    uint16 sellTaxBps;
+    uint32 taxDurationSeconds;
+    bool startTaxFromLaunch;
+    uint16 buyTaxDecayStartBps;
+    uint16 sellTaxDecayStartBps;
+    uint32 taxDecayDuration;
+    EarningsAllocationConfig earningsAllocation;
+}
+
 /// @title ILivoTaxableToken
 /// @notice Unified interface for Livo taxable tokens, regardless of the underlying graduation
 ///         venue (Uniswap V2 with intrinsic taxation, Uniswap V4 with hook-driven taxation).
@@ -72,4 +98,9 @@ interface ILivoTaxableToken is ILivoToken {
     /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
     ///         attempts to raise either rate revert.
     function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
+
+    /// @notice Factory-only, creation-time setter for the earnings-allocation split (burn / dividends /
+    ///         liquidity bps; the fund wallets take the remainder). Guarded by the transient factory,
+    ///         so it is only callable during the deploy tx.
+    function initializeEarningsAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) external;
 }

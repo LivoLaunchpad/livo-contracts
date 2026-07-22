@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LivoToken} from "src/tokens/LivoToken.sol";
+import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableToken, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
@@ -14,13 +15,15 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 ///         + `getTaxConfig` overrides, the dev-supplied init plumbing and the owner-only
 ///         `rescueTokens` path. Variant-specific behavior (intrinsic V2 taxation, V4 pool-manager
 ///         pair check) lives in the concrete subclasses.
-/// @dev Storage layout: this contract introduces 8 packed fields (buyTaxBps, sellTaxBps,
-///      taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps,
-///      taxDecayDuration, graduationTimestamp) directly after `LivoToken`'s storage. They all pack
-///      into a single slot (alongside the V2 subclass's swap-back counters), so the per-trade tax read
-///      is a single warm SLOAD. Subclasses that add their own state must do so AFTER these fields to
-///      preserve clone-storage layout.
-abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
+/// @dev Storage layout: this contract's 8 packed tax fields (buyTaxBps, sellTaxBps, taxDurationSeconds,
+///      startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration,
+///      graduationTimestamp) share one slot with the three `EarningsAllocation` bps that inheritance
+///      lays out just before them (48 + 192 = 240 bits), so the per-trade tax read stays a single warm
+///      SLOAD — and the earnings-split read hits the same (warm) slot. That fills the slot enough that
+///      the V2 subclass's swap-back counters now occupy the FOLLOWING slot (a negligible extra cold
+///      SLOAD only in the swap-back path). Subclasses that add their own state must do so AFTER these
+///      fields to preserve clone-storage layout.
+abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllocation {
     using SafeERC20 for IERC20;
 
     //////////////////////// potentially immutable //////////////////
@@ -161,6 +164,36 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken {
 
         buyTaxBps = newBuyTaxBps;
         sellTaxBps = newSellTaxBps;
+    }
+
+    //////////////////////// EARNINGS ALLOCATION //////////////////////
+
+    /// @notice Factory-only, creation-time setter for the earnings-allocation split (burn / dividends /
+    ///         liquidity bps; the fund wallets take the remainder). Callable exactly once, during the
+    ///         deploy tx, by the factory that initialized this token — guarded by the transient
+    ///         `tokenFactory`, which is zero outside that tx (same pattern as `registerFees`).
+    function initializeEarningsAllocation(uint16 _burnBps, uint16 _dividendsBps, uint16 _liquidityBps) external {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+    }
+
+    /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the
+    ///         earnings-allocation split before they reach the fund wallets. Overrides the base
+    ///         passthrough; see `EarningsAllocation`.
+    function accrueFees() external payable override(ILivoToken, LivoToken) {
+        _allocateEarnings(msg.value);
+    }
+
+    /// @dev Earnings split routes each slice post-graduation only; pre-graduation the whole amount
+    ///      goes to the fund wallets. Reads the base `LivoToken.graduated` flag.
+    function _earningsGraduated() internal view override returns (bool) {
+        return graduated;
+    }
+
+    /// @dev Routes the fund-wallet slice to this token's master fee handler — the same path all
+    ///      earnings took before the allocation split was introduced.
+    function _depositToFund(uint256 amount) internal override {
+        ILivoMasterFeeHandler(feeHandler).depositFees{value: amount}(address(this));
     }
 
     //////////////////////// VIEW FUNCTIONS //////////////////////

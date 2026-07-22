@@ -136,6 +136,9 @@ interface ILivoFactory {
     error InvalidTaxConfig();
     error InvalidTaxBps();
     error InvalidTaxDuration();
+    /// @notice A non-zero earnings allocation was passed for a token that is not taxable. The split
+    ///         machinery lives on the taxable impl, so allocation requires a configured tax/decay.
+    error EarningsAllocationRequiresTax();
     error TooManyCreatorVaults();
     error InvalidCreatorVault();
     error CreatorVaultAllocationTooHigh();

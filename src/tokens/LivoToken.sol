@@ -253,7 +253,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     }
 
     /// @notice Routes ETH fees to the fee handler for this token
-    function accrueFees() external payable {
+    /// @dev `virtual` so taxable variants can override to split earnings across allocation buckets
+    ///      (see `EarningsAllocation`) before the fund-wallet deposit.
+    function accrueFees() external payable virtual {
         ILivoMasterFeeHandler(feeHandler).depositFees{value: msg.value}(address(this));
     }
 

@@ -2,7 +2,13 @@
 pragma solidity 0.8.28;
 
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {
+    TaxConfigInit,
+    TaxConfigs,
+    TaxConfigsWithAllocation,
+    EarningsAllocationConfig,
+    ILivoTaxableToken
+} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
@@ -169,6 +175,35 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         if (referral != address(0)) emit TokenReferral(token, referral);
     }
 
+    /// @notice Allocation-aware overload: the recommended `referral` overload plus a
+    ///         `TaxConfigsWithAllocation` that also carries the earnings-allocation split (burn /
+    ///         dividends / liquidity bps; the fund wallets take the remainder). The split is stored on
+    ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
+    ///         taxable token — `taxConfigs` must configure a tax or launch-decay — since the split
+    ///         machinery lives on the taxable impl.
+    function createToken(
+        TokenSetupTiered calldata tokenSetup,
+        TaxConfigsWithAllocation calldata taxAllocationConfigs,
+        UniV4Configs calldata univ4Configs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults,
+        address referral
+    ) external payable returns (address token) {
+        EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
+        bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+
+        TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
+        if (hasAllocation) require(_isTaxConfigured(taxConfigs), EarningsAllocationRequiresTax());
+
+        token = _createV4(tokenSetup, univ4Configs, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
+        if (hasAllocation) {
+            ILivoTaxableToken(payable(token))
+                .initializeEarningsAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
+        }
+        if (referral != address(0)) emit TokenReferral(token, referral);
+    }
+
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     /// @dev Shared tail of the two struct-based `createToken` overloads: validates the V4 config, resolves
@@ -181,7 +216,7 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
         TokenSetupTiered calldata tokenSetup,
         UniV4Configs calldata univ4Configs,
         SupplyShare[] calldata buyOnDeployShares,
-        TaxConfigs calldata taxConfigs,
+        TaxConfigs memory taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
         CreatorVault[] calldata creatorVaults
     ) private returns (address token) {

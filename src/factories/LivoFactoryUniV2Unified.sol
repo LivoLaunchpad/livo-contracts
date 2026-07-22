@@ -2,7 +2,13 @@
 pragma solidity 0.8.28;
 
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {
+    TaxConfigInit,
+    TaxConfigs,
+    TaxConfigsWithAllocation,
+    EarningsAllocationConfig,
+    ILivoTaxableToken
+} from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
@@ -149,6 +155,45 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
             antiSniperConfigs,
             creatorVaults
         );
+        if (referral != address(0)) emit TokenReferral(token, referral);
+    }
+
+    /// @notice Allocation-aware overload: the recommended `referral` overload plus a
+    ///         `TaxConfigsWithAllocation` that also carries the earnings-allocation split (burn /
+    ///         dividends / liquidity bps; the fund wallets take the remainder). The split is stored on
+    ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
+    ///         taxable token — `taxConfigs` must configure a tax or launch-decay — since the split
+    ///         machinery lives on the taxable impl.
+    function createToken(
+        TokenSetupTiered calldata tokenSetup,
+        TaxConfigsWithAllocation calldata taxAllocationConfigs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults,
+        address referral
+    ) external payable returns (address token) {
+        EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
+        bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+
+        TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
+        if (hasAllocation) require(_isTaxConfigured(taxConfigs), EarningsAllocationRequiresTax());
+
+        // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
+        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
+        token = _createToken(
+            tokenSetup,
+            address(0),
+            address(GRADUATOR),
+            V2_POST_GRADUATION_LP_FEE_BPS,
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
+        );
+        if (hasAllocation) {
+            ILivoTaxableToken(payable(token))
+                .initializeEarningsAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
+        }
         if (referral != address(0)) emit TokenReferral(token, referral);
     }
 

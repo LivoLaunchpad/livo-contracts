@@ -5,7 +5,6 @@ import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
-import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
@@ -55,8 +54,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     bool internal transient _inSwap;
 
     /// @notice `block.number` of the most recent successful `_swapBack`; zero until the first.
-    ///         Paired with `swapbacksThisBlock` for the per-block cap. uint48 packs into the
-    ///         parent `LivoTaxableToken` slot alongside `graduationTimestamp`.
+    ///         Paired with `swapbacksThisBlock` for the per-block cap. `uint48`, packed with
+    ///         `swapbacksThisBlock` in the slot that FOLLOWS the parent tax + `EarningsAllocation` slot
+    ///         (that slot is full at 240 bits, so these no longer share it).
     uint48 public lastSwapbackBlock;
 
     /// @notice Swap-backs already settled in `lastSwapbackBlock`. Resets on the first swap-back
@@ -235,8 +235,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         uint256 ethBalance = address(this).balance;
         emit CreatorTaxSwapback(tokenAmount, ethBalance);
 
-        if (ethBalance > 0) {
-            ILivoMasterFeeHandler(feeHandler).depositFees{value: ethBalance}(address(this));
-        }
+        // Route the swapped-back ETH through the earnings-allocation split (fund wallets + any
+        // configured burn/dividends/liquidity buckets). `_allocateEarnings` no-ops on a zero balance.
+        _allocateEarnings(ethBalance);
     }
 }
