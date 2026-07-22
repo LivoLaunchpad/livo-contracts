@@ -115,34 +115,25 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
         emit Graduated();
     }
 
-    /// @notice Allows the token owner OR the launchpad owner to rescue stuck balances.
-    /// @dev Two restrictions:
-    ///      (1) Self-token rescue is disallowed — the caller must NEVER be able to siphon accrued
-    ///          tax balance ahead of a swap-back.
-    ///      (2) ETH stuck in the contract is treated as un-routed fees and pushed back through
-    ///          `feeHandler.depositFees` so it lands on the configured fee receivers, never on
-    ///          the caller. Preserves the project's pull-over-push invariant for ETH.
-    /// @dev The launchpad owner is included so the protocol admin can sweep stuck balances on
-    ///      factory-deployed V2 tokens, where `owner == address(0)` makes the token-owner path
-    ///      unreachable. The destination is unchanged regardless of caller: ETH → fee handler,
-    ///      ERC20s → `owner` (which may be `address(0)`, in which case the transfer reverts —
+    /// @notice Allows the token owner OR the launchpad owner to rescue stuck ERC20 balances (never the
+    ///         token's own balance; ETH is intentionally not rescuable — see below).
+    /// @dev Two rules:
+    ///      (1) Self-token rescue is disallowed — the caller must NEVER siphon accrued tax balance
+    ///          ahead of a swap-back.
+    ///      (2) ETH is intentionally NOT rescuable. The token legitimately holds ETH (e.g. the V4 burn
+    ///          buffer awaiting `processBurn`), and dropping the sweep path avoids racing that buffer;
+    ///          any stray ETH is simply left in the contract, effectively benefiting holders. Passing
+    ///          `address(0)` reverts.
+    /// @dev The launchpad owner is included so the protocol admin can sweep stuck ERC20s on
+    ///      factory-deployed tokens where `owner == address(0)` makes the token-owner path unreachable.
+    ///      Rescued ERC20s go to `owner` (which may be `address(0)`, in which case the transfer reverts —
     ///      acceptable, as a stuck-balance rescue with no recipient is a no-op anyway).
-    /// @param token Token to rescue. Pass `address(0)` for ETH.
+    /// @param token ERC20 to rescue. `address(this)` and `address(0)` both revert.
     function rescueTokens(address token) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
-
-        if (token == address(0)) {
-            uint256 ethBalance = address(this).balance;
-            if (ethBalance > 0) {
-                // deposit fees to the token account in the master fee handler
-                ILivoMasterFeeHandler(feeHandler).depositFees{value: ethBalance}(address(this));
-            }
-        } else if (token == address(this)) {
-            // disallow rescuing the token's own balance to prevent siphoning accrued taxes
-            revert CannotRescueSelfToken();
-        } else {
-            IERC20(token).safeTransfer(owner, IERC20(token).balanceOf(address(this)));
-        }
+        // disallow rescuing the token's own balance to prevent siphoning accrued taxes
+        require(token != address(this), CannotRescueSelfToken());
+        IERC20(token).safeTransfer(owner, IERC20(token).balanceOf(address(this)));
     }
 
     /// @notice Updates `buyTaxBps` and/or `sellTaxBps`. Today this is decrease-only — any attempt
@@ -181,7 +172,9 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
     ///         earnings-allocation split before they reach the fund wallets. Overrides the base
     ///         passthrough; see `EarningsAllocation`.
     function accrueFees() external payable override(ILivoToken, LivoToken) {
-        _allocateEarnings(msg.value);
+        // V4 carries burn on the ETH side, so pass `burnBps` as the ETH burn share. (On V2 this path is
+        // only hit pre-graduation — where it short-circuits to the fund wallets — or by stray ETH.)
+        _allocateEthEarnings(msg.value, burnBps);
     }
 
     /// @dev Earnings split routes each slice post-graduation only; pre-graduation the whole amount

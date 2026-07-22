@@ -21,7 +21,7 @@ pragma solidity 0.8.28;
 ///      processing — a keeper- or threshold-triggered swap / burn / liquidity-add in a separate tx with
 ///      full gas, mirroring the V2 swap-back pattern. A `_handle*` leg must NEVER perform a Uniswap
 ///      swap or `modifyLiquidity` synchronously: it would not fit the budget and, on the V4 route,
-///      would also reenter the pool mid-swap. `_allocateEarnings` collapses every fund-bound slice into
+///      would also reenter the pool mid-swap. `_allocateEthEarnings` collapses every fund-bound slice into
 ///      ONE `_depositToFund`, so the whole path stays well within budget.
 ///
 /// @dev Venue-agnostic and ETH-space: it divides whatever ETH it is handed by the configured bps and
@@ -61,13 +61,19 @@ abstract contract EarningsAllocation {
         emit EarningsAllocationInitialized(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @dev Splits `amount` of ETH earnings across the configured buckets and routes each slice.
-    ///      Pre-graduation there is no pool to buy back against or add liquidity to (and pre-graduation
-    ///      earnings are 100% creator today), so the whole amount goes to the fund wallets — preserving
-    ///      the pre-allocation behavior exactly. With all buckets at 0 the result is likewise a plain
-    ///      fund deposit. Every fund-bound slice — the remainder plus whatever the `_handle*` legs
-    ///      return as unconsumed — is folded into a single `_depositToFund` (see the gas note above).
-    function _allocateEarnings(uint256 amount) internal {
+    /// @dev The ETH-space earnings split — the shared "phase 2" for both venues: given `amount` of ETH
+    ///      and the burn share to carve FROM that ETH, it routes the burn / dividends / liquidity / fund
+    ///      slices. Callers supply `burnShare`:
+    ///      - V4: `burnBps` — burn is bought back from this ETH, so it's carved here and handed to
+    ///        `_handleBurn` (which buffers it for the buy-back).
+    ///      - V2: `0` — the burn was already taken upstream by burning tax TOKENS before the swap-back,
+    ///        so this ETH is already net of it and nothing is carved here.
+    ///      Dividends/liquidity are shares of the ORIGINAL earnings, but `nonBurn` is only the
+    ///      `BPS_TOTAL - burnBps` fraction (whether burn left as ETH here or as tokens upstream), so they
+    ///      are renormalized over that denom — making the two venues produce identical splits for the
+    ///      same config. The fund wallets take the remainder plus any residual a leg leaves unconsumed,
+    ///      folded into one deposit. Pre-graduation the whole amount goes to the fund wallets unchanged.
+    function _allocateEthEarnings(uint256 amount, uint256 burnShare) internal {
         if (amount == 0) return;
 
         if (!_earningsGraduated()) {
@@ -75,10 +81,21 @@ abstract contract EarningsAllocation {
             return;
         }
 
-        uint256 burn = amount * burnBps / BPS_TOTAL;
-        uint256 dividends = amount * dividendsBps / BPS_TOTAL;
-        uint256 liquidity = amount * liquidityBps / BPS_TOTAL;
-        uint256 fund = amount - burn - dividends - liquidity;
+        uint256 burn = amount * burnShare / BPS_TOTAL;
+        uint256 nonBurn = amount - burn;
+
+        // `fund` accumulates the fund-wallet slice plus whatever each leg leaves unconsumed. Residuals
+        // fold into FUND, never back into `nonBurn` — that would re-split them over dividends/liquidity.
+        // `denom == 0` only for a 100%-burn token, where `nonBurn` is 0.
+        uint256 denom = BPS_TOTAL - burnBps;
+        uint256 dividends;
+        uint256 liquidity;
+        uint256 fund = nonBurn;
+        if (denom != 0) {
+            dividends = nonBurn * dividendsBps / denom;
+            liquidity = nonBurn * liquidityBps / denom;
+            fund = nonBurn - dividends - liquidity;
+        }
 
         if (burn > 0) fund += _handleBurn(burn);
         if (dividends > 0) fund += _handleDividends(dividends);
@@ -92,7 +109,7 @@ abstract contract EarningsAllocation {
     /// @dev Routes the fund-wallet slice to the master fee handler. Implemented by the token.
     function _depositToFund(uint256 amount) internal virtual;
 
-    /// @dev Buy-back-and-burn leg. Returns the amount it did NOT consume, which `_allocateEarnings`
+    /// @dev Buy-back-and-burn leg. Returns the amount it did NOT consume, which `_allocateEthEarnings`
     ///      folds back into the single fund deposit. The base consumes nothing (returns `amount`), so
     ///      until the burn module ships every configured burn share routes to the fund wallets. When
     ///      overridden it MUST only accrue for out-of-band processing (see the gas note above) and

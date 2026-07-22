@@ -66,11 +66,17 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     //////////////////////// Events //////////////////////
 
     /// @notice Emitted whenever the contract auto- or manually-swaps accumulated tax tokens to ETH
-    ///         and forwards the proceeds to the master fee handler. `ethAmount` is the ETH
-    ///         routed through `feeHandler.depositFees` for this swap-back, i.e. the tax
-    ///         actually accrued to the creator (and any direct receivers) for the swap window
-    ///         covered by this back-swap.
+    ///         and forwards the proceeds to the master fee handler. `tokenAmountIn` is the amount
+    ///         actually swapped — i.e. net of any burn-share removed in-token by `CreatorTaxBurn`
+    ///         first. `ethAmount` is the ETH proceeds routed through the earnings-allocation split.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
+
+    /// @notice Emitted when the burn-share of a swap-back is burned in token-space (before the swap),
+    ///         removing `tokenAmount` from the total supply. Only fired for tokens with `burnBps > 0`.
+    event CreatorTaxBurn(uint256 tokenAmount);
+
+    /// @notice Thrown by the manual `swapBack` before graduation (no tax accrues / no pair yet).
+    error NotGraduated();
 
     //////////////////////////////////////////////////////
 
@@ -115,8 +121,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///        reverts if `swapAmount` exceeds the contract's balance.
     /// @param amountOutMinWei Minimum ETH the swap must yield. Caller's slippage budget.
     /// @dev If the per-block cap is hit, `_swapBack` silently no-ops (no event, no revert).
+    /// @dev Post-graduation only: no tax accrues (and there is no pair to swap against) before
+    ///      graduation, so a pre-graduation swap-back is always meaningless — reverting closes the
+    ///      edge where a 100%-burn token could burn donated tokens before graduation.
     function swapBack(uint256 swapAmount, uint256 amountOutMinWei) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
+        require(graduated, NotGraduated());
         _swapBack(swapAmount, amountOutMinWei);
     }
 
@@ -217,13 +227,25 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
         _inSwap = true;
 
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = WETH;
+        // Burn the burn-share in token-space FIRST — no ETH→token round trip. `_inSwap` keeps this a
+        // plain transfer through `_update`. Applies to the amount processed this swap-back; 0 for
+        // tokens without a burn allocation.
+        uint256 burnAmount = tokenAmount * burnBps / BPS_TOTAL;
+        if (burnAmount > 0) {
+            _burn(address(this), burnAmount);
+            emit CreatorTaxBurn(burnAmount);
+        }
+        uint256 swapAmount = tokenAmount - burnAmount;
 
-        UNISWAP_V2_ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount, amountOutMinWei, path, address(this), block.timestamp
-        );
+        if (swapAmount > 0) {
+            address[] memory path = new address[](2);
+            path[0] = address(this);
+            path[1] = WETH;
+
+            UNISWAP_V2_ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
+                swapAmount, amountOutMinWei, path, address(this), block.timestamp
+            );
+        }
 
         _inSwap = false;
         unchecked {
@@ -233,10 +255,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         lastSwapbackBlock = uint48(block.number);
 
         uint256 ethBalance = address(this).balance;
-        emit CreatorTaxSwapback(tokenAmount, ethBalance);
+        emit CreatorTaxSwapback(swapAmount, ethBalance);
 
-        // Route the swapped-back ETH through the earnings-allocation split (fund wallets + any
-        // configured burn/dividends/liquidity buckets). `_allocateEarnings` no-ops on a zero balance.
-        _allocateEarnings(ethBalance);
+        // Split the swapped-back ETH across the remaining buckets. Pass `burnShare = 0`: the burn was
+        // already taken above (in tokens), so `_allocateEthEarnings` carves no ETH burn slice and
+        // renormalizes dividends/liquidity over the non-burn share. No-ops on 0 balance.
+        _allocateEthEarnings(ethBalance, 0);
     }
 }

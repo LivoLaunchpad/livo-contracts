@@ -23,7 +23,7 @@ contract EarningsAllocationHarness is EarningsAllocation {
     }
 
     function allocate(uint256 amount) external {
-        _allocateEarnings(amount);
+        _allocateEthEarnings(amount, burnBps);
     }
 
     function _earningsGraduated() internal view override returns (bool) {
@@ -65,7 +65,7 @@ contract EarningsAllocationFallbackHarness is EarningsAllocation {
     }
 
     function allocate(uint256 amount) external {
-        _allocateEarnings(amount);
+        _allocateEthEarnings(amount, burnBps);
     }
 
     function _earningsGraduated() internal view override returns (bool) {
@@ -186,7 +186,7 @@ contract EarningsAllocationFallbackTest is Test {
 }
 
 /// @dev Harness whose burn leg consumes only half its slice and returns the rest as unconsumed, to
-///      verify `_allocateEarnings` folds the residual back into the fund deposit.
+///      verify `_allocateEthEarnings` folds the residual back into the fund deposit.
 contract EarningsAllocationPartialHarness is EarningsAllocation {
     uint256 public burnConsumed;
     uint256 public fundReceived;
@@ -196,7 +196,7 @@ contract EarningsAllocationPartialHarness is EarningsAllocation {
     }
 
     function allocate(uint256 amount) external {
-        _allocateEarnings(amount);
+        _allocateEthEarnings(amount, burnBps);
     }
 
     function _earningsGraduated() internal pure override returns (bool) {
@@ -211,6 +211,68 @@ contract EarningsAllocationPartialHarness is EarningsAllocation {
         uint256 consume = amount / 2;
         burnConsumed += consume;
         return amount - consume; // residual folds back to fund
+    }
+}
+
+/// @dev Harness in "V2 mode": burn is taken in token-space upstream, so `_allocateEthEarnings` receives
+///      ETH already net of the burn share and must renormalize dividends/liquidity over the non-burn
+///      bps. `_handleBurn` must never be called here.
+contract EarningsAllocationTokenBurnHarness is EarningsAllocation {
+    uint256 public fundReceived;
+    uint256 public dividendsReceived;
+    uint256 public liquidityReceived;
+    bool public burnHandlerCalled;
+
+    function initAllocation(uint16 b, uint16 d, uint16 l) external {
+        _initializeEarningsAllocation(b, d, l);
+    }
+
+    function allocate(uint256 amount) external {
+        _allocateEthEarnings(amount, 0); // V2 mode: burn was taken in token-space upstream
+    }
+
+    function _earningsGraduated() internal pure override returns (bool) {
+        return true;
+    }
+
+    function _depositToFund(uint256 amount) internal override {
+        fundReceived += amount;
+    }
+
+    function _handleBurn(uint256) internal override returns (uint256) {
+        burnHandlerCalled = true;
+        return 0;
+    }
+
+    function _handleDividends(uint256 amount) internal override returns (uint256) {
+        dividendsReceived += amount;
+        return 0;
+    }
+
+    function _handleLiquidity(uint256 amount) internal override returns (uint256) {
+        liquidityReceived += amount;
+        return 0;
+    }
+}
+
+contract EarningsAllocationTokenBurnTest is Test {
+    EarningsAllocationTokenBurnHarness internal h;
+
+    function setUp() public {
+        h = new EarningsAllocationTokenBurnHarness();
+    }
+
+    /// @dev burn 30% (already taken in tokens), dividends 20%, liquidity 10%, fund 40%. Feeding the
+    ///      post-burn ETH (70% of the original) must renormalize so each bucket gets its ORIGINAL share.
+    function test_renormalizesOverNonBurnShare() public {
+        h.initAllocation(3000, 2000, 1000);
+        // Original earnings 1e18; burn (0.3e18) already removed in token-space, so 0.7e18 ETH arrives.
+        h.allocate(0.7 ether);
+
+        assertEq(h.dividendsReceived(), 0.2 ether); // 20% of the original 1e18
+        assertEq(h.liquidityReceived(), 0.1 ether); // 10% of the original 1e18
+        assertEq(h.fundReceived(), 0.4 ether); // 40% of the original 1e18
+        assertEq(h.burnHandlerCalled(), false); // burn never carved from ETH in V2 mode
     }
 }
 

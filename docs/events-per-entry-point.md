@@ -255,14 +255,21 @@ Indexer-relevant points:
 
 - **Buy (ETH → token)** within the tax window emits an extra `Transfer(pair, address(token), buyTaxAmount)` for the tax slice in addition to `Transfer(pair, buyer, netAmount)`. No Livo event is emitted at this point — the tax accrual is reported later, at swap-back time.
 - **Sell (token → ETH)** within the tax window emits an extra `Transfer(seller, address(token), sellTaxAmount)` for the tax slice in addition to `Transfer(seller, pair, netAmount)`. The auto-swap-back, if triggered, fires *before* the tax slice transfers, while `inSwap` is true. No Livo event is emitted at this point either; the accrual is reported by `CreatorTaxSwapback` from the auto-swap-back below.
-- **Auto- or manual-triggered swap-back** runs `IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens` against the pair and then routes proceeds to the master fee handler. Livo event order:
-  1. ERC20 transfer from `address(token)` to `pair` for the swap input.
-  2. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
-  3. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — emitted before fees are deposited. `ethAmount` is the ETH that will be routed through `feeHandler.depositFees`, i.e. the tax accrued to the creator (and any direct receivers) for the swap window covered by this back-swap.
-  4. **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=ethAmount`) emitted by `depositFees`.
-  5. Optional **`LivoMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) for each successful direct forward.
-- The token's `swapBack(uint256 amountOutMinWei)` external function is owner-only and produces the same event sequence as the auto-trigger only if the token has a non-zero owner. Factory-deployed V2 tokens are ownerless, so this manual path is inaccessible there.
-- Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the `CreatorTaxSwapback` path is not entered.
+- **Auto- or manual-triggered swap-back** burns the burn-allocation share as tokens in-place first, then runs `IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens` on the remainder, then routes the ETH through the earnings-allocation split. Livo event order:
+  1. Burn allocation only (`burnBps > 0`): ERC20 `Transfer(address(token), address(0), burnAmount)` then **`LivoTaxableTokenUniV2.CreatorTaxBurn`** (`tokenAmount = burnAmount`) — the burn share removed from total supply *before* the swap (no ETH→token round trip).
+  2. ERC20 transfer from `address(token)` to `pair` for the swap input (the post-burn remainder).
+  3. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
+  4. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount`) — `tokenAmountIn` is the amount actually swapped (net of the burn share); `ethAmount` is the ETH proceeds fed to the earnings-allocation split.
+  5. Earnings-allocation split of `ethAmount`: **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`) for the fund-wallet slice, plus optional **`CreatorClaimed`** per direct forward. Dividends/liquidity buckets route to their own handlers once those ship; today they fund-fallback into the same deposit, so a burn-only token emits exactly one `CreatorFeesDeposited`.
+- The token's `swapBack(uint256 swapAmount, uint256 amountOutMinWei)` external function is owner/launchpad-owner gated and reverts `NotGraduated` before graduation; it produces the same event sequence as the auto-trigger. Factory-deployed V2 tokens are ownerless, so the launchpad owner is the only reachable manual caller.
+- Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the swap-back path is not entered.
+
+### 6.4 V4 earnings-allocation burn bucket and its entry points
+
+For a V4 token with a burn allocation (`burnBps > 0`), the swap-time `CreatorTaxesAccrued` → `token.accrueFees` splits the tax on the ETH side: the burn slice is buffered in the token's `burnPendingEth` (no event beyond the fund-wallet `CreatorFeesDeposited`), the rest routes to the fund wallets. Two permissionless entry points then process the buffer:
+
+- **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: the external V4 buy-back swap events (`Swap`, plus the hook's own LP-fee/tax events since the buy-back is an ordinary swap), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`LivoTaxableTokenUniV4.CreatorTaxBurn`** (`ethSpent, tokensBurned`). Reverts `NothingToBurn` when the buffer is empty.
+- **`sweepStrayEth()`** — routes the token's ETH balance beyond `burnPendingEth` back through the earnings-allocation split (same events as an `accrueFees` split), so stray ETH becomes token earnings instead of being stuck.
 
 ---
 
