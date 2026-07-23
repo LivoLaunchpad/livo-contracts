@@ -90,6 +90,16 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
     ///         `LivoTaxableTokenInitialized` event or the most recent prior `TaxBpsUpdated`.
     event TaxBpsUpdated(uint16 newBuyTaxBps, uint16 newSellTaxBps);
 
+    /// @notice Emitted when a token's liquidity earnings allocation is turned into a locked LP position by
+    ///         `processLiquidity`. Shared by both venues; a few fields carry a slightly venue-specific
+    ///         meaning:
+    ///         - V4: `ethIn` is the ETH deposited single-sided just below the price, `tokensAdded` is
+    ///           always 0 (an ETH-only bid wall), and `liquidity` is the Uniswap-V4 liquidity units minted.
+    ///         - V2: `ethIn`/`tokensAdded` are the ETH and tokens paired into the V2 LP (half the buffered
+    ///           tokens are sold for the ETH side), and `liquidity` is the V2 LP tokens minted (locked at
+    ///           the dead address).
+    event LiquidityAdded(uint256 ethIn, uint256 tokensAdded, uint256 liquidity);
+
     //////////////////////// Errors //////////////////////
 
     error NotTokenOwner();
@@ -172,9 +182,10 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
     ///         earnings-allocation split before they reach the fund wallets. Overrides the base
     ///         passthrough; see `EarningsAllocation`.
     function accrueFees() external payable override(ILivoToken, LivoToken) {
-        // V4 carries burn on the ETH side, so pass `burnBps` as the ETH burn share. (On V2 this path is
-        // only hit pre-graduation — where it short-circuits to the fund wallets — or by stray ETH.)
-        _allocateEthEarnings(msg.value, burnBps);
+        // V4 is ETH-native, so it carves both the burn and liquidity slices from this ETH. (On V2 this
+        // path is only hit pre-graduation — where it short-circuits to the fund wallets — or by stray ETH,
+        // which with no ETH-side burn/liquidity handlers simply folds to the fund wallets.)
+        _allocateEthEarnings(msg.value, burnBps, liquidityBps);
     }
 
     /// @dev Earnings split routes each slice post-graduation only; pre-graduation the whole amount

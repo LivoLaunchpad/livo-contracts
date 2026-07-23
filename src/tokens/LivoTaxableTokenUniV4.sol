@@ -7,14 +7,20 @@ import {LivoUniv4BuyBacks} from "src/tokens/LivoUniv4BuyBacks.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {ILivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
+import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
-/// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with. Read by
-///         `processBurn` to rebuild the exact pool key for the buy-back swap.
+/// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
+///         pool key) and the shared liquidity adder it deployed (to mint the single-sided ETH wall).
 interface ILivoV4Graduator {
     function HOOK_ADDRESS() external view returns (address);
+    function LIQUIDITY_ADDER() external view returns (address);
 }
 
 /// @title LivoTaxableTokenUniV4
@@ -30,12 +36,24 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
     /// @notice Pool manager for lock state checking
     address public constant UNIV4_POOL_MANAGER = DeploymentAddresses.UNIV4_POOL_MANAGER;
 
+    /// @notice Width, in TICKS, of the single-sided ETH liquidity wall minted by `processLiquidity`. The
+    ///         wall spans from just below the current price down to roughly -75%: ticks are log-price
+    ///         (price = 1.0001^tick), so 14000 ticks is a price ratio of 1.0001^14000 ≈ 4.05, i.e. the far
+    ///         end of the range is ~1/4.05 ≈ 0.25 of the current price (a ~-75% drop). A given % drop maps
+    ///         to a CONSTANT tick width regardless of the starting price. 14000 is a whole multiple of
+    ///         TICK_SPACING (14000 / 200 = 70), so the range is spacing-aligned and mints cleanly.
+    int24 internal constant LIQUIDITY_WALL_TICK_WIDTH = 14000;
+
     /////////////////////////// pure storage ///////////////////////
 
     /// @notice ETH accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn. Held in
-    ///         the token's own balance; the rest of the balance (minus this) is stray ETH that
-    ///         `sweepStrayEth` routes back into the earnings split.
+    ///         the token's own balance; the rest of the balance (minus this and `liquidityPendingEth`) is
+    ///         stray ETH that `sweepStrayEth` routes back into the earnings split.
     uint256 public burnPendingEth;
+
+    /// @notice ETH accrued from the liquidity allocation, awaiting a `processLiquidity` single-sided add.
+    ///         Held in the token's own balance and, like `burnPendingEth`, excluded from the stray sweep.
+    uint256 public liquidityPendingEth;
 
     /// @dev Transient reentrancy lock shared by `processBurn` and `sweepStrayEth`. Both make external
     ///      calls that pass through `LivoSwapHook`/the fee handler and could reenter; the hot-path
@@ -49,6 +67,7 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
     event CreatorTaxBurn(uint256 ethSpent, uint256 tokensBurned);
 
     error NothingToBurn();
+    error NothingToAdd();
     error Reentrancy();
 
     //////////////////////////////////////////////////////
@@ -111,8 +130,43 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
     function sweepStrayEth() external {
         require(!_locked, Reentrancy());
         _locked = true;
-        // Stray ETH is treated as fresh V4 earnings, so carve its burn share on the ETH side too.
-        _allocateEthEarnings(address(this).balance - burnPendingEth, burnBps);
+        // Stray ETH is treated as fresh V4 earnings, so carve its burn and liquidity shares on the ETH
+        // side too. The burn and liquidity buffers are committed ETH, not stray, so they are excluded.
+        _allocateEthEarnings(address(this).balance - burnPendingEth - liquidityPendingEth, burnBps, liquidityBps);
+        _locked = false;
+    }
+
+    /// @notice Deposits the accrued liquidity ETH as a single-sided ETH position just below the current
+    ///         price — a protective bid wall — via the shared `LivoUniV4LiquidityAdder`. Permissionless
+    ///         and off the swap hot path, mirroring `processBurn`: the ETH is protocol-committed to
+    ///         liquidity, so any keeper may trigger it. The minted NFT is held by this token and never
+    ///         withdrawn, so it becomes permanent pool depth.
+    /// @dev Runs out-of-band because `modifyLiquidity` cannot execute inside the swap hook's pool lock.
+    ///      Batches many small accruals into one add. Guarded by the shared `_locked` (the mint routes
+    ///      through the position manager and the pool).
+    function processLiquidity() external {
+        require(!_locked, Reentrancy());
+        _locked = true;
+
+        uint256 ethIn = liquidityPendingEth;
+        require(ethIn > 0, NothingToAdd());
+        liquidityPendingEth = 0;
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(this)),
+            fee: UniswapV4PoolConstants.LP_FEE,
+            tickSpacing: UniswapV4PoolConstants.TICK_SPACING,
+            hooks: IHooks(ILivoV4Graduator(graduator).HOOK_ADDRESS())
+        });
+        address adder = ILivoV4Graduator(graduator).LIQUIDITY_ADDER();
+        // NFT and dust ETH both return to this token (permanent depth; dust rejoins the earnings split).
+        uint128 liquidity = ILivoUniV4LiquidityAdder(adder).addSingleSidedEthBelowPrice{value: ethIn}(
+            key, LIQUIDITY_WALL_TICK_WIDTH, address(this), address(this)
+        );
+
+        // Shared event signature; the token side is always 0 for the single-sided ETH wall.
+        emit LiquidityAdded(ethIn, 0, liquidity);
         _locked = false;
     }
 
@@ -138,6 +192,14 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
     ///      `EarningsAllocation`.
     function _handleBurn(uint256 amount) internal override returns (uint256) {
         burnPendingEth += amount;
+        return 0;
+    }
+
+    /// @dev V4 liquidity accrues ETH (earnings are ETH-native); the single-sided add happens out-of-band
+    ///      in `processLiquidity`, so this stays cheap (one SSTORE) and consumes the slice fully (returns
+    ///      0). Mirrors `_handleBurn`; overrides the base fund-fallback in `EarningsAllocation`.
+    function _handleLiquidity(uint256 amount) internal override returns (uint256) {
+        liquidityPendingEth += amount;
         return 0;
     }
 }

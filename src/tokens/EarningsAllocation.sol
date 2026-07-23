@@ -61,19 +61,22 @@ abstract contract EarningsAllocation {
         emit EarningsAllocationInitialized(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @dev The ETH-space earnings split — the shared "phase 2" for both venues: given `amount` of ETH
-    ///      and the burn share to carve FROM that ETH, it routes the burn / dividends / liquidity / fund
-    ///      slices. Callers supply `burnShare`:
-    ///      - V4: `burnBps` — burn is bought back from this ETH, so it's carved here and handed to
-    ///        `_handleBurn` (which buffers it for the buy-back).
-    ///      - V2: `0` — the burn was already taken upstream by burning tax TOKENS before the swap-back,
-    ///        so this ETH is already net of it and nothing is carved here.
-    ///      Dividends/liquidity are shares of the ORIGINAL earnings, but `nonBurn` is only the
-    ///      `BPS_TOTAL - burnBps` fraction (whether burn left as ETH here or as tokens upstream), so they
-    ///      are renormalized over that denom — making the two venues produce identical splits for the
-    ///      same config. The fund wallets take the remainder plus any residual a leg leaves unconsumed,
-    ///      folded into one deposit. Pre-graduation the whole amount goes to the fund wallets unchanged.
-    function _allocateEthEarnings(uint256 amount, uint256 burnShare) internal {
+    /// @dev The ETH-space earnings split — the shared "phase 2" for both venues: given `amount` of ETH,
+    ///      it routes the burn / dividends / liquidity / fund slices. `burnShare` and `liquidityShare` say
+    ///      which of those two slices this venue carves HERE, from this ETH, versus having already peeled
+    ///      them upstream in token-space:
+    ///      - V4 (ETH-native): passes `burnBps` and `liquidityBps` — both are taken from this ETH and
+    ///        handed to `_handleBurn` / `_handleLiquidity`, which buffer ETH for their out-of-band jobs.
+    ///      - V2 (token-native): passes `0` and `0` — the burn was already done by burning tax TOKENS and
+    ///        the liquidity slice was already set aside as tax TOKENS before the swap-back, so this ETH is
+    ///        already net of both and nothing is carved here.
+    ///      Dividends/fund are shares of the ORIGINAL earnings, but the ETH left after burn+liquidity is
+    ///      only the `BPS_TOTAL - burnBps - liquidityBps` fraction (whether those left as ETH here or as
+    ///      tokens upstream), so they are renormalized over that denom — making the two venues produce
+    ///      identical splits for the same config. The fund wallets take the remainder plus any residual a
+    ///      leg leaves unconsumed, folded into one deposit. Pre-graduation the whole amount goes to the
+    ///      fund wallets unchanged.
+    function _allocateEthEarnings(uint256 amount, uint256 burnShare, uint256 liquidityShare) internal {
         if (amount == 0) return;
 
         if (!_earningsGraduated()) {
@@ -81,25 +84,26 @@ abstract contract EarningsAllocation {
             return;
         }
 
+        // Carve the burn/liquidity slices this venue takes from the ETH here; a venue that peeled them
+        // upstream in token-space passes 0 for that share.
         uint256 burn = amount * burnShare / BPS_TOTAL;
-        uint256 nonBurn = amount - burn;
+        uint256 liquidity = amount * liquidityShare / BPS_TOTAL;
 
         // `fund` accumulates the fund-wallet slice plus whatever each leg leaves unconsumed. Residuals
-        // fold into FUND, never back into `nonBurn` — that would re-split them over dividends/liquidity.
-        // `denom == 0` only for a 100%-burn token, where `nonBurn` is 0.
-        uint256 denom = BPS_TOTAL - burnBps;
+        // fold into FUND, never back into `remaining` — that would re-split them over dividends.
+        // `denom == 0` only for a token routing 100% to burn+liquidity, where `remaining` is 0 too.
+        uint256 denom = BPS_TOTAL - burnBps - liquidityBps;
+        uint256 remaining = amount - burn - liquidity;
         uint256 dividends;
-        uint256 liquidity;
-        uint256 fund = nonBurn;
+        uint256 fund = remaining;
         if (denom != 0) {
-            dividends = nonBurn * dividendsBps / denom;
-            liquidity = nonBurn * liquidityBps / denom;
-            fund = nonBurn - dividends - liquidity;
+            dividends = remaining * dividendsBps / denom;
+            fund = remaining - dividends;
         }
 
         if (burn > 0) fund += _handleBurn(burn);
-        if (dividends > 0) fund += _handleDividends(dividends);
         if (liquidity > 0) fund += _handleLiquidity(liquidity);
+        if (dividends > 0) fund += _handleDividends(dividends);
         if (fund > 0) _depositToFund(fund);
     }
 

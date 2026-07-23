@@ -138,6 +138,7 @@ contract DeployLaunchpadV2Stack is Script {
         address factoryV2Proxy;
         address factoryV4Proxy;
         address swapHook;
+        address liquidityAdder; // shared LivoUniV4LiquidityAdder singleton (reused from the manifest)
         // reused (not redeployed) deps the fresh factory impls are wired to
         address bondingCurve;
         address masterFeeHandler;
@@ -172,6 +173,7 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsEthereumMainnet.SWAP_HOOK,
+                liquidityAdder: DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER,
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesEthereumMainnet.UNIV2_ROUTER,
@@ -196,6 +198,7 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsEthereumSepolia.SWAP_HOOK,
+                liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER,
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesEthereumSepolia.UNIV2_ROUTER,
@@ -223,6 +226,7 @@ contract DeployLaunchpadV2Stack is Script {
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
         require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
         require(d.swapHook != address(0), "manifest: SWAP_HOOK missing");
+        require(d.liquidityAdder != address(0), "manifest: UNIV4_LIQUIDITY_ADDER missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
     }
@@ -318,7 +322,8 @@ contract DeployLaunchpadV2Stack is Script {
                 d.permit2,
                 d.swapHook,
                 DEFAULT_GRAD_SQRT_PRICE_X96,
-                UniswapV4PoolConstants.TICK_UPPER
+                UniswapV4PoolConstants.TICK_UPPER,
+                d.liquidityAdder
             )
         );
         console.log("| LivoGraduatorUniswapV4                        |", fresh.graduatorV4);
