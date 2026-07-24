@@ -10,7 +10,9 @@ import {
     DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
+    DeploymentAddressesRobinhoodTestnet,
+    DeploymentAddressesArcMainnet,
+    DeploymentAddressesArcTestnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @notice Deploys the `LivoLpFeeRouter` implementation + UUPS proxy with the initial tier policy.
@@ -52,7 +54,16 @@ contract DeployLivoLpFeeRouter is Script {
         if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) return "ethereum.mainnet";
         if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) return "ethereum.sepolia";
         if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) return "robinhood.mainnet";
+        if (block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID) return "arc.mainnet";
+        if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) return "arc.testnet";
         return "robinhood.testnet";
+    }
+
+    /// @dev ARC (Circle L1) native currency is USDC, pegged $1, so marketcap brackets are the exact round
+    ///      USD values — no ETH-price approximation like the ETH deployment (which used ETH≈$3000).
+    function _isArc() internal view returns (bool) {
+        return block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID
+            || block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID;
     }
 
     /// @dev Production tier policy:
@@ -63,15 +74,27 @@ contract DeployLivoLpFeeRouter is Script {
     ///        Tier 4 (>≈  2M USD mc):   20% / 80%
     ///        Tier 5 (>≈  3M USD mc):   15% / 85%
     ///        Tier 6 (>≈  5M USD mc):   10% / 90%
-    function _defaultConfig() internal pure returns (LivoLpFeeRouter.Config memory cfg) {
-        cfg.thresholds = [
-            uint256(30 ether),
-            uint256(150 ether),
-            uint256(300 ether),
-            uint256(600 ether),
-            uint256(900 ether),
-            uint256(1500 ether)
-        ];
+    function _defaultConfig() internal view returns (LivoLpFeeRouter.Config memory cfg) {
+        if (_isArc()) {
+            // native USDC = $1, so brackets are the exact 100K / 500K / 1M / 2M / 3M / 5M USD marketcaps.
+            cfg.thresholds = [
+                uint256(100_000 ether),
+                uint256(500_000 ether),
+                uint256(1_000_000 ether),
+                uint256(2_000_000 ether),
+                uint256(3_000_000 ether),
+                uint256(5_000_000 ether)
+            ];
+        } else {
+            cfg.thresholds = [
+                uint256(30 ether),
+                uint256(150 ether),
+                uint256(300 ether),
+                uint256(600 ether),
+                uint256(900 ether),
+                uint256(1500 ether)
+            ];
+        }
         cfg.treasuryBps = [uint16(4000), 3500, 3000, 2500, 2000, 1500, 1000];
     }
 
@@ -84,6 +107,10 @@ contract DeployLivoLpFeeRouter is Script {
             treasury = DeploymentAddressesRobinhoodMainnet.LIVO_TREASURY;
         } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
             treasury = DeploymentAddressesRobinhoodTestnet.LIVO_TREASURY;
+        } else if (block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID) {
+            treasury = DeploymentAddressesArcMainnet.LIVO_TREASURY;
+        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
+            treasury = DeploymentAddressesArcTestnet.LIVO_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }
