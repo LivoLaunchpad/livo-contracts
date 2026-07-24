@@ -7,9 +7,9 @@ import {CreatorVaultCurveConstantsArc as C} from "src/config/CreatorVaultCurveCo
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @notice Invariant + overflow tests for the ARC (USDC-native) bonding curves. ARC reprices the
-///         curve economics x2500 (native ~$1 vs ETH ~$2500), so its graduation thresholds reach
-///         ~18k native units and the curve constants are ~2500x larger than the ETH ones. The
-///         `(e + E0)^2` terms in the sell/buy-exact paths therefore grow ~6.25e6x, which is why the
+///         curve economics x2000 (native ~$1 vs ETH ~$2000), so its graduation thresholds reach
+///         ~14.5k native units and the curve constants are ~2000x larger than the ETH ones. The
+///         `(e + E0)^2` terms in the sell/buy-exact paths therefore grow ~4e6x, which is why the
 ///         constants were RE-SOLVED (not linearly scaled) and why these tests fuzz the whole live
 ///         range to prove no uint256 overflow — the tightest margin is the THICK 30%-vault curve.
 contract CreatorVaultCurvesArcTest is Test {
@@ -19,8 +19,8 @@ contract CreatorVaultCurvesArcTest is Test {
     // split is scale-invariant, so this is the same value as the ETH curves).
     uint256 constant T_GRAD = 285714285714285714285714285;
 
-    // Graduation fee is 0.25 ETH x 2500 = 625 native, the same for every tier.
-    uint256 constant GRADUATION_FEE = 625 ether;
+    // Graduation fee is 0.25 ETH x 2000 = 500 native, the same for every tier.
+    uint256 constant GRADUATION_FEE = 500 ether;
 
     LiquidityTier[3] TIERS = [LiquidityTier.THIN, LiquidityTier.DEFAULT, LiquidityTier.THICK];
     // bps 0 included: on ARC the DEFAULT no-vault base is a configurable curve too.
@@ -70,9 +70,12 @@ contract CreatorVaultCurvesArcTest is Test {
 
     /// @dev THE overflow gate: within [0, maxEthReserves] no (tier, bps) curve may revert. Covers the
     ///      THICK 30% curve, whose constants push the `tokenAmount * (e+E0)^2` term closest to 2^256.
-    function test_fuzz_eachCurve_buyDoesNotRevertInRange(uint256 tIdx, uint256 bIdx, uint256 ethReserves, uint256 ethAmount)
-        public
-    {
+    function test_fuzz_eachCurve_buyDoesNotRevertInRange(
+        uint256 tIdx,
+        uint256 bIdx,
+        uint256 ethReserves,
+        uint256 ethAmount
+    ) public {
         tIdx = bound(tIdx, 0, TIERS.length - 1);
         bIdx = bound(bIdx, 0, BPS.length - 1);
         ConstantProductBondingCurveConfigurable curve = _deploy(TIERS[tIdx], BPS[bIdx]);
@@ -86,9 +89,12 @@ contract CreatorVaultCurvesArcTest is Test {
 
     /// @dev Buy then sell must not extract more than deposited and round-trips within rounding.
     ///      Exercises sellExactTokens (the other `(e+E0)^2` path) across the ARC range.
-    function test_fuzz_eachCurve_buyThenSell_roundTrips(uint256 tIdx, uint256 bIdx, uint256 ethReserves, uint256 ethAmount)
-        public
-    {
+    function test_fuzz_eachCurve_buyThenSell_roundTrips(
+        uint256 tIdx,
+        uint256 bIdx,
+        uint256 ethReserves,
+        uint256 ethAmount
+    ) public {
         tIdx = bound(tIdx, 0, TIERS.length - 1);
         bIdx = bound(bIdx, 0, BPS.length - 1);
         ConstantProductBondingCurveConfigurable curve = _deploy(TIERS[tIdx], BPS[bIdx]);

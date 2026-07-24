@@ -7,11 +7,11 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 /// @notice ARC-chain (Circle L1, native = USDC) counterpart of `CreatorVaultCurveConstants`.
 ///         ARC's native currency is 18-decimal at the msg.value/balance level (identical to ETH/wei),
 ///         so the curve MATH is unchanged; only the economics are repriced. Because 1 native unit is
-///         ~$1 on ARC vs ~$2500 for ETH, the graduation thresholds / marketcaps / fees are scaled by
-///         2500 to preserve the same USD economics, and the `(K, T0, E0)` constants are RE-SOLVED for
+///         ~$1 on ARC vs ~$2000 for ETH, the graduation thresholds / marketcaps / fees are scaled by
+///         2000 to preserve the same USD economics, and the `(K, T0, E0)` constants are RE-SOLVED for
 ///         those targets (they are nonlinear in the price and cannot be linearly scaled).
 /// @dev    Regenerate with:
-///           uv run simulations/script/find_creator_vault_curve_params.py --scale=2500 --solidity
+///           uv run simulations/script/find_creator_vault_curve_params.py --scale=2000 --solidity
 ///         For EVERY (tier, bps) the solver hits t(0)=S and t(threshold)=T_GRAD to 0 wei with a
 ///         <1e-20% graduation-price deviation (same quality as the ETH library).
 ///
@@ -20,9 +20,9 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         hardcoded ARC base curve), so `(DEFAULT, 0)` = `DEFAULT_0` is a real entry.
 ///
 ///         Graduation invariants per tier (native units; grad mcap scales 1:2:4 with LP depth):
-///           - THIN    : threshold  5000, eth into liquidity  4375, grad mcap 15312.5
-///           - DEFAULT : threshold  9375, eth into liquidity  8750, grad mcap 30625
-///           - THICK   : threshold 18125, eth into liquidity 17500, grad mcap 61250
+///           - THIN    : threshold  4000, eth into liquidity  3500, grad mcap 12250
+///           - DEFAULT : threshold  7500, eth into liquidity  7000, grad mcap 24500
+///           - THICK   : threshold 14500, eth into liquidity 14000, grad mcap 49000
 ///         tokens into liquidity (T_GRAD) = 285,714,285.714...M for every tier and every bps (same as
 ///         the ETH curves — the token split is scale-invariant).
 library CreatorVaultCurveConstantsArc {
@@ -35,85 +35,85 @@ library CreatorVaultCurveConstantsArc {
     uint256 internal constant VAULT_BPS_STEP = 500; // 5%
     uint256 internal constant MAX_VAULT_TOTAL_BPS = 3000; // 30%
 
-    /// @notice Max native accepted above any tier's graduation threshold. 0.05 ETH x 2500.
-    uint256 internal constant GRADUATION_MAX_EXCESS = 125 ether;
+    /// @notice Max native accepted above any tier's graduation threshold. 0.05 ETH x 2000.
+    uint256 internal constant GRADUATION_MAX_EXCESS = 100 ether;
 
-    // ---- DEFAULT tier (lp 8750, grad mcap 30625, threshold 9375) ----
-    uint256 internal constant K_DEFAULT_0 = 8789062500000000000000000007031250000000000000000;
+    // ---- DEFAULT tier (lp 7000, grad mcap 24500, threshold 7500) ----
+    uint256 internal constant K_DEFAULT_0 = 7031250000000000000000000005625000000000000000000;
     uint256 internal constant T0_DEFAULT_0 = 250000000000000000000000001;
-    uint256 internal constant E0_DEFAULT_0 = 7031250000000000000000;
-    uint256 internal constant K_DEFAULT_5 = 9872205785667324128862913453114727153188691652513;
-    uint256 internal constant T0_DEFAULT_5 = 282051282051282051282064001;
-    uint256 internal constant E0_DEFAULT_5 = 8012820512820512820513;
-    uint256 internal constant K_DEFAULT_10 = 11403693916933467830359180313849995614227446179129;
-    uint256 internal constant T0_DEFAULT_10 = 324503311258278145695395049;
-    uint256 internal constant E0_DEFAULT_10 = 9312913907284768211921;
-    uint256 internal constant K_DEFAULT_15 = 13711206627193050977206593568072458560514927589460;
+    uint256 internal constant E0_DEFAULT_0 = 5625000000000000000000;
+    uint256 internal constant K_DEFAULT_5 = 7897764628533859303089610833004602235371466146520;
+    uint256 internal constant T0_DEFAULT_5 = 282051282051282051282028572;
+    uint256 internal constant E0_DEFAULT_5 = 6410256410256410256410;
+    uint256 internal constant K_DEFAULT_10 = 9122955133546774264285876472934301127143546350400;
+    uint256 internal constant T0_DEFAULT_10 = 324503311258278145695329525;
+    uint256 internal constant E0_DEFAULT_10 = 7450331125827814569536;
+    uint256 internal constant K_DEFAULT_15 = 10968965301754440781765274854457966848411942071568;
     uint256 internal constant T0_DEFAULT_15 = 383399209486166007905146668;
-    uint256 internal constant E0_DEFAULT_15 = 11116600790513833992095;
-    uint256 internal constant K_DEFAULT_20 = 17517301038062283737023267645977508650519031154016;
-    uint256 internal constant T0_DEFAULT_20 = 470588235294117647058797716;
-    uint256 internal constant E0_DEFAULT_20 = 13786764705882352941176;
-    uint256 internal constant K_DEFAULT_25 = 24730098855359001040582069782127991675338189390230;
-    uint256 internal constant T0_DEFAULT_25 = 612903225806451612903211430;
-    uint256 internal constant E0_DEFAULT_25 = 18145161290322580645161;
-    uint256 internal constant K_DEFAULT_30 = 42102394090423638305447350964589266642933428268191;
-    uint256 internal constant T0_DEFAULT_30 = 886792452830188679245292193;
-    uint256 internal constant E0_DEFAULT_30 = 26533018867924528301887;
+    uint256 internal constant E0_DEFAULT_15 = 8893280632411067193676;
+    uint256 internal constant K_DEFAULT_20 = 14013840830449826989619019491782006920415224915630;
+    uint256 internal constant T0_DEFAULT_20 = 470588235294117647058811430;
+    uint256 internal constant E0_DEFAULT_20 = 11029411764705882352941;
+    uint256 internal constant K_DEFAULT_25 = 19784079084287200832466108130541103017689906347619;
+    uint256 internal constant T0_DEFAULT_25 = 612903225806451612903223811;
+    uint256 internal constant E0_DEFAULT_25 = 14516129032258064516129;
+    uint256 internal constant K_DEFAULT_30 = 33681915272338910644356225189124243503025987906450;
+    uint256 internal constant T0_DEFAULT_30 = 886792452830188679245259050;
+    uint256 internal constant E0_DEFAULT_30 = 21226415094339622641509;
 
-    // ---- THIN tier (lp 4375, grad mcap 15312.5, threshold 5000) ----
-    uint256 internal constant K_THIN_0 = 5540166204986149584488442822382271468144044353384;
-    uint256 internal constant T0_THIN_0 = 315789473684210526315857144;
-    uint256 internal constant E0_THIN_0 = 4210526315789473684211;
-    uint256 internal constant K_THIN_5 = 6315385949379797555700524264535738081981727106634;
-    uint256 internal constant T0_THIN_5 = 356495468277945619335412858;
-    uint256 internal constant E0_THIN_5 = 4833836858006042296073;
-    uint256 internal constant K_THIN_10 = 7440269604144660731352325101514008349680599586120;
+    // ---- THIN tier (lp 3500, grad mcap 12250, threshold 4000) ----
+    uint256 internal constant K_THIN_0 = 4432132963988919667589220423800554016620498646616;
+    uint256 internal constant T0_THIN_0 = 315789473684210526315714287;
+    uint256 internal constant E0_THIN_0 = 3368421052631578947368;
+    uint256 internal constant K_THIN_5 = 5052308759503838044559639927882366900630698880082;
+    uint256 internal constant T0_THIN_5 = 356495468277945619335346429;
+    uint256 internal constant E0_THIN_5 = 3867069486404833836858;
+    uint256 internal constant K_THIN_10 = 5952215683315728585081860081211206679744479668896;
     uint256 internal constant T0_THIN_10 = 411347517730496453900757144;
-    uint256 internal constant E0_THIN_10 = 5673758865248226950355;
-    uint256 internal constant K_THIN_15 = 9196706515131978853912226936661202085136952251423;
-    uint256 internal constant T0_THIN_15 = 489270386266094420600898573;
-    uint256 internal constant E0_THIN_15 = 6866952789699570815451;
-    uint256 internal constant K_THIN_20 = 12249527410207939508506916673345935727788279774907;
-    uint256 internal constant T0_THIN_20 = 608695652173913043478274287;
-    uint256 internal constant E0_THIN_20 = 8695652173913043478261;
-    uint256 internal constant K_THIN_25 = 18545953360768175582990792689602194787379972567196;
-    uint256 internal constant T0_THIN_25 = 814814814814814814814828573;
-    uint256 internal constant E0_THIN_25 = 11851851851851851851852;
-    uint256 internal constant K_THIN_30 = 36387236343969713358573583907842076798269334788506;
-    uint256 internal constant T0_THIN_30 = 1255813953488372093023288574;
-    uint256 internal constant E0_THIN_30 = 18604651162790697674419;
+    uint256 internal constant E0_THIN_10 = 4539007092198581560284;
+    uint256 internal constant K_THIN_15 = 7357365212105583083130204398771021753946471694107;
+    uint256 internal constant T0_THIN_15 = 489270386266094420600926787;
+    uint256 internal constant E0_THIN_15 = 5493562231759656652361;
+    uint256 internal constant K_THIN_20 = 9799621928166351606805993957807183364839319482609;
+    uint256 internal constant T0_THIN_20 = 608695652173913043478300001;
+    uint256 internal constant E0_THIN_20 = 6956521739130434782609;
+    uint256 internal constant K_THIN_25 = 14836762688614540466391034943978052126200274375330;
+    uint256 internal constant T0_THIN_25 = 814814814814814814814758930;
+    uint256 internal constant E0_THIN_25 = 9481481481481481481481;
+    uint256 internal constant K_THIN_30 = 29109789075175770686858167662087614926987560845100;
+    uint256 internal constant T0_THIN_30 = 1255813953488372093023267860;
+    uint256 internal constant E0_THIN_30 = 14883720930232558139535;
 
-    // ---- THICK tier (lp 17500, grad mcap 61250, threshold 18125) ----
-    uint256 internal constant K_THICK_0 = 15634295062462819750148805141524762046400951814490;
-    uint256 internal constant T0_THICK_0 = 219512195121951219512197045;
-    uint256 internal constant E0_THICK_0 = 12820121951219512195122;
-    uint256 internal constant K_THICK_5 = 17442049343544018231903775032923943570107657249679;
-    uint256 internal constant T0_THICK_5 = 247922437673130193905806109;
-    uint256 internal constant E0_THICK_5 = 14560249307479224376731;
-    uint256 internal constant K_THICK_10 = 19967961559007232084154800841213120479947403025752;
-    uint256 internal constant T0_THICK_10 = 285256410256410256410249459;
-    uint256 internal constant E0_THICK_10 = 16846955128205128205128;
-    uint256 internal constant K_THICK_15 = 23713120220040769708973212411635450852260405675082;
-    uint256 internal constant T0_THICK_15 = 336501901140684410646379902;
-    uint256 internal constant E0_THICK_15 = 19985741444866920152091;
-    uint256 internal constant K_THICK_20 = 29749759804349724866801307304042110664686872219880;
+    // ---- THICK tier (lp 14000, grad mcap 49000, threshold 14500) ----
+    uint256 internal constant K_THICK_0 = 12507436049970255800119734004244199881023200485402;
+    uint256 internal constant T0_THICK_0 = 219512195121951219512216749;
+    uint256 internal constant E0_THICK_0 = 10256097560975609756098;
+    uint256 internal constant K_THICK_5 = 13953639474835214585523366343278213027831278151720;
+    uint256 internal constant T0_THICK_5 = 247922437673130193905815272;
+    uint256 internal constant E0_THICK_5 = 11648199445983379501385;
+    uint256 internal constant K_THICK_10 = 15974369247205785667324894413018573307034845504434;
+    uint256 internal constant T0_THICK_10 = 285256410256410256410274878;
+    uint256 internal constant E0_THICK_10 = 13477564102564102564103;
+    uint256 internal constant K_THICK_15 = 18970496176032615767178931684897714293975624918678;
+    uint256 internal constant T0_THICK_15 = 336501901140684410646387686;
+    uint256 internal constant E0_THICK_15 = 15988593155893536121673;
+    uint256 internal constant K_THICK_20 = 23799807843479779893441045843233688531749497775904;
     uint256 internal constant T0_THICK_20 = 411214953271028037383188179;
-    uint256 internal constant E0_THICK_20 = 24561915887850467289720;
-    uint256 internal constant K_THICK_25 = 40785410927456382001836420278566345270890725436274;
-    uint256 internal constant T0_THICK_25 = 530303030303030303030301479;
-    uint256 internal constant E0_THICK_25 = 31856060606060606060606;
-    uint256 internal constant K_THICK_30 = 65703125000000000000000000090625000000000000000000;
+    uint256 internal constant E0_THICK_20 = 19649532710280373831776;
+    uint256 internal constant K_THICK_25 = 32628328741965105601469555488428833792470156107255;
+    uint256 internal constant T0_THICK_25 = 530303030303030303030307883;
+    uint256 internal constant E0_THICK_25 = 25484848484848484848485;
+    uint256 internal constant K_THICK_30 = 52562500000000000000000000072500000000000000000000;
     uint256 internal constant T0_THICK_30 = 750000000000000000000000002;
-    uint256 internal constant E0_THICK_30 = 45312500000000000000000;
+    uint256 internal constant E0_THICK_30 = 36250000000000000000000;
 
     /// @notice Returns the graduation threshold + max-excess for a liquidity tier (passed to the
     ///         `ConstantProductBondingCurveConfigurable` constructor for that tier's curves).
     function tierGraduation(LiquidityTier tier) internal pure returns (uint256 threshold, uint256 maxExcess) {
         maxExcess = GRADUATION_MAX_EXCESS;
-        if (tier == LiquidityTier.THIN) return (5000 ether, maxExcess);
-        if (tier == LiquidityTier.DEFAULT) return (9375 ether, maxExcess);
-        if (tier == LiquidityTier.THICK) return (18125 ether, maxExcess);
+        if (tier == LiquidityTier.THIN) return (4000 ether, maxExcess);
+        if (tier == LiquidityTier.DEFAULT) return (7500 ether, maxExcess);
+        if (tier == LiquidityTier.THICK) return (14500 ether, maxExcess);
         revert InvalidLiquidityTier();
     }
 

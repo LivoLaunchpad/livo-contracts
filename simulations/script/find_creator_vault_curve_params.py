@@ -175,7 +175,7 @@ def emit_solidity(tiers: list[Tier], all_tiers: bool = False) -> None:
 def _parse_scale() -> Decimal:
     """--scale=N multiplies every tier's native-denominated inputs (lp depth, grad marketcap, fee).
     Used to reprice for a chain whose native currency has a different USD value, e.g. ARC (native
-    USDC ~$1) uses --scale=2500 to preserve the ETH (~$2500) economics. The solved K/T0/E0 are
+    USDC ~$1) uses --scale=2000 to preserve the ETH (~$2000) economics. The solved K/T0/E0 are
     re-derived from the scaled targets, NOT linearly scaled (they are nonlinear in the price)."""
     for arg in sys.argv:
         if arg.startswith("--scale="):

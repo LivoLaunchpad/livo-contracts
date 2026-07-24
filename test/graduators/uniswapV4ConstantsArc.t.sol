@@ -7,9 +7,9 @@ import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 /// @notice Validates the ARC (USDC-native) Uniswap V4 pool constants. ARC reprices every native-
-///         denominated economic value x2500 (native ~$1 vs ETH ~$2500) but keeps 18-dec native + 18-dec
-///         token, so the pool geometry is the ETH geometry translated to a x1/2500 price (sqrtPrice
-///         x1/50; ticks shifted ~-78244, re-derived per set-point via uniswapV4Settings.py). These tests
+///         denominated economic value x2000 (native ~$1 vs ETH ~$2000) but keeps 18-dec native + 18-dec
+///         token, so the pool geometry is the ETH geometry translated to a x1/2000 price (sqrtPrice
+///         x1/sqrt(2000); ticks shifted -76000, re-derived per set-point via uniswapV4Settings.py). These tests
 ///         replicate `LivoGraduatorUniswapV4`'s constructor derivations against the ARC constants and
 ///         fuzz the liquidity-sizing math at ARC scale to prove the constructor invariants hold and the
 ///         `getLiquidityForAmounts`/`getLiquidityForAmount0` (uint128) paths never overflow.
@@ -25,13 +25,13 @@ contract UniswapV4ConstantsArcTest is Test {
         uint160 sqrtGrad;
         int24 tickUpper;
         int24 expectedGradTick;
-        uint256 expectedWeiPerToken; // native wei per token at graduation = ETH wei/token x 2500
+        uint256 expectedWeiPerToken; // native wei per token at graduation = ETH wei/token x 2000
     }
 
     function _tiers() internal pure returns (Tier[3] memory t) {
-        t[0] = Tier(C.SQRT_PRICEX96_GRADUATION_DEFAULT, C.TICK_UPPER, 104000, 30625000000000);
-        t[1] = Tier(C.SQRT_PRICEX96_GRADUATION_THIN, C.TICK_UPPER_THIN, 110800, 15312500000000);
-        t[2] = Tier(C.SQRT_PRICEX96_GRADUATION_THICK, C.TICK_UPPER, 97000, 61250000000000);
+        t[0] = Tier(C.SQRT_PRICEX96_GRADUATION_DEFAULT, C.TICK_UPPER, 106200, 24500000000000);
+        t[1] = Tier(C.SQRT_PRICEX96_GRADUATION_THIN, C.TICK_UPPER_THIN, 113200, 12250000000000);
+        t[2] = Tier(C.SQRT_PRICEX96_GRADUATION_THICK, C.TICK_UPPER, 99200, 49000000000000);
     }
 
     /// @dev Each graduation sqrtPrice, rounded to nearest spacing (as the solver does), must equal the
@@ -68,15 +68,15 @@ contract UniswapV4ConstantsArcTest is Test {
         }
     }
 
-    /// @dev Repricing check: the native wei-per-token at graduation must be the ETH value x2500 (same
-    ///      token USD value, native mcap x2500), within rounding.
-    function test_graduationPrice_isEthScaledBy2500() public pure {
+    /// @dev Repricing check: the native wei-per-token at graduation must be the ETH value x2000 (same
+    ///      token USD value, native mcap x2000), within rounding.
+    function test_graduationPrice_isEthScaledBy2000() public pure {
         Tier[3] memory tiers = _tiers();
         for (uint256 i; i < tiers.length; ++i) {
             // wei/token = 1e18 / (tokens per native) = 1e18 * Q96^2 / sqrt^2
             uint256 s = uint256(tiers[i].sqrtGrad);
             uint256 weiPerToken = (1e18 * Q96 * Q96) / (s * s);
-            assertApproxEqRel(weiPerToken, tiers[i].expectedWeiPerToken, 0.0001e18, "wei/token == eth x2500");
+            assertApproxEqRel(weiPerToken, tiers[i].expectedWeiPerToken, 0.0001e18, "wei/token == eth x2000");
         }
     }
 
@@ -88,7 +88,7 @@ contract UniswapV4ConstantsArcTest is Test {
     {
         tIdx = bound(tIdx, 0, 2);
         Tier memory tier = _tiers()[tIdx];
-        // THIN 4375 / DEFAULT 8750 / THICK 17500 ether into liquidity, + up to 125 excess; 20000 covers all.
+        // THIN 3500 / DEFAULT 7000 / THICK 14000 ether into liquidity, + up to 100 excess; 20000 covers all.
         nativeForLiquidity = bound(nativeForLiquidity, 0.1 ether, 20000 ether);
         tokenAmount = bound(tokenAmount, 1e18, T_GRAD);
 
