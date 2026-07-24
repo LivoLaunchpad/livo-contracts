@@ -10,6 +10,21 @@ evm_version = "cancun"
 
 verbosity = 3
 
+# Uniswap's UniversalRouter (V3SwapRouter) overflows the stack without the IR pipeline; enable
+# via_ir ONLY for the vendored universal-router sources so Livo's own build stays on the fast path.
+[[profile.default.additional_compiler_profiles]]
+name = "via-ir"
+via_ir = true
+
+[[profile.default.compilation_restrictions]]
+paths = "lib/universal-router/**"
+via_ir = true
+
+# The UniversalRouter compile-anchor imports UniversalRouter, so it must share the via_ir unit.
+[[profile.default.compilation_restrictions]]
+paths = "script/arc/_artifacts/UniversalRouterArtifact.sol"
+via_ir = true
+
 # Allow ExportDeployments script to (re)write the generated deployment manifests.
 fs_permissions = [
     { access = "read-write", path = "./deployments.ethereum.mainnet.md" },
