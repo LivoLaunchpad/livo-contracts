@@ -9,7 +9,9 @@ import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
-/// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
+/// this line below is swapped per target chain at deploy time (the addresses are compile-time
+/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
+/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title LivoTaxableTokenUniV2
