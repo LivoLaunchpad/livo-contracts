@@ -73,6 +73,9 @@ taxtoken-robinhood:
 taxtoken-robintest:
     @just _taxtoken DeploymentAddressesRobinhoodTestnet
 
+taxtoken-arc-testnet:
+    @just _taxtoken DeploymentAddressesArcTestnet
+
 # Repoint the graduators' compile-time constant imports at a chain's variant. The V4 graduator bakes
 # ARC-specific pool geometry (TICK_LOWER etc.) and BOTH graduators bake the native-denominated
 # graduation fees, so run the recipe matching your target chain BEFORE building/deploying the

@@ -10,6 +10,6 @@ library GraduationFeeConstantsArc {
     /// @notice Total graduation fee: $500 (0.25 ETH × 2000).
     uint256 internal constant GRADUATION_FEE = 500 ether;
 
-    /// @notice Triggerer compensation: $10 (0.005 ETH × 2000).
-    uint256 internal constant TRIGGERER_GRADUATION_COMPENSATION = 10 ether;
+    /// @notice Triggerer compensation: $2
+    uint256 internal constant TRIGGERER_GRADUATION_COMPENSATION = 2 ether;
 }

@@ -5,6 +5,7 @@ import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.s
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
+import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 
@@ -33,6 +34,9 @@ library CreatorVaultScriptConfig {
         if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
             return DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
         }
+        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
+            return DeploymentsArcTestnet.CREATOR_VAULT_FACTORY;
+        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 
@@ -49,6 +53,9 @@ library CreatorVaultScriptConfig {
         }
         if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
             return DeploymentsRobinhoodTestnet.vaultBondingCurves();
+        }
+        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
+            return DeploymentsArcTestnet.vaultBondingCurves();
         }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
@@ -98,6 +105,15 @@ library CreatorVaultScriptConfig {
             });
             return tierConfig;
         }
+        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
+            tierConfig.thin = ILivoFactory.TierCurves({
+                base: DeploymentsArcTestnet.THIN_CURVE_BASE, vaults: DeploymentsArcTestnet.thinVaultCurves()
+            });
+            tierConfig.thick = ILivoFactory.TierCurves({
+                base: DeploymentsArcTestnet.THICK_CURVE_BASE, vaults: DeploymentsArcTestnet.thickVaultCurves()
+            });
+            return tierConfig;
+        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 
@@ -129,6 +145,12 @@ library CreatorVaultScriptConfig {
             v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK
+            });
+            return v4Tier;
+        }
+        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
+            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+                thin: DeploymentsArcTestnet.GRADUATOR_UNIV4_THIN, thick: DeploymentsArcTestnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }

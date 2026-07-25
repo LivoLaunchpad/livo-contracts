@@ -14,10 +14,12 @@ import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/L
 
 import {
     DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
+    DeploymentAddressesEthereumSepolia,
+    DeploymentAddressesArcTestnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the unified factory implementations and their UUPS proxies
 /// @notice Deploys ONLY the four contracts that are net-new for this run:
@@ -95,6 +97,21 @@ contract DeploymentsUnifiedFactories is Script {
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
+            );
+        } else if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                launchpad: DeploymentsArcTestnet.LAUNCHPAD,
+                bondingCurve: DeploymentsArcTestnet.BONDING_CURVE,
+                graduatorV2: DeploymentsArcTestnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsArcTestnet.GRADUATOR_UNIV4,
+                masterFeeHandler: DeploymentsArcTestnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsArcTestnet.TOKEN_IMPL,
+                taxTokenImpl: DeploymentsArcTestnet.TAXABLE_TOKEN_V4_IMPL,
+                taxTokenV2Impl: DeploymentsArcTestnet.TAXABLE_TOKEN_V2_IMPL
+            });
+            require(
+                AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
+                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just taxtoken-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");

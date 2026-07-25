@@ -6,10 +6,13 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
+import {CreatorVaultCurveConstantsArc} from "src/config/CreatorVaultCurveConstantsArc.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
@@ -25,10 +28,27 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 /// @dev    Run with:
 ///         forge script DeployCreatorVaultSystem --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
 contract DeployCreatorVaultSystem is Script {
+    /// @dev DEFAULT-tier curve params (k/t0/e0 + graduation threshold/maxExcess) for the active chain.
+    ///      ARC (native = USDC) uses the re-solved ×2000 constants; all other chains the ETH constants.
+    function _defaultCurveParams(uint256 bps)
+        internal
+        view
+        returns (uint256 k, uint256 t0, uint256 e0, uint256 threshold, uint256 maxExcess)
+    {
+        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
+            (k, t0, e0) = CreatorVaultCurveConstantsArc.paramsFor(LiquidityTier.DEFAULT, bps);
+            (threshold, maxExcess) = CreatorVaultCurveConstantsArc.tierGraduation(LiquidityTier.DEFAULT);
+        } else {
+            (k, t0, e0) = CreatorVaultCurveConstants.paramsForBps(bps);
+            (threshold, maxExcess) = (3.75 ether, 0.05 ether);
+        }
+    }
+
     function run() public {
         require(
             block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID
-                || block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID,
+                || block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID
+                || block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID,
             "Unsupported chain"
         );
 
@@ -47,8 +67,8 @@ contract DeployCreatorVaultSystem is Script {
         // 1. The six allocation-specific bonding curves.
         address[6] memory curves;
         for (uint256 i = 0; i < 6; ++i) {
-            (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsForBps(bpsList[i]);
-            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, 3.75 ether, 0.05 ether));
+            (uint256 k, uint256 t0, uint256 e0, uint256 threshold, uint256 maxExcess) = _defaultCurveParams(bpsList[i]);
+            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
             console.log("| VAULT_CURVE bps", bpsList[i], curves[i]);
         }
 
