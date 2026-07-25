@@ -32,11 +32,11 @@ library DeploymentsRobinhoodTestnet {
     address internal constant QUOTER = 0xaA9c5758D8E5804dbbC4c931C6EAf1Be68DD30CD;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x4B85Bd6406BE504832De9DeDe12ede7f08a72869;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x6382Aa066577Ff125CF67711aE859f351af1FFff;
+    address internal constant TOKEN_IMPL = 0xf68Ea9a3522647C58d7c77edE156cAA0930a7101;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x2aAE5BAa1FFE5a93a0feE92cb1d73FDA80120728;
 
     /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xcB5d351D5e418e832DB4F1d23E1D553C0DB643Ee;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x1f4F57DdCda5f2697899eEBe763682279b7aE39a;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -46,8 +46,8 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeUnifiedFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x48b3F72469cDba3986A36cE6C47e6Cb027dCCcF2;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x974F9139D56DAE3D44714Cd24632BB9Bf69139E2;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xBB0EBb375e9dc06DE3eC0d6410606Cb3DAc6737b;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x23f1b9158071B651268c4A626808958E2DC63f02;
 
     // --- Creator vaults ---
     /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
