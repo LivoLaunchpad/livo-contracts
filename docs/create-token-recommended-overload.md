@@ -168,7 +168,7 @@ All errors are 4-byte custom errors.
 | `MaxWalletBpsTooLow` / `…TooHigh` | (window enabled) `maxWalletBps` outside `10..300`. |
 | `MaxBuyPerTxBpsExceedsMaxWalletBps` | (window enabled) `maxBuyPerTxBps > maxWalletBps`. |
 | `ProtectionWindowTooShort` / `…TooLong` | (window enabled) `protectionWindowSeconds` outside `60..86_400`. |
-| `WhitelistTooLong` | `whitelist.length > 20`. |
+| `WhitelistTooLong` | `whitelist.length > 50`. |
 | `InvalidCreatorVault` | a vault `owner == address(0)`, or `supplyBps` is zero / not a multiple of 500. |
 | `CreatorVaultAllocationTooHigh` | sum of `supplyBps` > `3_000` (30%). |
 | `TooManyCreatorVaults` | more than 5 vaults. |
