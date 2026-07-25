@@ -73,6 +73,24 @@ taxtoken-robinhood:
 taxtoken-robintest:
     @just _taxtoken DeploymentAddressesRobinhoodTestnet
 
+# Repoint the graduators' compile-time constant imports at a chain's variant. The V4 graduator bakes
+# ARC-specific pool geometry (TICK_LOWER etc.) and BOTH graduators bake the native-denominated
+# graduation fees, so run the recipe matching your target chain BEFORE building/deploying the
+# graduators to it. Idempotent (rewrites from whatever suffix is currently set). Committed default is
+# the ETH-priced variant (empty suffix), used by Ethereum/Sepolia/Robinhood and all tests.
+_graduators suffix:
+    sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
+        src/graduators/LivoGraduatorUniswapV4.sol
+    sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
+        src/graduators/LivoGraduatorUniswapV4.sol src/graduators/LivoGraduatorUniswapV2.sol
+
+graduators-arc-testnet:
+    @just _graduators Arc
+
+# Reset the graduators back to the committed ETH-priced variant.
+graduators-ethereum:
+    @just _graduators ""
+
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>
 next-salt factory:

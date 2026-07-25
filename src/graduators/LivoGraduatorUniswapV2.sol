@@ -8,20 +8,23 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
+// Aliased so the `graduators-arc-*` recipe can import-swap it for the ARC (native = USDC) fee amounts.
+import {GraduationFeeConstants as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 
 contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
-    /// @notice Graduation ETH fee (creator compensation + treasury fee)
-    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
+    /// @notice Graduation native fee (creator compensation + treasury fee). Per-chain via the aliased lib.
+    uint256 public constant GRADUATION_ETH_FEE = GraduationFeeConstants.GRADUATION_FEE;
 
-    /// @notice ETH compensation paid to token creator at graduation (half of the fee)
+    /// @notice Native compensation paid to token creator at graduation (half of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
 
-    /// @notice ETH compensation paid to `tx.origin` for triggering graduation, to offset the
+    /// @notice Native compensation paid to `tx.origin` for triggering graduation, to offset the
     ///         extra gas spent deploying the UniswapV2 pair lazily inside `graduateToken()`.
-    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.005 ether;
+    uint256 public constant TRIGGERER_GRADUATION_COMPENSATION =
+        GraduationFeeConstants.TRIGGERER_GRADUATION_COMPENSATION;
 
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
