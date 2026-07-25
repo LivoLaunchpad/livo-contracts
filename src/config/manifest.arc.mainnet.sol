@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @title Livo deployment manifest — ARC Chain Mainnet (chain id 5402, PLACEHOLDER)
+/// @title Livo deployment manifest — ARC Chain Mainnet (chain id 5042)
 /// @notice Single source of truth for Livo's own deployed contracts on ARC mainnet.
-/// @dev ARC mainnet is not live yet (chainId 5402 is a placeholder until Circle publishes it) and
-///      Uniswap is not officially deployed there. External infrastructure (Uniswap V2/V4, Permit2,
-///      the USDC-ERC20 quote alias) lives in `src/config/DeploymentAddresses.sol`
-///      (`DeploymentAddressesArcMainnet`); treasury also lives there. Nothing is deployed — every
-///      address below is `address(0)`; fill each on deploy and run `just export-deployments`.
+/// @dev ARC mainnet is live and Uniswap is officially deployed there. External infrastructure
+///      (Uniswap V2/V3/V4, Permit2, the USDC-ERC20 quote alias) lives in
+///      `src/config/DeploymentAddresses.sol` (`DeploymentAddressesArcMainnet`); treasury also lives
+///      there. No Livo contract is deployed yet — every address below is `address(0)`; fill each on
+///      deploy and run `just export-deployments`.
 library DeploymentsArcMainnet {
-    uint256 internal constant BLOCKCHAIN_ID = 5402;
+    uint256 internal constant BLOCKCHAIN_ID = 5042;
 
     // --- Core ---
     address internal constant LAUNCHPAD = address(0);

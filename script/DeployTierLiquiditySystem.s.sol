@@ -144,7 +144,7 @@ contract DeployTierLiquiditySystem is Script {
 
     /// @dev THIN/THICK graduation sqrtPrices + primary-range upper ticks for the active chain. These feed
     ///      the tier graduators' constructors; the graduator bytecode itself bakes ARC pool geometry via
-    ///      the `just graduators-arc-testnet` import-swap.
+    ///      the `just chain-arc-testnet` import-swap.
     function _graduationSetpoints()
         internal
         view

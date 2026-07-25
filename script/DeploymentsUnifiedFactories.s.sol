@@ -64,7 +64,7 @@ contract DeploymentsUnifiedFactories is Script {
 
     /// @notice Resolves core dependency addresses for the active chain.
     /// @dev Asserts that `LivoTaxableTokenUniV4`'s hardcoded chain import matches the active chain
-    ///      (run `just taxtoken-sepolia` before deploying to sepolia).
+    ///      (run `just chain-sepolia` before deploying to sepolia).
     function _getDeps() internal view returns (Deps memory d) {
         if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -96,7 +96,7 @@ contract DeploymentsUnifiedFactories is Script {
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -111,7 +111,7 @@ contract DeploymentsUnifiedFactories is Script {
             });
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just taxtoken-arc-testnet`)"
+                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");

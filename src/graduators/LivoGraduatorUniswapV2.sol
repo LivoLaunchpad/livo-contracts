@@ -8,7 +8,7 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
-// Aliased so the `graduators-arc-*` recipe can import-swap it for the ARC (native = USDC) fee amounts.
+// Aliased so the `chain-arc-*` recipe can import-swap it for the ARC (native = USDC) fee amounts.
 import {GraduationFeeConstants as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 
 contract LivoGraduatorUniswapV2 is ILivoGraduator {

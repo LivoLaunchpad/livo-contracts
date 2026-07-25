@@ -31,10 +31,10 @@ contract MockV2Router {
 /// @notice Tests the build-vs-chain guard baked into EVERY graduator constructor
 ///         (`GraduationFeeConstants.assertDeployableOn`). The committed build is ETH-priced, so a
 ///         graduator must REFUSE to deploy on an ARC chain — this is what catches a forgotten
-///         `just graduators-arc-testnet` before an ARC deploy, on any deploy path.
+///         `just chain-arc-testnet` before an ARC deploy, on any deploy path.
 contract GraduatorChainGuardTest is Test {
     uint256 constant ARC_TESTNET = 5042002;
-    uint256 constant ARC_MAINNET = 5402;
+    uint256 constant ARC_MAINNET = 5042;
 
     // --- library allow/deny logic ---
 

@@ -16,7 +16,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-// Both imports are aliased so the `graduators-arc-*` recipe can import-swap them at build time.
+// Both imports are aliased so the `chain-arc-*` recipe can import-swap them at build time.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {GraduationFeeConstants as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 

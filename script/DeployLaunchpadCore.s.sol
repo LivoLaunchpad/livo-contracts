@@ -31,7 +31,7 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 ///         manifest. After this: paste the printed addresses into `src/config/manifest.arc.testnet.sol`,
 ///         `just export-deployments`, then the vault/tier/factory scripts.
 ///
-///         Build for ARC first: `just taxtoken-arc-testnet && just graduators-arc-testnet && forge build`
+///         Build for ARC first: `just chain-arc-testnet && forge build`
 ///         (the graduators bake ARC pool geometry + fees via import-swap).
 ///
 ///         Run: forge script DeployLaunchpadCore --rpc-url arc-testnet --account livo.dev --slow \

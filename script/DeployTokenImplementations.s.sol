@@ -69,11 +69,11 @@ contract DeployTokenImplementations is Script {
         } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not ARC testnet (run `just taxtoken-arc-testnet`)"
+                "LivoTaxableTokenUniV2 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just taxtoken-arc-testnet`)"
+                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");
