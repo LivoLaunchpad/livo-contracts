@@ -66,6 +66,10 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @param _launchpad Address of the LivoLaunchpad contract
     /// @param _pairInitCodeHash keccak256 of the pair contract creation code used by the configured factory
     constructor(address _uniswapRouter, address _launchpad, bytes32 _pairInitCodeHash) {
+        // Refuse graduator bytecode built with the wrong chain's baked fee constants — see the matching
+        // guard in LivoGraduatorUniswapV4. Unforgettable: fires on ANY deploy path.
+        GraduationFeeConstants.assertDeployableOn(block.chainid);
+
         LIVO_LAUNCHPAD = _launchpad;
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
 

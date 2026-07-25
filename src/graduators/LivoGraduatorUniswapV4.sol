@@ -116,6 +116,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         uint160 _sqrtPriceGraduation,
         int24 _tickUpper
     ) Ownable(msg.sender) {
+        // Refuse to deploy graduator bytecode built with the wrong chain's baked constants (fees + pool
+        // geometry): the import-swapped fee lib knows which chain family it belongs to. Unforgettable —
+        // fires on ANY deploy path; `forge script` simulates first, so a wrong build never broadcasts.
+        GraduationFeeConstants.assertDeployableOn(block.chainid);
+
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = _positionManager;

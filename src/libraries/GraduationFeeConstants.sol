@@ -13,4 +13,18 @@ library GraduationFeeConstants {
     /// @notice Native compensation paid to `tx.origin` for triggering V2 graduation (offsets the gas
     ///         of the lazy pair deploy inside `graduateToken()`).
     uint256 internal constant TRIGGERER_GRADUATION_COMPENSATION = 0.005 ether;
+
+    /// @notice Build-vs-target guard, called from BOTH graduator constructors so EVERY graduator
+    ///         deployment is checked automatically (any script, a raw `cast` deploy, or a test) — the
+    ///         graduators bake this whole lib (fees + the V4 pool geometry that swaps in lockstep with
+    ///         it) at compile time, and the V4 constructor's own sanity checks do NOT catch an ETH-built
+    ///         graduator deployed to ARC. This is the ETH-priced lib, so it must NOT land on an ARC
+    ///         (native = USDC) chain. Deny-list keeps it future-proof for new ETH-family chains.
+    /// @dev ARC chain-ids (native = USDC): testnet 5042002, mainnet 5402 (placeholder). See [[arc-chain-facts]].
+    function assertDeployableOn(uint256 chainId) internal pure {
+        require(
+            chainId != 5042002 && chainId != 5402,
+            "GraduationFeeConstants: ETH-priced graduator on an ARC chain -- run `just graduators-arc-testnet` && rebuild"
+        );
+    }
 }

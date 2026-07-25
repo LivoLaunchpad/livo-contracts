@@ -12,4 +12,16 @@ library GraduationFeeConstantsArc {
 
     /// @notice Triggerer compensation: $2
     uint256 internal constant TRIGGERER_GRADUATION_COMPENSATION = 2 ether;
+
+    /// @notice Build-vs-target guard, called from BOTH graduator constructors (see the note on the ETH
+    ///         `GraduationFeeConstants.assertDeployableOn`). This is the ARC (native = USDC) lib, so a
+    ///         graduator that baked it MUST land only on an ARC chain — otherwise its ×2000 fees and
+    ///         shifted pool geometry are wrong. Allow-list of the ARC chain-ids.
+    /// @dev ARC chain-ids: testnet 5042002, mainnet 5402 (placeholder). See [[arc-chain-facts]].
+    function assertDeployableOn(uint256 chainId) internal pure {
+        require(
+            chainId == 5042002 || chainId == 5402,
+            "GraduationFeeConstantsArc: ARC graduator on a non-ARC chain -- run `just graduators-ethereum` && rebuild"
+        );
+    }
 }

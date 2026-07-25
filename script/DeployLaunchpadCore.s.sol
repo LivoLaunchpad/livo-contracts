@@ -53,6 +53,8 @@ contract DeployLaunchpadCore is Script {
         Deps memory d = _resolveDeps();
         require(d.swapHook != address(0), "manifest: SWAP_HOOK missing (deploy the hook first)");
         require(d.treasury != address(0), "LIVO_TREASURY not set");
+        // The graduators self-guard against a build/target mismatch in their constructors
+        // (GraduationFeeConstants.assertDeployableOn) — no per-script check needed.
 
         console.log("=== Deploy Livo launchpad core (from-scratch bootstrap) ===");
         console.log("Chain ID:", block.chainid);
