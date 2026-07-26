@@ -26,13 +26,12 @@ contract DeployUniswapV2RouterArc is Script {
     function run() external {
         require(block.chainid == ARC_TESTNET, "DeployUniswapV2RouterArc: ARC testnet (5042002) only");
 
-        // Drift guard: the vendored library hardcodes 0xb5a7…; it MUST equal the freshly-compiled
-        // UniswapV2Pair hash (= what the factory actually deploys), else the new router is wrong too.
-        bytes32 pairHash = keccak256(vm.getCode("out/UniswapV2Pair.sol/UniswapV2Pair.json"));
-        require(
-            pairHash == Arc.UNIV2_PAIR_INIT_CODE_HASH,
-            "pair init-code-hash drift: update LivoUniswapV2Library + Arc.UNIV2_PAIR_INIT_CODE_HASH, rebuild"
-        );
+        // NB: no local `keccak256(UniswapV2Pair)` drift check here — this redeploys the router ONLY,
+        // against the EXISTING factory (Arc.UNIV2_FACTORY), whose deployed pairs hash to
+        // Arc.UNIV2_PAIR_INIT_CODE_HASH (0xb5a7…). The vendored router bakes exactly that constant, and
+        // `test/arc/UniswapV2RouterArcFix.t.sol` proves it works against the real factory. A local
+        // pair-hash would instead reflect THIS environment's compile (solc metadata varies by
+        // compilation unit) — relevant only when also redeploying the factory (see DeployUniswapArc).
 
         vm.startBroadcast();
         // Inert WETH stub only satisfies the ctor; Livo's ARC paths never call router.WETH().
