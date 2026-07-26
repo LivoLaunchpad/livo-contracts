@@ -4,10 +4,6 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
-import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
-import {CreatorVaultCurveConstantsArc} from "src/config/CreatorVaultCurveConstantsArc.sol";
-import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
@@ -16,34 +12,21 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
-///         1. The six `ConstantProductBondingCurveConfigurable` curves (5%..30% locked allocation),
-///            each preserving every graduation invariant of the base curve.
-///         2. The `LivoCreatorVault` implementation.
-///         3. The `LivoCreatorVaultFactory` implementation + its `ERC1967Proxy`.
+///         1. The `LivoCreatorVault` implementation.
+///         2. The `LivoCreatorVaultFactory` implementation + its `ERC1967Proxy`.
 ///
-///         After running, update the `CREATOR_VAULT_*` and `VAULT_CURVE_*` addresses in
-///         `src/config/manifest.{mainnet,sepolia}.sol`, run `just export-deployments`, and only
-///         THEN (re)deploy/upgrade the unified factories so they pick up the new addresses.
+///         The DEFAULT-tier vault bonding curves (`VAULT_CURVE_5..30`) are NOT deployed here — they are
+///         owned by `DeployTierLiquiditySystem`, the single source of truth for every bonding curve
+///         (DEFAULT + THIN + THICK). Neither the vault nor the factory constructor takes a curve, so
+///         there is no ordering dependency between the two scripts.
+///
+///         After running, set `CREATOR_VAULT_IMPL`, `CREATOR_VAULT_FACTORY` (proxy) and
+///         `CREATOR_VAULT_FACTORY_IMPL` in `src/config/manifest.<chain>.sol`, run
+///         `just export-deployments`, and only THEN (re)deploy/upgrade the unified factories.
 ///
 /// @dev    Run with:
-///         forge script DeployCreatorVaultSystem --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
+///         forge script DeployCreatorVaultSystem --rpc-url <chain> --verify --account livo.dev --slow --broadcast
 contract DeployCreatorVaultSystem is Script {
-    /// @dev DEFAULT-tier curve params (k/t0/e0 + graduation threshold/maxExcess) for the active chain.
-    ///      ARC (native = USDC) uses the re-solved ×2000 constants; all other chains the ETH constants.
-    function _defaultCurveParams(uint256 bps)
-        internal
-        view
-        returns (uint256 k, uint256 t0, uint256 e0, uint256 threshold, uint256 maxExcess)
-    {
-        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            (k, t0, e0) = CreatorVaultCurveConstantsArc.paramsFor(LiquidityTier.DEFAULT, bps);
-            (threshold, maxExcess) = CreatorVaultCurveConstantsArc.tierGraduation(LiquidityTier.DEFAULT);
-        } else {
-            (k, t0, e0) = CreatorVaultCurveConstants.paramsForBps(bps);
-            (threshold, maxExcess) = (3.75 ether, 0.05 ether);
-        }
-    }
-
     function run() public {
         require(
             block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID
@@ -57,26 +40,16 @@ contract DeployCreatorVaultSystem is Script {
         console.log("Deployer:", msg.sender);
         console.log("");
 
-        uint256[6] memory bpsList = [uint256(500), 1000, 1500, 2000, 2500, 3000];
-
         vm.startBroadcast();
 
         console.log("| Contract Name                          | Address |");
         console.log("| -------------------------------------- | --- |");
 
-        // 1. The six allocation-specific bonding curves.
-        address[6] memory curves;
-        for (uint256 i = 0; i < 6; ++i) {
-            (uint256 k, uint256 t0, uint256 e0, uint256 threshold, uint256 maxExcess) = _defaultCurveParams(bpsList[i]);
-            curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
-            console.log("| VAULT_CURVE bps", bpsList[i], curves[i]);
-        }
-
-        // 2. The vault implementation cloned for every creator vault.
+        // 1. The vault implementation cloned for every creator vault.
         address vaultImpl = address(new LivoCreatorVault());
         console.log("| LivoCreatorVault (impl)               |", vaultImpl);
 
-        // 3. The vault factory implementation + UUPS proxy.
+        // 2. The vault factory implementation + UUPS proxy.
         address vaultFactoryImpl = address(new LivoCreatorVaultFactory(vaultImpl));
         console.log("| LivoCreatorVaultFactory (impl)        |", vaultFactoryImpl);
 
@@ -89,10 +62,9 @@ contract DeployCreatorVaultSystem is Script {
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("Next steps:");
-        console.log("1. In src/config/manifest.{mainnet,sepolia}.sol set:");
-        console.log("   CREATOR_VAULT_IMPL, CREATOR_VAULT_FACTORY (proxy), CREATOR_VAULT_FACTORY_IMPL,");
-        console.log("   and VAULT_CURVE_5 .. VAULT_CURVE_30 to the addresses above.");
-        console.log("2. Run `just export-deployments` and commit the refreshed manifests.");
+        console.log("1. In src/config/manifest.<chain>.sol set CREATOR_VAULT_IMPL, CREATOR_VAULT_FACTORY");
+        console.log("   (proxy) and CREATOR_VAULT_FACTORY_IMPL to the addresses above.");
+        console.log("2. Run `just export-deployments` and commit the refreshed manifest.");
         console.log("3. Deploy/upgrade the unified factories so they pick up the new addresses.");
     }
 }
