@@ -263,14 +263,16 @@ library DeploymentAddressesArcTestnet {
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     /// @notice V2 pair quote token = the 6-decimal USDC ERC-20 alias (documented testnet predeploy).
-    /// @dev NOT the deployed Router02's internal weth9 (an inert MinimalWETH9 stub at
-    ///      0x5176076dD27C12b5fF60eFbf97D2C6a0697CE0DF that `router.WETH()` returns — ARC has no
-    ///      wrapped-native). The ARC V2 graduator pairs `<token, USDC>` using this USDC alias directly
-    ///      via `addLiquidity`, never the native `addLiquidityETH`/`router.WETH()` path.
+    /// @dev NOT the router's internal weth9 (an inert MinimalWETH9 stub that `router.WETH()` returns —
+    ///      ARC has no wrapped-native; a fresh stub is minted per router deploy). The ARC V2 graduator
+    ///      pairs `<token, USDC>` using this USDC alias directly via `addLiquidity`, never the native
+    ///      `addLiquidityETH`/`router.WETH()` path.
     address public constant WETH = 0x3600000000000000000000000000000000000000;
 
-    /// @notice Uniswap V2 Router contract (Livo-deployed UniswapV2Router02).
-    address public constant UNIV2_ROUTER = 0x61D6362e1FF2e81059D8fFeAc2407950a65684a6;
+    /// @notice Uniswap V2 Router contract: the VENDORED LivoUniswapV2Router02 (correct pair
+    ///         init-code-hash 0xb5a7…), redeployed via DeployUniswapV2RouterArc. The original
+    ///         0x61D6362e1FF2e81059D8fFeAc2407950a65684a6 baked the stock 0x96e8… hash and was broken.
+    address public constant UNIV2_ROUTER = 0xF5c4fEaC340e65A95EF72499E0aFaD4d45812946;
     /// @notice Uniswap V2 Factory contract (Livo-deployed UniswapV2Factory).
     address public constant UNIV2_FACTORY = 0xEF6fCB80e976733dCd9e4F0b2F3A9C49771a09Fb;
 

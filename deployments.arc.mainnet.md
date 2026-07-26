@@ -61,9 +61,9 @@
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
 | WETH                                         | `0x3600000000000000000000000000000000000000` |
-| Uniswap V2 router                            | _(not deployed)_                             |
-| Uniswap V2 factory                           | _(not deployed)_                             |
-| Uniswap V4 Pool Manager                      | _(not deployed)_                             |
-| Uniswap V4 Position Manager                  | _(not deployed)_                             |
-| Uniswap V4 Universal router                  | _(not deployed)_                             |
+| Uniswap V2 router                            | `0x1f7d7550B1b028f7571E69A784071F0205FD2EfA` |
+| Uniswap V2 factory                           | `0x89e5DB8B5aA49aA85AC63f691524311AEB649eba` |
+| Uniswap V4 Pool Manager                      | `0x8366a39CC670B4001A1121B8F6A443A643e40951` |
+| Uniswap V4 Position Manager                  | `0x6049c9a0e26405C0985f9E3685C87d0aE917f82B` |
+| Uniswap V4 Universal router                  | `0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1` |
 | Permit2                                      | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |

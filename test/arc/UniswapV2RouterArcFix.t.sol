@@ -14,19 +14,20 @@ contract MockToken is ERC20 {
     }
 }
 
-/// @notice Proves the vendored `LivoUniswapV2Router02` (patched pair init-code-hash 0xb5a7f108…) is
-///         compatible with the real arc-testnet factory — i.e. the fix for the misdeployed on-chain
-///         Router02, whose stock 0x96e8ac42… hash made every `pairFor` target a non-contract.
+/// @notice Proves the deployed arc-testnet V2 router (`Arc.UNIV2_ROUTER`, the vendored
+///         LivoUniswapV2Router02 with pair init-code-hash 0xb5a7f108…) is compatible with the factory
+///         — i.e. the fix for the original misdeployed Router02, whose stock 0x96e8ac42… hash made
+///         every `pairFor` target a non-contract.
 ///
 ///         Uses two plain ERC20s, NOT USDC: ARC's native-USDC precompile (0x3600) moves balance via
 ///         host logic that a Foundry fork can't simulate (its `transferFrom` StackUnderflows), so a
 ///         full USDC-paired graduation can only be verified on LIVE arc-testnet. The `pairFor` code
 ///         path being fixed here is identical regardless of token, so this is a faithful proof.
 ///
-///         Needs a prior `forge build` (deployCode reads the vendored 0.6.6 router's out/ artifact,
-///         which `forge test` alone doesn't compile). Skips cleanly without ARC_TESTNET_RPC_URL.
+///         Self-contained (reads the on-chain router; no deployCode/prior-build needed). Skips cleanly
+///         without ARC_TESTNET_RPC_URL.
 contract UniswapV2RouterArcFixTest is Test {
-    function test_vendoredRouter_pairsAgainstRealFactory() public {
+    function test_onChainRouter_pairsAgainstFactory() public {
         string memory rpc = vm.envOr("ARC_TESTNET_RPC_URL", string(""));
         if (bytes(rpc).length == 0) {
             vm.skip(true);
@@ -35,11 +36,8 @@ contract UniswapV2RouterArcFixTest is Test {
         vm.createSelectFork(rpc);
         assertEq(block.chainid, Arc.BLOCKCHAIN_ID, "fork is not arc-testnet");
 
-        // The vendored router against the REAL factory — exactly what DeployUniswapV2RouterArc ships.
-        address weth9 = makeAddr("wethStub"); // ctor-only; unused by these paths
-        address router = deployCode(
-            "out/LivoUniswapV2Router02.sol/LivoUniswapV2Router02.json", abi.encode(Arc.UNIV2_FACTORY, weth9)
-        );
+        address router = Arc.UNIV2_ROUTER;
+        assertGt(router.code.length, 0, "no router deployed at Arc.UNIV2_ROUTER");
         assertEq(IUniswapV2Router(router).factory(), Arc.UNIV2_FACTORY, "router.factory() wrong");
 
         MockToken a = new MockToken(1_000e18);
