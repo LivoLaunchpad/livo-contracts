@@ -9,3 +9,4 @@ lib/universal-router/:@uniswap/v3-core/=lib/v3-core/
 lib/universal-router/:@uniswap/v2-core/=lib/v2-core/
 lib/universal-router/:@openzeppelin/=lib/openzeppelin-contracts/
 lib/universal-router/:forge-std/=lib/forge-std/src/
+@uniswap/v2-periphery/=lib/v2-periphery/

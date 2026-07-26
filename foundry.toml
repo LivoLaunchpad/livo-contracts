@@ -18,6 +18,10 @@ fs_permissions = [
     { access = "read-write", path = "./deployments.robinhood.testnet.md" },
     { access = "read-write", path = "./deployments.arc.mainnet.md" },
     { access = "read-write", path = "./deployments.arc.testnet.md" },
+    # deployCode/getCode read compiled artifacts by out/ path (the ARC Uniswap deploy scripts —
+    # DeployUniswapArc, DeployUniswapV2RouterArc, VerifyV2GraduationArc — resolve mixed-compiler
+    # contracts this way). Without this, every `deployCode("out/…json")` reverts "not allowed".
+    { access = "read", path = "./out" },
 ]
 
 # extra_output = ["storageLayout"]

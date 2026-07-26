@@ -57,8 +57,18 @@ contract DeployUniswapArc is Script {
 
         // --- Uniswap V2 (token + USDC-ERC20 pairs) ---
         address v2Factory = deployCode("out/UniswapV2Factory.sol/UniswapV2Factory.json", abi.encode(owner));
-        address v2Router = deployCode("out/UniswapV2Router02.sol/UniswapV2Router02.json", abi.encode(v2Factory, weth9));
+        // Use the VENDORED router whose UniswapV2Library bakes THIS repo's pair init-code-hash. The
+        // stock out/UniswapV2Router02 bakes the mainnet hash 0x96e8ac42… and is broken against our
+        // factory (pairFor → non-contract). See script/arc/vendored/ + DeployUniswapV2RouterArc.
+        address v2Router =
+            deployCode("out/LivoUniswapV2Router02.sol/LivoUniswapV2Router02.json", abi.encode(v2Factory, weth9));
         bytes32 v2PairInitCodeHash = keccak256(vm.getCode("out/UniswapV2Pair.sol/UniswapV2Pair.json"));
+        // The vendored library's hardcoded hash must match the freshly-compiled pair, else the router
+        // is misdeployed exactly like the stock one. Catch drift at deploy time.
+        require(
+            v2PairInitCodeHash == 0xb5a7f1081ecaa7c30957adf56bd79febe0588ca66ec38a0fb1ee92e7d324b3f9,
+            "pair hash drift: update LivoUniswapV2Library hardcoded hash + rebuild"
+        );
 
         // --- UniversalRouter (V4 swap routing; V3 params zeroed — unused on ARC) ---
         RouterParameters memory rp = RouterParameters({
