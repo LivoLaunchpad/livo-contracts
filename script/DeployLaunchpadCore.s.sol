@@ -7,6 +7,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoQuoter} from "src/LivoQuoter.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {LivoGraduatorUniswapV2Arc} from "src/graduators/LivoGraduatorUniswapV2Arc.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstantsArc} from "src/libraries/UniswapV4PoolConstantsArc.sol";
 import {DeploymentAddressesArcTestnet} from "src/config/DeploymentAddresses.sol";
@@ -68,7 +69,11 @@ contract DeployLaunchpadCore is Script {
         address feeHandler = address(new LivoMasterFeeHandler());
         address launchpad = address(new LivoLaunchpad(d.treasury, msg.sender));
         address quoter = address(new LivoQuoter(launchpad));
-        address graduatorV2 = address(new LivoGraduatorUniswapV2(d.univ2Router, launchpad, d.univ2PairInitCodeHash));
+        // Pick the V2 graduator by chain: ARC (native = USDC) pairs `<token, USDC-ERC20>` via a
+        // behaviorally different contract, not an import-swapped constant. Both self-guard in their ctor.
+        address graduatorV2 = block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID
+            ? address(new LivoGraduatorUniswapV2Arc(d.univ2Router, launchpad, d.univ2PairInitCodeHash))
+            : address(new LivoGraduatorUniswapV2(d.univ2Router, launchpad, d.univ2PairInitCodeHash));
         address graduatorV4 = address(
             new LivoGraduatorUniswapV4(
                 launchpad,

@@ -17,6 +17,30 @@ interface IUniswapV2Router {
         uint256 deadline
     ) external payable returns (uint256 amountToken, uint256 amountEth, uint256 liquidity);
 
+    /// @notice Two-ERC20 liquidity add. Used by the ARC V2 graduator to pair `<token, USDC>` (native
+    ///         = USDC has no wrappable WETH, so `addLiquidityETH` is dead there — see UniswapV2VenueArc).
+    function addLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 amountADesired,
+        uint256 amountBDesired,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
+
+    /// @notice Sells `amountIn` of `path[0]` for at least `amountOutMin` of `path[last]`, supporting
+    ///         fee-on-transfer input tokens. ARC tax-token swap-back path (token → USDC ERC-20), the
+    ///         token-output analogue of `swapExactTokensForETHSupportingFeeOnTransferTokens`.
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external;
+
     /// @notice Sells `amountIn` of `path[0]` tokens for at least `amountOutMin` ETH, supporting
     ///         fee-on-transfer tokens (the FoT-aware variant skips the input-side amount check
     ///         and validates against the actual WETH received).

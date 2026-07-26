@@ -55,11 +55,12 @@ error-inspection errorhex:
 
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
-# (the taxable tokens' `DeploymentAddresses` + the graduators' pool-geometry/fee/pair-token libs). The
-# rule is per-CHAIN, never per-chain-AND-per-contract: add every future per-chain contract swap to
-# `_retarget` so callers keep using a single command. Run the `chain-*` recipe matching your target
-# BEFORE `forge build`/deploy. Idempotent (rewrites from whatever is currently set). Committed default
-# is Ethereum mainnet, used by all tests.
+# (the taxable tokens' `DeploymentAddresses` + venue lib, and the V4 graduator's pool-geometry/fee
+# libs). Retarget is for constant-only / trivial divergence; the V2 graduator, whose venue difference
+# is behavioral, is instead two separate contracts (LivoGraduatorUniswapV2 / ...Arc) picked at deploy
+# time. The rule is per-CHAIN, never per-chain-AND-per-contract: add every future per-chain contract
+# swap to `_retarget` so callers keep using a single command. Run the `chain-*` recipe matching your
+# target BEFORE `forge build`/deploy. Idempotent. Committed default is Ethereum mainnet, used by all tests.
 chain-mainnet:
     @just _retarget DeploymentAddressesEthereumMainnet
 
@@ -75,24 +76,30 @@ chain-robintest:
 chain-arc-testnet:
     @just _retarget DeploymentAddressesArcTestnet Arc
 
-# Fans a target chain out to every per-contract import-swap. `gradsuffix` is the graduator-lib variant
+# Fans a target chain out to every per-contract import-swap. `gradsuffix` is the lib variant
 # ("" = the committed ETH-priced libs, "Arc" = the ARC variants). Add future per-chain swaps HERE.
+# NOTE: the V2 graduator is NOT retargeted — LivoGraduatorUniswapV2 / ...Arc are separate contracts
+# selected at deploy time (their venue difference is behavioral, not just constants).
 _retarget taxlib gradsuffix="":
-    @just _taxtoken {{taxlib}}
+    @just _taxtoken {{taxlib}} "{{gradsuffix}}"
     @just _graduators "{{gradsuffix}}"
 
-# (internal) Repoints the two taxable-token impls' `DeploymentAddresses` import. Use a `chain-*` recipe.
-_taxtoken lib:
+# (internal) Repoints the two taxable-token impls' `DeploymentAddresses` import, and the V2 taxable
+# token's venue lib (swap-back path), to the target chain. Use a `chain-*` recipe.
+_taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+    sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
+        src/tokens/LivoTaxableTokenUniV2.sol
 
-# (internal) Repoints the graduators' pool-geometry + fee libs to the `{{suffix}}` variant ("" = ETH,
-# "Arc" = ARC). Use a `chain-*` recipe.
+# (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
+# ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
+# Use a `chain-*` recipe.
 _graduators suffix:
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
         src/graduators/LivoGraduatorUniswapV4.sol
     sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
-        src/graduators/LivoGraduatorUniswapV4.sol src/graduators/LivoGraduatorUniswapV2.sol
+        src/graduators/LivoGraduatorUniswapV4.sol
 
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>

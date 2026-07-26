@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 import {GraduationFeeConstantsArc} from "src/libraries/GraduationFeeConstantsArc.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {LivoGraduatorUniswapV2Arc} from "src/graduators/LivoGraduatorUniswapV2Arc.sol";
 
 /// @dev Wraps the internal library guards in external calls so `vm.expectRevert` can catch them.
 contract GuardHarness {
@@ -81,5 +82,21 @@ contract GraduatorChainGuardTest is Test {
         vm.chainId(ARC_TESTNET);
         vm.expectRevert();
         new LivoGraduatorUniswapV2(address(r), address(0xABCD), bytes32(uint256(1)));
+    }
+
+    // --- the ARC V2 graduator is the mirror image: only constructs on ARC chains ---
+
+    function test_v2ArcGraduator_ctorGuardsAgainstNonArc() public {
+        MockV2Router r = new MockV2Router();
+        // Reverts on the test chain (31337, non-ARC)...
+        vm.expectRevert();
+        new LivoGraduatorUniswapV2Arc(address(r), address(0xABCD), bytes32(uint256(1)));
+
+        // ...and constructs on ARC. Only the chainid differs, so success is purely the guard passing.
+        vm.chainId(ARC_TESTNET);
+        new LivoGraduatorUniswapV2Arc(address(r), address(0xABCD), bytes32(uint256(1)));
+
+        vm.chainId(ARC_MAINNET);
+        new LivoGraduatorUniswapV2Arc(address(r), address(0xABCD), bytes32(uint256(1)));
     }
 }

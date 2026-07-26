@@ -13,6 +13,9 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+// Aliased so the `chain-arc-*` recipe can import-swap it for the ARC venue: swap-back sells tax tokens
+// for USDC (token→USDC) instead of ETH, since ARC has no wrappable WETH. See UniswapV2VenueArc.
+import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 
 /// @title LivoTaxableTokenUniV2
 /// @notice ERC20 token implementation with time-limited buy/sell taxes for tokens that graduate to
@@ -219,13 +222,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
         _inSwap = true;
 
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = WETH;
-
-        UNISWAP_V2_ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount, amountOutMinWei, path, address(this), block.timestamp
-        );
+        // Sell tax tokens for native via the per-chain venue: token→ETH on ETH-family, token→USDC on
+        // ARC. On ARC the received 6-dec USDC IS native balance, so the `address(this).balance` read
+        // below reflects the proceeds with no unwrap. `amountOutMinWei` is in quote decimals (18-dec
+        // ETH / 6-dec USDC); the auto path passes 0. See UniswapV2Venue.
+        UniswapV2Venue.swapTaxToNative(UNISWAP_V2_ROUTER, WETH, tokenAmount, amountOutMinWei);
 
         _inSwap = false;
         unchecked {
