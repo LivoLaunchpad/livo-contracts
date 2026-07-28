@@ -14,7 +14,8 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesArcTestnet
+    DeploymentAddressesArcTestnet,
+    DeploymentAddressesArcMainnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
@@ -125,9 +126,12 @@ contract DeployTierLiquiditySystem is Script {
         }
     }
 
-    /// @dev True on ARC (native = USDC), which uses the re-solved ×2000 curve/pool constants.
+    /// @dev True on ARC (native = USDC), which uses the re-solved ×2000 curve/pool constants. Covers
+    ///      BOTH ARC chain-ids: unlike the graduators, the configurable curves have no constructor
+    ///      chain-guard, so an ARC chain missing here would silently deploy ETH-priced curves.
     function _isArc() internal view returns (bool) {
-        return block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID;
+        return block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID
+            || block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID;
     }
 
     /// @dev Curve (k, t0, e0) for a (tier, bps) on the active chain.

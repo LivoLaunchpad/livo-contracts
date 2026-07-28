@@ -7,8 +7,8 @@ pragma solidity 0.8.28;
 ///      `src/config/DeploymentAddresses.sol` (`DeploymentAddressesArcTestnet`) — Uniswap V2+V4 are
 ///      Livo-self-deployed there; the Uniswap StateView/V4Quoter/PositionDescriptor go into the
 ///      frontend/indexer configs, not here. Treasury also lives in DeploymentAddresses (consumed by
-///      core contracts at deploy time). Livo's own contracts are NOT deployed on ARC yet — every
-///      address below is `address(0)`; fill each on deploy and run `just export-deployments`.
+///      core contracts at deploy time). Update any address below on redeploy and run
+///      `just export-deployments`.
 library DeploymentsArcTestnet {
     uint256 internal constant BLOCKCHAIN_ID = 5042002;
 
@@ -39,7 +39,7 @@ library DeploymentsArcTestnet {
     address internal constant CREATOR_VAULT_FACTORY = 0x2714A9E811CC5FBd73fa1b9467FDBe641204D020;
     address internal constant CREATOR_VAULT_FACTORY_IMPL = 0xAB9950BfC212e7a60448a8833f5cD876b10d87D6;
 
-    /// @notice The six DEFAULT-tier allocation-specific bonding curves (5%..30% locked). Fill on deploy.
+    /// @notice The six DEFAULT-tier allocation-specific bonding curves (5%..30% locked).
     address internal constant VAULT_CURVE_5 = 0x071221210C33962eEd92081e93e73e9a06149E92;
     address internal constant VAULT_CURVE_10 = 0xa1D4E34AC9946Ab53B155E79d0A3023e52B27400;
     address internal constant VAULT_CURVE_15 = 0x338728dA52Fb88679793E74D6E3f2177b64C1Dc4;
@@ -61,7 +61,7 @@ library DeploymentsArcTestnet {
     address internal constant GRADUATOR_UNIV4_THIN = 0x758Af7bCde2875a6Aa06337125EA81335a860AC5;
     address internal constant GRADUATOR_UNIV4_THICK = 0x588951ecc682cBbe3BC4fa60F807e2Fa165255B2;
 
-    /// @notice THIN-tier bonding curves: no-vault base + six vault curves (5%..30%). Fill on deploy.
+    /// @notice THIN-tier bonding curves: no-vault base + six vault curves (5%..30%).
     address internal constant THIN_CURVE_BASE = 0x209504c3fB153a2e37690c30441eC67e909FE490;
     address internal constant THIN_VAULT_CURVE_5 = 0x17d5e0776dafa4CAE8e6e1eBbf7278e1c4AF647f;
     address internal constant THIN_VAULT_CURVE_10 = 0x928f2f571BF9f18464fdeC8D36e6A075C3460862;

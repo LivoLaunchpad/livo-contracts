@@ -76,6 +76,9 @@ chain-robintest:
 chain-arc-testnet:
     @just _retarget DeploymentAddressesArcTestnet Arc
 
+chain-arc-mainnet:
+    @just _retarget DeploymentAddressesArcMainnet Arc
+
 # Fans a target chain out to every per-contract import-swap. `gradsuffix` is the lib variant
 # ("" = the committed ETH-priced libs, "Arc" = the ARC variants). Add future per-chain swaps HERE.
 # NOTE: the V2 graduator is NOT retargeted — LivoGraduatorUniswapV2 / ...Arc are separate contracts

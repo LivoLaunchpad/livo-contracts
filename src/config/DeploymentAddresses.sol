@@ -243,11 +243,11 @@ library DeploymentAddressesArcMainnet {
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
 
-/// @title Deployment Address Constants for ARC Chain Testnet (chain id 5042002, PLACEHOLDER)
+/// @title Deployment Address Constants for ARC Chain Testnet (chain id 5042002)
 /// @dev Uniswap V2 + V4 are Livo-self-deployed (no official Uniswap on ARC) via `DeployUniswapArc`
 ///      (`just deploy-uniswap-arc-testnet`) from the vendored Uniswap sources. USDC ERC-20 is the
 ///      documented predeploy 0x3600..0000; Permit2 is at the canonical address. Livo's own contracts
-///      (launchpad/factories/hook/graduators/treasury) are NOT deployed yet — those remain TODO(arc).
+///      live in `manifest.arc.testnet.sol` and are deployed.
 library DeploymentAddressesArcTestnet {
     /// @notice Blockchain ID for ARC testnet
     uint256 public constant BLOCKCHAIN_ID = 5042002;

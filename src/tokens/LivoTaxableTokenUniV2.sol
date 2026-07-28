@@ -118,7 +118,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @param swapAmount Amount to swap. The auto path's `2 * SWAP_THRESHOLD` cap is NOT enforced
     ///        here so a private-mempool caller can drain a larger residual in one shot. The router
     ///        reverts if `swapAmount` exceeds the contract's balance.
-    /// @param amountOutMinWei Minimum ETH the swap must yield. Caller's slippage budget.
+    /// @param amountOutMinWei Minimum native proceeds the swap must yield, in QUOTE decimals: 18-dec
+    ///        ETH on ETH-family builds, 6-dec USDC on ARC builds (where the swap sells to USDC, which
+    ///        IS native balance). Caller's slippage budget.
     /// @dev If the per-block cap is hit, `_swapBack` silently no-ops (no event, no revert).
     function swapBack(uint256 swapAmount, uint256 amountOutMinWei) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());

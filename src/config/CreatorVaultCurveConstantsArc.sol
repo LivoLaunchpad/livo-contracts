@@ -20,9 +20,9 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         hardcoded ARC base curve), so `(DEFAULT, 0)` = `DEFAULT_0` is a real entry.
 ///
 ///         Graduation invariants per tier (native units; grad mcap scales 1:2:4 with LP depth):
-///           - THIN    : threshold  4000, eth into liquidity  3500, grad mcap 12250
-///           - DEFAULT : threshold  7500, eth into liquidity  7000, grad mcap 24500
-///           - THICK   : threshold 14500, eth into liquidity 14000, grad mcap 49000
+///           - THIN    : threshold  4000, native into liquidity  3500, grad mcap 12250
+///           - DEFAULT : threshold  7500, native into liquidity  7000, grad mcap 24500
+///           - THICK   : threshold 14500, native into liquidity 14000, grad mcap 49000
 ///         tokens into liquidity (T_GRAD) = 285,714,285.714...M for every tier and every bps (same as
 ///         the ETH curves — the token split is scale-invariant).
 library CreatorVaultCurveConstantsArc {

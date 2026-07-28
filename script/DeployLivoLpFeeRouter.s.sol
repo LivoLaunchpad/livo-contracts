@@ -59,24 +59,26 @@ contract DeployLivoLpFeeRouter is Script {
         return "robinhood.testnet";
     }
 
-    /// @dev ARC (Circle L1) native currency is USDC, pegged $1, so marketcap brackets are the exact round
-    ///      USD values — no ETH-price approximation like the ETH deployment (which used ETH≈$3000).
+    /// @dev ARC (Circle L1) native currency is USDC, pegged $1, so its marketcap brackets are the exact
+    ///      round USD values rather than a native-price approximation.
     function _isArc() internal view returns (bool) {
         return block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID
             || block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID;
     }
 
-    /// @dev Production tier policy:
-    ///        Tier 0 (post-graduation):  40% treasury / 60% creator
-    ///        Tier 1 (>≈100K USD mc):   35% / 65%
-    ///        Tier 2 (>≈500K USD mc):   30% / 70%
-    ///        Tier 3 (>≈  1M USD mc):   25% / 75%
-    ///        Tier 4 (>≈  2M USD mc):   20% / 80%
-    ///        Tier 5 (>≈  3M USD mc):   15% / 85%
-    ///        Tier 6 (>≈  5M USD mc):   10% / 90%
+    /// @dev Production tier policy. The treasury/creator split per tier is chain-invariant; only the
+    ///      native-denominated marketcap brackets differ per chain (see the two branches below).
+    ///        Tier 0 (post-graduation): 40% treasury / 60% creator
+    ///        Tier 1: 35% / 65%
+    ///        Tier 2: 30% / 70%
+    ///        Tier 3: 25% / 75%
+    ///        Tier 4: 20% / 80%
+    ///        Tier 5: 15% / 85%
+    ///        Tier 6: 10% / 90%
     function _defaultConfig() internal view returns (LivoLpFeeRouter.Config memory cfg) {
         if (_isArc()) {
-            // native USDC = $1, so brackets are the exact 100K / 500K / 1M / 2M / 3M / 5M USD marketcaps.
+            // Native USDC is pegged $1, so these ARE the marketcap brackets in USD, exactly:
+            // 100K / 500K / 1M / 2M / 3M / 5M.
             cfg.thresholds = [
                 uint256(100_000 ether),
                 uint256(500_000 ether),
@@ -86,6 +88,8 @@ contract DeployLivoLpFeeRouter is Script {
                 uint256(5_000_000 ether)
             ];
         } else {
+            // Native ETH brackets, in ETH. The USD marketcap each one represents moves with the ETH
+            // price, so they are due a repricing pass — deliberately left as deployed for now.
             cfg.thresholds = [
                 uint256(30 ether),
                 uint256(150 ether),
