@@ -6,15 +6,20 @@ import {Script, console} from "forge-std/Script.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
+import {CreatorVaultCurveConstantsArc} from "src/config/CreatorVaultCurveConstantsArc.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {UniswapV4PoolConstantsArc} from "src/libraries/UniswapV4PoolConstantsArc.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
+    DeploymentAddressesEthereumSepolia,
+    DeploymentAddressesArcTestnet,
+    DeploymentAddressesArcMainnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the liquidity-tier system (DEFAULT redeploy + THIN + THICK)
 /// @notice Deploys the net-new on-chain pieces the deployer-selectable liquidity tiers need:
@@ -72,9 +77,9 @@ contract DeployTierLiquiditySystem is Script {
         address[7] memory thin = _deployTierCurves(LiquidityTier.THIN, bpsList);
         address[7] memory thick = _deployTierCurves(LiquidityTier.THICK, bpsList);
 
-        address gradSmall =
-            _deployGraduator(d, d.hook, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
-        address gradLarge = _deployGraduator(d, d.hook, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
+        (uint160 thinSqrt, uint160 thickSqrt, int24 thinTickUpper, int24 thickTickUpper) = _graduationSetpoints();
+        address gradSmall = _deployGraduator(d, d.hook, thinSqrt, thinTickUpper);
+        address gradLarge = _deployGraduator(d, d.hook, thickSqrt, thickTickUpper);
 
         vm.stopBroadcast();
 
@@ -95,11 +100,17 @@ contract DeployTierLiquiditySystem is Script {
     ///      (`VAULT_CURVE_5..30`). DEFAULT has no `(DEFAULT, 0)` entry in `CreatorVaultCurveConstants`
     ///      (its base is the hardcoded curve, not a configurable instance), so index 0 is special-cased.
     function _deployDefaultCurves(uint256[7] memory bpsList) internal returns (address[7] memory curves) {
-        (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(LiquidityTier.DEFAULT);
-        curves[0] = address(new ConstantProductBondingCurve());
+        (uint256 threshold, uint256 maxExcess) = _grad(LiquidityTier.DEFAULT);
+        // On ARC every curve — including the base — is a configurable instance (there is no hardcoded
+        // ARC base curve), so index 0 uses the (DEFAULT, 0) params instead of `ConstantProductBondingCurve`.
+        if (_isArc()) {
+            (uint256 k0, uint256 t00, uint256 e00) = _params(LiquidityTier.DEFAULT, 0);
+            curves[0] = address(new ConstantProductBondingCurveConfigurable(k0, t00, e00, threshold, maxExcess));
+        } else {
+            curves[0] = address(new ConstantProductBondingCurve());
+        }
         for (uint256 i = 1; i < 7; ++i) {
-            (uint256 k, uint256 t0, uint256 e0) =
-                CreatorVaultCurveConstants.paramsFor(LiquidityTier.DEFAULT, bpsList[i]);
+            (uint256 k, uint256 t0, uint256 e0) = _params(LiquidityTier.DEFAULT, bpsList[i]);
             curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
         }
     }
@@ -109,11 +120,55 @@ contract DeployTierLiquiditySystem is Script {
         internal
         returns (address[7] memory curves)
     {
-        (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(tier);
+        (uint256 threshold, uint256 maxExcess) = _grad(tier);
         for (uint256 i = 0; i < 7; ++i) {
-            (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsFor(tier, bpsList[i]);
+            (uint256 k, uint256 t0, uint256 e0) = _params(tier, bpsList[i]);
             curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
         }
+    }
+
+    /// @dev True on ARC (native = USDC), which uses the re-solved ×2000 curve/pool constants. Covers
+    ///      BOTH ARC chain-ids: unlike the graduators, the configurable curves have no constructor
+    ///      chain-guard, so an ARC chain missing here would silently deploy ETH-priced curves.
+    function _isArc() internal view returns (bool) {
+        return block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID
+            || block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID;
+    }
+
+    /// @dev Curve (k, t0, e0) for a (tier, bps) on the active chain.
+    function _params(LiquidityTier tier, uint256 bps) internal view returns (uint256 k, uint256 t0, uint256 e0) {
+        if (_isArc()) return CreatorVaultCurveConstantsArc.paramsFor(tier, bps);
+        return CreatorVaultCurveConstants.paramsFor(tier, bps);
+    }
+
+    /// @dev Graduation threshold + max-excess for a tier on the active chain.
+    function _grad(LiquidityTier tier) internal view returns (uint256 threshold, uint256 maxExcess) {
+        if (_isArc()) return CreatorVaultCurveConstantsArc.tierGraduation(tier);
+        return CreatorVaultCurveConstants.tierGraduation(tier);
+    }
+
+    /// @dev THIN/THICK graduation sqrtPrices + primary-range upper ticks for the active chain. These feed
+    ///      the tier graduators' constructors; the graduator bytecode itself bakes ARC pool geometry via
+    ///      the `just chain-arc-testnet` import-swap.
+    function _graduationSetpoints()
+        internal
+        view
+        returns (uint160 thinSqrt, uint160 thickSqrt, int24 thinTickUpper, int24 thickTickUpper)
+    {
+        if (_isArc()) {
+            return (
+                UniswapV4PoolConstantsArc.SQRT_PRICEX96_GRADUATION_THIN,
+                UniswapV4PoolConstantsArc.SQRT_PRICEX96_GRADUATION_THICK,
+                UniswapV4PoolConstantsArc.TICK_UPPER_THIN,
+                UniswapV4PoolConstantsArc.TICK_UPPER
+            );
+        }
+        return (
+            THIN_GRAD_SQRT_PRICE_X96,
+            THICK_GRAD_SQRT_PRICE_X96,
+            UniswapV4PoolConstants.TICK_UPPER_THIN,
+            UniswapV4PoolConstants.TICK_UPPER
+        );
     }
 
     function _deployGraduator(Deps memory d, address hook, uint160 sqrtPriceGraduation, int24 tickUpper)
@@ -182,6 +237,15 @@ contract DeployTierLiquiditySystem is Script {
                 permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
                 hook: DeploymentsEthereumSepolia.SWAP_HOOK,
                 liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER
+            });
+        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                launchpad: DeploymentsArcTestnet.LAUNCHPAD,
+                poolManager: DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
+                positionManager: DeploymentAddressesArcTestnet.UNIV4_POSITION_MANAGER,
+                permit2: DeploymentAddressesArcTestnet.PERMIT2,
+                hook: DeploymentsArcTestnet.SWAP_HOOK,
+                liquidityAdder: DeploymentsArcTestnet.UNIV4_LIQUIDITY_ADDER
             });
         } else {
             revert("Unsupported chain ID");

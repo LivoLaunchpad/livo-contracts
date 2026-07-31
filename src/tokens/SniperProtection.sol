@@ -33,7 +33,7 @@ abstract contract SniperProtection {
     uint40 public constant ANTI_SNIPER_MAX_WINDOW = 1 days;
 
     /// @notice Max whitelist entries (includes the deployer if the dev opts to add it).
-    uint256 public constant MAX_WHITELISTED = 20;
+    uint256 public constant MAX_WHITELISTED = 50;
 
     /// @dev Mirrors `LivoToken.TOTAL_SUPPLY`; renamed to avoid a multiple-inheritance collision.
     /// @dev Caps are intentionally measured against the fixed total supply, NOT a token's

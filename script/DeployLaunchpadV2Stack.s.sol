@@ -75,7 +75,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         - the salt is mined deterministically from the initcode hash, starting at
 ///           `VANITY_SALT_OFFSET` — both chains find the same salt as long as the launchpad
 ///           bytecode is identical. DEPLOY BOTH CHAINS FROM THE SAME COMMIT. (The
-///           `just taxtoken-sepolia` import swap touches only token sources, not the launchpad,
+///           `just chain-sepolia` import swap touches only token sources, not the launchpad,
 ///           so running it between the sepolia and mainnet broadcasts is fine.)
 ///
 ///         The broadcaster MUST be `LAUNCHPAD_OWNER` (it whitelists factories and, on sepolia,
@@ -185,7 +185,7 @@ contract DeployLaunchpadV2Stack is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just taxtoken-sepolia` only for sepolia)"
+                "LivoTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
@@ -210,12 +210,12 @@ contract DeployLaunchpadV2Stack is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else {
             revert("Unsupported chain");

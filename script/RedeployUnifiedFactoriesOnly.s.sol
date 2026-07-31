@@ -36,7 +36,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///         reverts with `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
 ///
 ///         Token impls are NOT deployed here, so there is no `DeploymentAddresses` chain-guard to run
-///         (`just taxtoken-sepolia` is unnecessary). Pre-flight only sanity-checks the proxies; the
+///         (`just chain-sepolia` is unnecessary). Pre-flight only sanity-checks the proxies; the
 ///         fresh impls' `LAUNCHPAD()` is asserted against the manifest before and after the flip.
 ///
 ///         Post-broadcast: update `FACTORY_UNIV2_UNIFIED_IMPL` and `FACTORY_UNIV4_UNIFIED_IMPL` in

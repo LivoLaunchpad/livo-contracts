@@ -34,7 +34,7 @@ Unified factories register fee config automatically during token creation:
 - `LivoFactoryUniV2Unified` / `LivoFactoryUniV4Unified`
 - `LivoLaunchpad`
 - `LivoToken` / `LivoTaxableTokenUniV4` / `LivoTaxableTokenUniV2` / sniper-protected variants
-- `LivoGraduatorUniswapV2` / `LivoGraduatorUniswapV4`
+- `LivoGraduatorUniswapV2` / `LivoGraduatorUniswapV4` — the ARC variant `LivoGraduatorUniswapV2Arc` shares `LivoGraduatorUniswapV2Base` and emits the identical events in the identical order; every `LivoGraduatorUniswapV2` mention below applies to it unchanged.
 - `LivoMasterFeeHandler`
 - `LivoSwapHook`
 

@@ -11,12 +11,14 @@ import {
     DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
+    DeploymentAddressesRobinhoodTestnet,
+    DeploymentAddressesArcTestnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
+import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @notice Deploys `LivoSwapHook` via CREATE2 after mining a salt that encodes the four
 ///         required Uniswap V4 permission flags into the address.
@@ -81,6 +83,7 @@ contract DeployLivoSwapHook is Script {
         if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) return "ethereum.mainnet";
         if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) return "ethereum.sepolia";
         if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) return "robinhood.mainnet";
+        if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) return "arc.testnet";
         return "robinhood.testnet";
     }
 
@@ -101,6 +104,10 @@ contract DeployLivoSwapHook is Script {
             poolManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER;
             router = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
             treasury = DeploymentAddressesRobinhoodTestnet.LIVO_TREASURY;
+        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
+            poolManager = DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER;
+            router = DeploymentsArcTestnet.LP_FEE_ROUTER;
+            treasury = DeploymentAddressesArcTestnet.LIVO_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }

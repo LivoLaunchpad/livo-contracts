@@ -172,7 +172,7 @@ Once `protectionWindowSeconds > 0`, the **token's** initializer enforces the sub
 | `maxBuyPerTxBps > maxWalletBps` | `MaxBuyPerTxBpsExceedsMaxWalletBps` |
 | `protectionWindowSeconds < 60` | `ProtectionWindowTooShort` |
 | `protectionWindowSeconds > 86_400` | `ProtectionWindowTooLong` |
-| `whitelist.length > 20` | `WhitelistTooLong` |
+| `whitelist.length > 50` | `WhitelistTooLong` |
 
 ### Tax config (`taxCfg`)
 

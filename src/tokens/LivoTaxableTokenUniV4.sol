@@ -13,7 +13,9 @@ import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 
-/// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
+/// this line below is swapped per target chain at deploy time (the addresses are compile-time
+/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
+/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC native currency is USDC, 18-dec at msg.value).
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the

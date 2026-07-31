@@ -131,17 +131,17 @@ def best_integer_curve(s: int, tier: Tier) -> dict:
     return best
 
 
-def report() -> None:
-    for tier in TIERS:
+def report(tiers: list[Tier]) -> None:
+    for tier in tiers:
         thr = Decimal(tier.E_G) / WAD
-        print(f"\n===== TIER {tier.name}  lp={tier.lp_eth} ETH  grad_mcap={tier.grad_mcap} ETH  threshold={thr} ETH =====")
+        print(f"\n===== TIER {tier.name}  lp={tier.lp_eth}  grad_mcap={tier.grad_mcap}  threshold={thr} (native units) =====")
         print(f"  T_GRAD = {tier.T_GRAD}  (tokens into liquidity, identical for every vault bps)")
         for bps in BPS:
             s = TOTAL_SUPPLY * (10_000 - bps) // 10_000
             c = best_integer_curve(s, tier)
             note = ""
             if tier.name == "DEFAULT" and bps == 0:
-                note = "  [deployed base curve uses round K/T0/E0; this slot is NOT redeployed]"
+                note = "  [ETH: hardcoded base curve; ARC: emitted as a configurable curve]"
             print(
                 f"  bps={bps:4d}  K={c['k']} T0={c['t0']} E0={c['e0']}"
                 f"  (zero_err={c['zero_err']}, grad_err={c['grad_err']}, dev={c['price_dev']*Decimal(100):.2e}%){note}"
@@ -149,16 +149,19 @@ def report() -> None:
 
 
 def _sol_name(tier: Tier, bps: int) -> str:
-    prefix = "THIN" if tier.name == "THIN" else "THICK"
-    return f"{prefix}_{bps // 100}"  # e.g. THIN_0, THIN_5, THICK_30 (bps/100 = percent)
+    # e.g. DEFAULT_0, THIN_5, THICK_30 (bps/100 = percent). Backward-compatible for THIN/THICK.
+    return f"{tier.name}_{bps // 100}"
 
 
-def emit_solidity() -> None:
-    """Emit the THIN/THICK constant declarations + dispatchers for CreatorVaultCurveConstants."""
-    for tier in TIERS:
-        if tier.name == "DEFAULT":
+def emit_solidity(tiers: list[Tier], all_tiers: bool = False) -> None:
+    """Emit the constant declarations for CreatorVaultCurveConstants[Arc]. By default skips the
+    DEFAULT tier (ETH uses the hardcoded base curve for it); with all_tiers=True it emits DEFAULT
+    too, including the no-vault DEFAULT_0 slot (needed on ARC, where the base curve is configurable)."""
+    for tier in tiers:
+        if tier.name == "DEFAULT" and not all_tiers:
             continue
-        print(f"    // ---- {tier.name} tier (lp {tier.lp_eth} ETH, grad mcap {tier.grad_mcap} ETH) ----")
+        thr = Decimal(tier.E_G) / WAD
+        print(f"    // ---- {tier.name} tier (lp {tier.lp_eth}, grad mcap {tier.grad_mcap}, threshold {thr}) ----")
         for bps in BPS:
             s = TOTAL_SUPPLY * (10_000 - bps) // 10_000
             c = best_integer_curve(s, tier)
@@ -169,15 +172,37 @@ def emit_solidity() -> None:
         print()
 
 
+def _parse_scale() -> Decimal:
+    """--scale=N multiplies every tier's native-denominated inputs (lp depth, grad marketcap, fee).
+    Used to reprice for a chain whose native currency has a different USD value, e.g. ARC (native
+    USDC ~$1) uses --scale=2000 to preserve the ETH (~$2000) economics. The solved K/T0/E0 are
+    re-derived from the scaled targets, NOT linearly scaled (they are nonlinear in the price)."""
+    for arg in sys.argv:
+        if arg.startswith("--scale="):
+            return Decimal(arg.split("=", 1)[1])
+    return Decimal("1")
+
+
+def _scaled_tiers(scale: Decimal) -> list[Tier]:
+    if scale == 1:
+        return TIERS
+    return [Tier(t.name, t.lp_eth * scale, t.grad_mcap * scale, t.fee * scale) for t in TIERS]
+
+
 def main() -> None:
+    scale = _parse_scale()
+    tiers = _scaled_tiers(scale)
+    # ARC (scale != 1) needs the DEFAULT tier emitted as configurable curves (incl. DEFAULT_0).
+    all_tiers = ("--all-tiers" in sys.argv) or (scale != 1)
     if "--solidity" in sys.argv:
-        emit_solidity()
+        emit_solidity(tiers, all_tiers=all_tiers)
         return
-    report()
-    # default-tier sanity: the no-vault closed-form lands within 1 wei of the deployed round base
-    c = best_integer_curve(TOTAL_SUPPLY, TIERS[1])
-    if c["e0"] != DEPLOYED_DEFAULT_BASE[2]:
-        print("\nWARNING: DEFAULT base E0 differs from deployed!", file=sys.stderr)
+    report(tiers)
+    if scale == 1:
+        # default-tier sanity: the no-vault closed-form lands within 1 wei of the deployed round base
+        c = best_integer_curve(TOTAL_SUPPLY, TIERS[1])
+        if c["e0"] != DEPLOYED_DEFAULT_BASE[2]:
+            print("\nWARNING: DEFAULT base E0 differs from deployed!", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -8,8 +8,13 @@ import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
-/// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
+/// this line below is swapped per target chain at deploy time (the addresses are compile-time
+/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
+/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+// Aliased so the `chain-arc-*` recipe can import-swap it for the ARC venue: swap-back sells tax tokens
+// for USDC (token→USDC) instead of ETH, since ARC has no wrappable WETH. See UniswapV2VenueArc.
+import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 
 /// @title LivoTaxableTokenUniV2
 /// @notice ERC20 token implementation with time-limited buy/sell taxes for tokens that graduate to
@@ -133,7 +138,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @param swapAmount Amount to swap. The auto path's `2 * SWAP_THRESHOLD` cap is NOT enforced
     ///        here so a private-mempool caller can drain a larger residual in one shot. The router
     ///        reverts if `swapAmount` exceeds the contract's balance.
-    /// @param amountOutMinWei Minimum ETH the swap must yield. Caller's slippage budget.
+    /// @param amountOutMinWei Minimum native proceeds the swap must yield, in QUOTE decimals: 18-dec
+    ///        ETH on ETH-family builds, 6-dec USDC on ARC builds (where the swap sells to USDC, which
+    ///        IS native balance). Caller's slippage budget. Applies to the post-burn, post-liquidity
+    ///        remainder actually swapped, not to `swapAmount`.
     /// @dev If the per-block cap is hit, `_processCollectedTokens` silently no-ops (no event, no revert).
     /// @dev Post-graduation only: no tax accrues (and there is no pair to swap against) before
     ///      graduation, so a pre-graduation swap-back is always meaningless — reverting closes the
@@ -148,9 +156,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         pairs the retained half with that ETH, and sends the LP to the dead address (permanent
     ///         depth). Permissionless, out-of-band (batches accruals off the swap hot path), mirroring the
     ///         V4 `processLiquidity` and the burn `processBurn` async pattern.
-    /// @param amountOutMinWei Slippage floor for the token→ETH half-sell — the swap reverts if it yields
-    ///        less. Keepers should set it from the current price (via a private mempool); 0 invites
-    ///        sandwiching of the half-sell, bounded by the current buffer.
+    /// @param amountOutMinWei Slippage floor for the half-sell, in QUOTE decimals (18-dec ETH on
+    ///        ETH-family builds, 6-dec USDC on ARC) — the swap reverts if it yields less. Keepers
+    ///        should set it from the current price (via a private mempool); 0 invites sandwiching of
+    ///        the half-sell, bounded by the current buffer.
     /// @dev Token-native: the token side is KEPT (not bought back — a V2 pair reverts INVALID_TO when
     ///      asked to send a token to its own address), only half is sold for the ETH side. Post-graduation
     ///      only. The sell + add run under `_inSwap` so the intrinsic tax / auto-swap-back don't fire on
@@ -164,8 +173,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
         _inSwap = true;
 
-        // Sell half the buffered tokens for ETH (ETH to self is fine; a token to self would revert). Keep
-        // the other half for the LP token side.
+        // Sell half the buffered tokens for native (native to self is fine; a token to self would revert).
+        // Keep the other half for the LP token side.
         uint256 tokensToSell = tokenIn / 2;
         uint256 tokensForLp = tokenIn - tokensToSell;
         // note: we could swap the portion of tokens for liquidity as part of the _swapback function,
@@ -173,21 +182,18 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // is to swap here right before adding liquidity, even if that means one extra swap
         uint256 ethBefore = address(this).balance;
         if (tokensToSell > 0) {
-            address[] memory path = new address[](2);
-            path[0] = address(this);
-            path[1] = WETH;
-            UNISWAP_V2_ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
-                tokensToSell, amountOutMinWei, path, address(this), block.timestamp
-            );
+            UniswapV2Venue.swapTaxToNative(UNISWAP_V2_ROUTER, WETH, tokensToSell, amountOutMinWei);
         }
+        // 18-dec native on both chains: on ARC the swap's 6-dec USDC output IS native balance.
         uint256 ethFromSell = address(this).balance - ethBefore;
 
-        // Pair the retained tokens with the ETH just obtained. Accept any ratio (priority: don't revert);
-        // the router refunds the excess side to this contract.
+        // Pair the retained tokens with the native just obtained, via the per-chain venue: WETH
+        // `addLiquidityETH` on ETH-family, two-ERC20 `addLiquidity` against the 6-dec USDC on ARC.
+        // Accept any ratio (priority: don't revert); the router refunds the excess side to this contract.
         uint256 liquidity;
         if (tokensForLp > 0 && ethFromSell > 0) {
-            (,, liquidity) = UNISWAP_V2_ROUTER.addLiquidityETH{value: ethFromSell}(
-                address(this), tokensForLp, 0, 0, DEAD_ADDRESS, block.timestamp
+            (,, liquidity) = UniswapV2Venue.supplyLiquidity(
+                UNISWAP_V2_ROUTER, address(this), WETH, tokensForLp, ethFromSell, DEAD_ADDRESS
             );
         }
 
@@ -319,14 +325,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
         uint256 swapAmount = tokenAmount - burnAmount - liquidityAmount;
 
+        // Sell the remainder for native via the per-chain venue: token→ETH on ETH-family, token→USDC on
+        // ARC. On ARC the received 6-dec USDC IS native balance, so the `address(this).balance` read
+        // below reflects the proceeds with no unwrap. `amountOutMinWei` is in quote decimals (18-dec
+        // ETH / 6-dec USDC); the auto path passes 0. See UniswapV2Venue.
         if (swapAmount > 0) {
-            address[] memory path = new address[](2);
-            path[0] = address(this);
-            path[1] = WETH;
-
-            UNISWAP_V2_ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
-                swapAmount, amountOutMinWei, path, address(this), block.timestamp
-            );
+            UniswapV2Venue.swapTaxToNative(UNISWAP_V2_ROUTER, WETH, swapAmount, amountOutMinWei);
         }
 
         _inSwap = false;
