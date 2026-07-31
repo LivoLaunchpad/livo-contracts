@@ -18,10 +18,6 @@ fs_permissions = [
     { access = "read-write", path = "./deployments.robinhood.testnet.md" },
     { access = "read-write", path = "./deployments.arc.mainnet.md" },
     { access = "read-write", path = "./deployments.arc.testnet.md" },
-    # deployCode/getCode read compiled artifacts by out/ path (the ARC Uniswap deploy scripts —
-    # DeployUniswapArc, DeployUniswapV2RouterArc, VerifyV2GraduationArc — resolve mixed-compiler
-    # contracts this way). Without this, every `deployCode("out/…json")` reverts "not allowed".
-    { access = "read", path = "./out" },
 ]
 
 # extra_output = ["storageLayout"]
@@ -58,22 +54,3 @@ arc-testnet = "${ARC_TESTNET_RPC_URL}"
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
 sepolia = { key = "${ETHERSCAN_API_KEY}" }
-
-# NB: these `[[...]]` array-of-tables MUST stay at the end of the file — a TOML array-of-tables
-# header captures every following key, so placing them before `fs_permissions`/scalars would
-# re-parent those keys onto the last table (silently emptying fs_permissions, etc.).
-#
-# Uniswap's UniversalRouter (V3SwapRouter) overflows the stack without the IR pipeline; enable
-# via_ir ONLY for the vendored universal-router sources so Livo's own build stays on the fast path.
-[[profile.default.additional_compiler_profiles]]
-name = "via-ir"
-via_ir = true
-
-[[profile.default.compilation_restrictions]]
-paths = "lib/universal-router/**"
-via_ir = true
-
-# The UniversalRouter compile-anchor imports UniversalRouter, so it must share the via_ir unit.
-[[profile.default.compilation_restrictions]]
-paths = "script/arc/_artifacts/UniversalRouterArtifact.sol"
-via_ir = true

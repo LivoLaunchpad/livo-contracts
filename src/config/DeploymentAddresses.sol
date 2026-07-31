@@ -244,15 +244,17 @@ library DeploymentAddressesArcMainnet {
 }
 
 /// @title Deployment Address Constants for ARC Chain Testnet (chain id 5042002)
-/// @dev Uniswap V2 + V4 are Livo-self-deployed (no official Uniswap on ARC) via `DeployUniswapArc`
-///      (`just deploy-uniswap-arc-testnet`) from the vendored Uniswap sources. USDC ERC-20 is the
-///      documented predeploy 0x3600..0000; Permit2 is at the canonical address. Livo's own contracts
-///      live in `manifest.arc.testnet.sol` and are deployed.
+/// @dev Uniswap V2 + V4 are Livo-self-deployed (no official Uniswap on ARC testnet) from vendored
+///      Uniswap sources. That deploy tooling has since been removed — ARC mainnet ships official
+///      Uniswap, so nothing needs it again; recover it from git history (branch
+///      `feat/arc-chain-support`) if a future chain does. USDC ERC-20 is the documented predeploy
+///      0x3600..0000; Permit2 is at the canonical address. Livo's own contracts live in
+///      `manifest.arc.testnet.sol` and are deployed.
 library DeploymentAddressesArcTestnet {
     /// @notice Blockchain ID for ARC testnet
     uint256 public constant BLOCKCHAIN_ID = 5042002;
 
-    /// @notice Uniswap V4 Pool Manager contract (Livo-deployed via DeployUniswapArc).
+    /// @notice Uniswap V4 Pool Manager contract (Livo-deployed).
     address public constant UNIV4_POOL_MANAGER = 0xE735d281d313AD09bd8bFF81F181715b6c6aD772;
     /// @notice Uniswap V4 Position Manager contract (Livo-deployed).
     address public constant UNIV4_POSITION_MANAGER = 0xBa1a7Fe65E7aAb563630F5921080996030a80AA1;
@@ -263,23 +265,23 @@ library DeploymentAddressesArcTestnet {
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     /// @notice V2 pair quote token = the 6-decimal USDC ERC-20 alias (documented testnet predeploy).
-    /// @dev NOT the router's internal weth9 (an inert MinimalWETH9 stub that `router.WETH()` returns —
-    ///      ARC has no wrapped-native; a fresh stub is minted per router deploy). The ARC V2 graduator
+    /// @dev NOT the router's internal weth9 (an inert WETH9 stub that `router.WETH()` returns — ARC
+    ///      has no wrapped-native). The ARC V2 graduator
     ///      pairs `<token, USDC>` using this USDC alias directly via `addLiquidity`, never the native
     ///      `addLiquidityETH`/`router.WETH()` path.
     address public constant WETH = 0x3600000000000000000000000000000000000000;
 
-    /// @notice Uniswap V2 Router contract: the VENDORED LivoUniswapV2Router02 (correct pair
-    ///         init-code-hash 0xb5a7…), redeployed via DeployUniswapV2RouterArc. The original
-    ///         0x61D6362e1FF2e81059D8fFeAc2407950a65684a6 baked the stock 0x96e8… hash and was broken.
+    /// @notice Uniswap V2 Router contract: a vendored Router02 baking the correct pair init-code-hash
+    ///         0xb5a7…. The original 0x61D6362e1FF2e81059D8fFeAc2407950a65684a6 baked the stock 0x96e8…
+    ///         hash and was broken; `test/arc/UniswapV2RouterArcFix.t.sol` proves this one works.
     address public constant UNIV2_ROUTER = 0xF5c4fEaC340e65A95EF72499E0aFaD4d45812946;
     /// @notice Uniswap V2 Factory contract (Livo-deployed UniswapV2Factory).
     address public constant UNIV2_FACTORY = 0xEF6fCB80e976733dCd9e4F0b2F3A9C49771a09Fb;
 
     /// @notice keccak256 of the UniswapV2Pair creation code used by UNIV2_FACTORY.
     /// @dev Chain-specific: the factory was compiled from source (0.5.16) with this repo's settings,
-    ///      so the hash is NOT the canonical mainnet 0x96e8ac42… value. Computed + logged by
-    ///      DeployUniswapArc and also baked into the deployed UniversalRouter's RouterParameters.
+    ///      so the hash is NOT the canonical mainnet 0x96e8ac42… value. Also baked into the deployed
+    ///      UniversalRouter's RouterParameters.
     bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
         0xb5a7f1081ecaa7c30957adf56bd79febe0588ca66ec38a0fb1ee92e7d324b3f9;
 

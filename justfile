@@ -215,20 +215,10 @@ deploy-univ2-robintest feeToSetter="0xBa489180Ea6EEB25cA65f123a46F3115F388f181":
     echo "    UNIV2_ROUTER  = $RTR"
     echo "    UNIV2_PAIR_INIT_CODE_HASH stays 0x96e8ac42…845f (canonical, unchanged)"
 
-# Deploys a self-owned Uniswap V2 + V4 stack on ARC testnet (no official Uniswap exists there).
-# Unlike `deploy-univ2-robintest` (canonical unpkg bytecode), this compiles the vendored Uniswap
-# submodules from source, so the V2 pair init-code hash is chain-specific (printed by the script, NOT
-# the canonical 0x96e8ac42…) — paste it into DeploymentAddressesArcTestnet along with the addresses.
-# `forge build` runs first because `forge script` uses sparse compilation and skips the un-imported
-# compile anchors in script/arc/_artifacts/, which must exist in out/ for the deployCode JSON lookups.
-# No --verify: arcscan is Blockscout, so verify from the CLI afterwards or via a follow-up recipe.
-deploy-uniswap-arc-testnet-dry:
-    forge build
-    forge script DeployUniswapArc --rpc-url arc-testnet
-
-deploy-uniswap-arc-testnet:
-    forge build
-    forge script DeployUniswapArc --rpc-url arc-testnet --account livo.dev --slow --broadcast --gas-estimate-multiplier 300
+# NB: ARC testnet had no official Uniswap, so Livo self-deployed the V2+V4 stack there (addresses in
+# `DeploymentAddressesArcTestnet`). The deploy scripts, the vendored V2 router and the Uniswap V2
+# submodules have since been removed — ARC mainnet ships official Uniswap, so nothing needs them
+# again. Recover from git history (branch `feat/arc-chain-support`) if a future chain does.
 
 # Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
