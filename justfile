@@ -53,25 +53,56 @@ lean-invariants:
 error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
-# Repoint the two taxable-token impls' compile-time `DeploymentAddresses` import at a chain.
-# Both impls bake chain constants (V2 router / WETH / V4 pool manager) and gate on `block.chainid`,
-# so run the recipe matching your target chain BEFORE building or deploying to it. Idempotent —
-# rewrites from whatever chain is currently set. The committed default is Ethereum mainnet.
-_taxtoken lib:
+# --- Per-chain build retarget ------------------------------------------------
+# ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
+# (the taxable tokens' `DeploymentAddresses` + venue lib, and the V4 graduator's pool-geometry/fee
+# libs). Retarget is for constant-only / trivial divergence; the V2 graduator, whose venue difference
+# is behavioral, is instead two separate contracts (LivoGraduatorUniswapV2 / ...Arc) picked at deploy
+# time. The rule is per-CHAIN, never per-chain-AND-per-contract: add every future per-chain contract
+# swap to `_retarget` so callers keep using a single command. Run the `chain-*` recipe matching your
+# target BEFORE `forge build`/deploy. Idempotent. Committed default is Ethereum mainnet, used by all tests.
+chain-mainnet:
+    @just _retarget DeploymentAddressesEthereumMainnet
+
+chain-sepolia:
+    @just _retarget DeploymentAddressesEthereumSepolia
+
+chain-robinhood:
+    @just _retarget DeploymentAddressesRobinhoodMainnet
+
+chain-robintest:
+    @just _retarget DeploymentAddressesRobinhoodTestnet
+
+chain-arc-testnet:
+    @just _retarget DeploymentAddressesArcTestnet Arc
+
+chain-arc-mainnet:
+    @just _retarget DeploymentAddressesArcMainnet Arc
+
+# Fans a target chain out to every per-contract import-swap. `gradsuffix` is the lib variant
+# ("" = the committed ETH-priced libs, "Arc" = the ARC variants). Add future per-chain swaps HERE.
+# NOTE: the V2 graduator is NOT retargeted — LivoGraduatorUniswapV2 / ...Arc are separate contracts
+# selected at deploy time (their venue difference is behavioral, not just constants).
+_retarget taxlib gradsuffix="":
+    @just _taxtoken {{taxlib}} "{{gradsuffix}}"
+    @just _graduators "{{gradsuffix}}"
+
+# (internal) Repoints the two taxable-token impls' `DeploymentAddresses` import, and the V2 taxable
+# token's venue lib (swap-back path), to the target chain. Use a `chain-*` recipe.
+_taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+    sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
+        src/tokens/LivoTaxableTokenUniV2.sol
 
-taxtoken-mainnet:
-    @just _taxtoken DeploymentAddressesEthereumMainnet
-
-taxtoken-sepolia:
-    @just _taxtoken DeploymentAddressesEthereumSepolia
-
-taxtoken-robinhood:
-    @just _taxtoken DeploymentAddressesRobinhoodMainnet
-
-taxtoken-robintest:
-    @just _taxtoken DeploymentAddressesRobinhoodTestnet
+# (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
+# ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
+# Use a `chain-*` recipe.
+_graduators suffix:
+    sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
+        src/graduators/LivoGraduatorUniswapV4.sol
+    sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
+        src/graduators/LivoGraduatorUniswapV4.sol
 
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>
@@ -120,13 +151,13 @@ livodev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
 #   tiswallet1 = 0xd6fa895fABA3FE48410e9A00504BB556C89dd2E6
 #   tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
-deploy-sepolia: taxtoken-sepolia
+deploy-sepolia: chain-sepolia
     # Hook address is logged in deployment output (LivoSwapHook row)
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 # Re-deploys the four token implementations and all six factories (V2/V4/TaxToken + sniper-protected
 # variants) against the existing Livo core, then whitelists them on the launchpad.
-deploy-sepolia-factories: taxtoken-sepolia
+deploy-sepolia-factories: chain-sepolia
     forge script DeploymentsFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 deploy-mainnet-factories:
@@ -183,6 +214,11 @@ deploy-univ2-robintest feeToSetter="0xBa489180Ea6EEB25cA65f123a46F3115F388f181":
     echo "    UNIV2_FACTORY = $FAC"
     echo "    UNIV2_ROUTER  = $RTR"
     echo "    UNIV2_PAIR_INIT_CODE_HASH stays 0x96e8ac42…845f (canonical, unchanged)"
+
+# NB: ARC testnet had no official Uniswap, so Livo self-deployed the V2+V4 stack there (addresses in
+# `DeploymentAddressesArcTestnet`). The deploy scripts, the vendored V2 router and the Uniswap V2
+# submodules have since been removed — ARC mainnet ships official Uniswap, so nothing needs them
+# again. Recover from git history (branch `feat/arc-chain-support`) if a future chain does.
 
 # Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.

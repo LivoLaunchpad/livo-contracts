@@ -33,7 +33,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         `OwnableUnauthorizedAccount(broadcaster)` and no state changes.
 ///
 ///         Pre-broadcast sanity: confirms the V2 token implementation file imports the right
-///         per-chain `DeploymentAddresses` (run `just taxtoken-sepolia` before deploying to Sepolia).
+///         per-chain `DeploymentAddresses` (run `just chain-sepolia` before deploying to Sepolia).
 ///
 ///         Post-broadcast: update `TAXABLE_TOKEN_V2_IMPL` and the V2 factory impl address in
 ///         `src/config/manifest.<chain>.sol`, then run `just export-deployments`.
@@ -72,7 +72,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just taxtoken-sepolia` only for sepolia)"
+                "LivoTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
             );
         } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -85,7 +85,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else {
             revert("Unsupported chain");

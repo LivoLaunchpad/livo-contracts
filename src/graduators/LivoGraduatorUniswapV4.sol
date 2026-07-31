@@ -16,14 +16,16 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+// Both imports are aliased so the `chain-arc-*` recipe can import-swap them at build time.
+import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {GraduationFeeConstants as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 
 contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
 
-    /// @notice Graduation ETH fee (creator compensation + treasury fee)
-    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
+    /// @notice Graduation native fee (creator compensation + treasury fee). Per-chain via the aliased lib.
+    uint256 public constant GRADUATION_ETH_FEE = GraduationFeeConstants.GRADUATION_FEE;
 
     /// @notice ETH compensation paid to token creator at graduation (half of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
@@ -114,6 +116,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         uint160 _sqrtPriceGraduation,
         int24 _tickUpper
     ) Ownable(msg.sender) {
+        // Refuse to deploy graduator bytecode built with the wrong chain's baked constants (fees + pool
+        // geometry): the import-swapped fee lib knows which chain family it belongs to. Unforgettable —
+        // fires on ANY deploy path; `forge script` simulates first, so a wrong build never broadcasts.
+        GraduationFeeConstants.assertDeployableOn(block.chainid);
+
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = _positionManager;

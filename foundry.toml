@@ -16,6 +16,8 @@ fs_permissions = [
     { access = "read-write", path = "./deployments.ethereum.sepolia.md" },
     { access = "read-write", path = "./deployments.robinhood.mainnet.md" },
     { access = "read-write", path = "./deployments.robinhood.testnet.md" },
+    { access = "read-write", path = "./deployments.arc.mainnet.md" },
+    { access = "read-write", path = "./deployments.arc.testnet.md" },
 ]
 
 # extra_output = ["storageLayout"]
@@ -41,6 +43,9 @@ mainnet = "${ETH_RPC_URL}"
 sepolia = "${SEPOLIA_RPC_URL}"
 robinhood-mainnet = "${ROBINHOOD_RPC_URL}"
 robinhood-testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
+# ARC (Circle L1, native = USDC). Testnet: https://rpc.testnet.arc.io. Mainnet not live yet. TODO(arc)
+arc-mainnet = "${ARC_RPC_URL}"
+arc-testnet = "${ARC_TESTNET_RPC_URL}"
 
 # Etherscan verification. Robinhood is NOT in Foundry's chain registry (v1.5.1); adding it to this
 # `[etherscan]` table with `chain = 4663/46630` makes EVERY `forge script` run abort with

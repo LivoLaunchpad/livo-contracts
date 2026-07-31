@@ -86,7 +86,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
             require(
                 AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else {
             revert("Unsupported chain");

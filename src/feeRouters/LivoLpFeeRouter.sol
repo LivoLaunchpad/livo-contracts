@@ -34,8 +34,9 @@ contract LivoLpFeeRouter is ILivoLpFeeRouter, Initializable, OwnableUpgradeable,
     ///         implementation with the new value and `upgradeTo` it.
     address public immutable TREASURY;
 
-    /// @notice Ascending ETH-wei marketcap thresholds. Tier `i` applies while `marketcap` is in
-    ///         `[THRESHOLD_i, THRESHOLD_{i+1})`. `THRESHOLD_0 == 0` is implicit.
+    /// @notice Ascending marketcap thresholds, in native 18-dec wei (ETH on the ETH-family chains,
+    ///         USDC on ARC). Tier `i` applies while `marketcap` is in `[THRESHOLD_i, THRESHOLD_{i+1})`.
+    ///         `THRESHOLD_0 == 0` is implicit.
     /// @dev    Stored as 6 individual immutables (rather than an array) so each tier lookup is a
     ///         single PUSH from bytecode instead of an SLOAD chain.
     uint256 public immutable THRESHOLD_1;
@@ -182,9 +183,9 @@ contract LivoLpFeeRouter is ILivoLpFeeRouter, Initializable, OwnableUpgradeable,
         return TIER6_TREASURY_BPS;
     }
 
-    /// @dev Computes marketcap in ETH wei from the swap's avg price and the fixed `TOTAL_SUPPLY`.
-    ///      `price = ethSwapAmount / tokenSwapAmount` (in respective smallest units; both ETH and
-    ///      Livo tokens use 18 decimals so the ratio is dimensionless). Marketcap =
+    /// @dev Computes marketcap in native wei from the swap's avg price and the fixed `TOTAL_SUPPLY`.
+    ///      `price = ethSwapAmount / tokenSwapAmount` (in respective smallest units; both the native
+    ///      currency and Livo tokens use 18 decimals so the ratio is dimensionless). Marketcap =
     ///      `price × TOTAL_SUPPLY`, reordered as `(TOTAL_SUPPLY × ethSwapAmount) / tokenSwapAmount` to
     ///      avoid precision loss on the intermediate price.
     /// @dev    Returns 0 if `tokenSwapAmount` is zero (degenerate swap); the caller falls back to

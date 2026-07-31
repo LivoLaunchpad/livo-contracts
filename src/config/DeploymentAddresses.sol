@@ -186,3 +186,108 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
+
+/// @title Deployment Address Constants for ARC Chain Mainnet (chain id 5042)
+/// @notice ARC is Circle's EVM L1 whose native currency is USDC (18-decimal at msg.value/balance).
+/// @dev Uniswap is OFFICIALLY deployed on ARC mainnet; the addresses below were verified on-chain by
+///      byte-diffing each runtime against the Ethereum canonical deployment (identical except the
+///      20-byte self-address immutable). Livo's own contracts are not deployed yet — see
+///      `manifest.arc.mainnet.sol`. There is NO WETH on ARC: the V2 pair quote token is the
+///      6-decimal USDC ERC-20 alias (V4 pairs use native address(0)); the `WETH` field name is kept
+///      for consumer compatibility but holds that USDC ERC-20 address.
+library DeploymentAddressesArcMainnet {
+    /// @notice Blockchain ID for ARC mainnet
+    uint256 public constant BLOCKCHAIN_ID = 5042;
+
+    /// @notice Uniswap V4 Pool Manager contract
+    address public constant UNIV4_POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+    /// @notice Uniswap V4 Position Manager contract
+    address public constant UNIV4_POSITION_MANAGER = 0x6049c9a0e26405C0985f9E3685C87d0aE917f82B;
+    /// @notice Uniswap V4 Universal Router contract
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1;
+
+    /// @notice Permit2 contract (canonical address)
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    /// @notice V2 pair quote token = the 6-decimal USDC ERC-20 alias (there is no WETH on ARC).
+    /// @dev NOT the deployed Router02's internal weth9: `router.WETH()` returns 0x8bcEaA40…937f, a
+    ///      54-byte revert stub (every call reverts with `0xea3559ef`), so the native
+    ///      `addLiquidityETH` / `swapExactETHForTokens` paths are dead. The ARC V2 graduator pairs
+    ///      `<token, USDC>` using this USDC alias directly via `addLiquidity`.
+    address public constant WETH = 0x3600000000000000000000000000000000000000;
+
+    /// @notice Uniswap V2 Router02 contract
+    address public constant UNIV2_ROUTER = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
+    /// @notice Uniswap V2 Factory contract
+    address public constant UNIV2_FACTORY = 0x89e5DB8B5aA49aA85AC63f691524311AEB649eba;
+
+    /// @notice keccak256 of the UniswapV2Pair creation code used by UNIV2_FACTORY.
+    /// @dev Stock Uniswap bytecode, so this is the canonical value — unlike ARC testnet, whose
+    ///      factory Livo compiled from source. Verified: CREATE2-reproduces `allPairs(0)`.
+    bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
+        0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+
+    /// @notice Uniswap V3 contracts. Unused by Livo — recorded for reference only.
+    address public constant UNIV3_FACTORY = 0xf0db7b58379503491d857dB50AC9ece64c653918;
+    address public constant UNIV3_QUOTER_V2 = 0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468;
+    address public constant UNIV3_POSITION_MANAGER = 0x39654A85A4C05127f5Fd6ED22CAeC077A0fB1377;
+    address public constant UNIV3_SWAP_ROUTER_02 = 0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77;
+
+    /// @notice Multicall3 (canonical address)
+    address public constant MULTICALL3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
+
+    /// @notice Dead address used for burning LP tokens
+    address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
+    address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
+}
+
+/// @title Deployment Address Constants for ARC Chain Testnet (chain id 5042002)
+/// @dev Uniswap V2 + V4 are Livo-self-deployed (no official Uniswap on ARC testnet) from vendored
+///      Uniswap sources. That deploy tooling has since been removed — ARC mainnet ships official
+///      Uniswap, so nothing needs it again; recover it from git history (branch
+///      `feat/arc-chain-support`) if a future chain does. USDC ERC-20 is the documented predeploy
+///      0x3600..0000; Permit2 is at the canonical address. Livo's own contracts live in
+///      `manifest.arc.testnet.sol` and are deployed.
+library DeploymentAddressesArcTestnet {
+    /// @notice Blockchain ID for ARC testnet
+    uint256 public constant BLOCKCHAIN_ID = 5042002;
+
+    /// @notice Uniswap V4 Pool Manager contract (Livo-deployed).
+    address public constant UNIV4_POOL_MANAGER = 0xE735d281d313AD09bd8bFF81F181715b6c6aD772;
+    /// @notice Uniswap V4 Position Manager contract (Livo-deployed).
+    address public constant UNIV4_POSITION_MANAGER = 0xBa1a7Fe65E7aAb563630F5921080996030a80AA1;
+    /// @notice Uniswap V4 Universal Router contract (Livo-deployed).
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0xe4772247D918E32a9908EDb4225c4a123C576e48;
+
+    /// @notice Permit2 contract (canonical address; present on ARC testnet)
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    /// @notice V2 pair quote token = the 6-decimal USDC ERC-20 alias (documented testnet predeploy).
+    /// @dev NOT the router's internal weth9 (an inert WETH9 stub that `router.WETH()` returns — ARC
+    ///      has no wrapped-native). The ARC V2 graduator
+    ///      pairs `<token, USDC>` using this USDC alias directly via `addLiquidity`, never the native
+    ///      `addLiquidityETH`/`router.WETH()` path.
+    address public constant WETH = 0x3600000000000000000000000000000000000000;
+
+    /// @notice Uniswap V2 Router contract: a vendored Router02 baking the correct pair init-code-hash
+    ///         0xb5a7…. The original 0x61D6362e1FF2e81059D8fFeAc2407950a65684a6 baked the stock 0x96e8…
+    ///         hash and was broken; `test/arc/UniswapV2RouterArcFix.t.sol` proves this one works.
+    address public constant UNIV2_ROUTER = 0xF5c4fEaC340e65A95EF72499E0aFaD4d45812946;
+    /// @notice Uniswap V2 Factory contract (Livo-deployed UniswapV2Factory).
+    address public constant UNIV2_FACTORY = 0xEF6fCB80e976733dCd9e4F0b2F3A9C49771a09Fb;
+
+    /// @notice keccak256 of the UniswapV2Pair creation code used by UNIV2_FACTORY.
+    /// @dev Chain-specific: the factory was compiled from source (0.5.16) with this repo's settings,
+    ///      so the hash is NOT the canonical mainnet 0x96e8ac42… value. Also baked into the deployed
+    ///      UniversalRouter's RouterParameters.
+    bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
+        0xb5a7f1081ecaa7c30957adf56bd79febe0588ca66ec38a0fb1ee92e7d324b3f9;
+
+    /// @notice Dead address used for burning LP tokens
+    address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
+    address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
+}

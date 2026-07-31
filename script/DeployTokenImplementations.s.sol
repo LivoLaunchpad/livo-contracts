@@ -11,7 +11,8 @@ import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens
 import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {
     DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
+    DeploymentAddressesEthereumSepolia,
+    DeploymentAddressesArcTestnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @title Deploy the three token implementations only — no factory deploy, no proxy upgrade
@@ -64,6 +65,15 @@ contract DeployTokenImplementations is Script {
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtokenaddresses`)"
+            );
+        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
+            require(
+                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID,
+                "LivoTaxableTokenUniV2 import is not ARC testnet (run `just chain-arc-testnet`)"
+            );
+            require(
+                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
+                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");

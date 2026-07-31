@@ -47,7 +47,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///
 ///         Pre-broadcast sanity: confirms that `LivoTaxableTokenUniV2` and `LivoTaxableTokenUniV4`
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run the
-///         matching `just taxtoken-{mainnet,sepolia,robinhood,robintest}` recipe BEFORE building).
+///         matching `just chain-{mainnet,sepolia,robinhood,robintest}` recipe BEFORE building).
 ///
 ///         Post-broadcast: update these five address constants in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`:
@@ -99,7 +99,7 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just taxtoken-sepolia` only for sepolia)"
+                "LivoTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
@@ -118,12 +118,12 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtoken-sepolia`)"
+                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -137,12 +137,12 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Robinhood mainnet (run `just taxtoken-robinhood`)"
+                "LivoTaxableTokenUniV2 import is not Robinhood mainnet (run `just chain-robinhood`)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Robinhood mainnet (run `just taxtoken-robinhood`)"
+                "LivoTaxableTokenUniV4 import is not Robinhood mainnet (run `just chain-robinhood`)"
             );
         } else if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -156,12 +156,12 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
             });
             require(
                 AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Robinhood testnet (run `just taxtoken-robintest`)"
+                "LivoTaxableTokenUniV2 import is not Robinhood testnet (run `just chain-robintest`)"
             );
             require(
                 AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Robinhood testnet (run `just taxtoken-robintest`)"
+                "LivoTaxableTokenUniV4 import is not Robinhood testnet (run `just chain-robintest`)"
             );
         } else {
             revert("Unsupported chain");
