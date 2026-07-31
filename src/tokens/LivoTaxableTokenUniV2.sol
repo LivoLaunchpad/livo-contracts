@@ -190,16 +190,20 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // Pair the retained tokens with the native just obtained, via the per-chain venue: WETH
         // `addLiquidityETH` on ETH-family, two-ERC20 `addLiquidity` against the 6-dec USDC on ARC.
         // Accept any ratio (priority: don't revert); the router refunds the excess side to this contract.
+        // The event reports the router's ACTUAL amounts, not the requested ones: the refunded remainder
+        // never reached the pool (on ARC, so does the sub-1e-6-USDC flooring dust).
+        uint256 ethAdded;
+        uint256 tokensAdded;
         uint256 liquidity;
         if (tokensForLp > 0 && ethFromSell > 0) {
-            (,, liquidity) = UniswapV2Venue.supplyLiquidity(
+            (tokensAdded, ethAdded, liquidity) = UniswapV2Venue.supplyLiquidity(
                 UNISWAP_V2_ROUTER, address(this), WETH, tokensForLp, ethFromSell, DEAD_ADDRESS
             );
         }
 
         _inSwap = false;
 
-        emit LiquidityAdded(ethFromSell, tokensForLp, liquidity);
+        emit LiquidityAdded(ethAdded, tokensAdded, liquidity);
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

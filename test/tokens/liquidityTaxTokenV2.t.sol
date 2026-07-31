@@ -8,6 +8,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 /// @notice Integration tests for the V2 liquidity earnings-allocation leg: the liquidity slice is set
 ///         aside as tax TOKENS during the swap-back, then `processLiquidity` sells half for ETH and adds
@@ -79,6 +80,73 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         assertEq(liqToken.liquidityPendingTokens(), 0, "liquidity buffer drained");
         assertGt(IERC20(pair).balanceOf(DEAD_ADDRESS), deadLpBefore, "LP minted and locked at the dead address");
+    }
+
+    /// @dev `LiquidityAdded` must report the router's ACTUAL amounts, not the requested ones. The
+    ///      half-sell moves the price, so the retained tokens + sale proceeds never match the pool ratio
+    ///      and the router refunds the excess side — reporting the requested amounts would over-state
+    ///      the added depth to the indexer.
+    function test_v2ProcessLiquidity_eventReportsAmountsThatReachedThePair() public {
+        address token = _createLiquidityV2Token(400, 5000);
+        testToken = token;
+        LivoTaxableTokenUniV2 liqToken = LivoTaxableTokenUniV2(payable(token));
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(token, 0, DEADLINE);
+        _graduateToken();
+
+        _swapSellV2(buyer, token, IERC20(token).balanceOf(buyer) / 10, 0, true);
+        uint256 taxBalance = IERC20(token).balanceOf(address(liqToken));
+        vm.prank(admin);
+        liqToken.swapBack(taxBalance, 0);
+
+        uint256 pendingTokens = liqToken.liquidityPendingTokens();
+        uint256 tokensRequested = pendingTokens - pendingTokens / 2; // the half retained for the LP side
+
+        vm.recordLogs();
+        liqToken.processLiquidity(0);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // Ground truth: the pair's own `Mint`, i.e. what the add actually deposited. Reserve deltas
+        // can't serve here — the half-sell also pushes tokens into the pair within the same call.
+        (uint256 mintTokens, uint256 mintEth) = _pairMintAmounts(logs, token < liqToken.WETH());
+        (uint256 ethAdded, uint256 tokensAdded) = _liquidityAddedAmounts(logs);
+
+        assertEq(tokensAdded, mintTokens, "tokensAdded == tokens the pair minted against");
+        assertEq(ethAdded, mintEth, "ethAdded == WETH the pair minted against");
+        // Non-vacuous: the 0.3% swap fee makes ETH the scarce side, so the router consumes all of it and
+        // refunds part of the requested token side. Emitting the requested amount would over-state depth.
+        assertLt(tokensAdded, tokensRequested, "router refunded part of the requested token side");
+    }
+
+    /// @dev `UniswapV2Pair.Mint(address indexed sender, uint amount0, uint amount1)`, returned as
+    ///      (token side, WETH side). `tokenIsToken0` orders the pair by address, as V2 does.
+    function _pairMintAmounts(Vm.Log[] memory logs, bool tokenIsToken0)
+        internal
+        pure
+        returns (uint256 tokenAmount, uint256 ethAmount)
+    {
+        bytes32 sig = keccak256("Mint(address,uint256,uint256)");
+        for (uint256 i = logs.length; i > 0; --i) {
+            if (logs[i - 1].topics[0] == sig) {
+                (uint256 amount0, uint256 amount1) = abi.decode(logs[i - 1].data, (uint256, uint256));
+                return tokenIsToken0 ? (amount0, amount1) : (amount1, amount0);
+            }
+        }
+        revert("pair Mint not emitted");
+    }
+
+    /// @dev Decodes the `ethIn`/`tokensAdded` fields of the last `LiquidityAdded` in `logs`.
+    function _liquidityAddedAmounts(Vm.Log[] memory logs) internal pure returns (uint256 ethIn, uint256 tokensAdded) {
+        bytes32 sig = keccak256("LiquidityAdded(uint256,uint256,uint256)");
+        for (uint256 i = logs.length; i > 0; --i) {
+            if (logs[i - 1].topics[0] == sig) {
+                (ethIn, tokensAdded,) = abi.decode(logs[i - 1].data, (uint256, uint256, uint256));
+                return (ethIn, tokensAdded);
+            }
+        }
+        revert("LiquidityAdded not emitted");
     }
 
     function test_v2ProcessLiquidity_revertsWhenNothingPending() public {
