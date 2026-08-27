@@ -46,6 +46,9 @@ struct TaxConfigs {
 /// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
 ///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions. The
 ///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
+/// @dev `dividendsBps` MUST be 0 today: the dividends module has not shipped, and the factories reject a
+///      non-zero value (`DividendsNotSupportedYet`). The field stays in the struct so the ABI does not
+///      break when the module lands.
 struct EarningsAllocationConfig {
     uint16 burnBps;
     uint16 dividendsBps;

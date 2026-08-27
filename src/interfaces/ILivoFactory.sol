@@ -139,6 +139,10 @@ interface ILivoFactory {
     /// @notice A non-zero earnings allocation was passed for a token that is not taxable. The split
     ///         machinery lives on the taxable impl, so allocation requires a configured tax/decay.
     error EarningsAllocationRequiresTax();
+    /// @notice A non-zero `dividendsBps` was passed. The dividends module has not shipped yet and tokens
+    ///         are non-upgradeable clones, so the slice would silently fund-fallback for the token's whole
+    ///         life. Rejected at creation until the module exists.
+    error DividendsNotSupportedYet();
     error TooManyCreatorVaults();
     error InvalidCreatorVault();
     error CreatorVaultAllocationTooHigh();

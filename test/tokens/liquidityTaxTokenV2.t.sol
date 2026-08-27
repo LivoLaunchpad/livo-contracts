@@ -49,6 +49,33 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(LivoTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
     }
 
+    /// @dev The dividends module has not shipped and tokens are non-upgradeable clones, so a non-zero
+    ///      `dividendsBps` would silently fund-fallback for the token's whole life. Reject at creation.
+    function test_createToken_revertsOnNonZeroDividendsBps() public {
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "DivV2",
+            symbol: "DV2",
+            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 400,
+            taxDurationSeconds: uint32(14 days),
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationConfig({burnBps: 0, dividendsBps: 1, liquidityBps: 0})
+        });
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.DividendsNotSupportedYet.selector);
+        factoryV2Unified.createToken(
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+        );
+    }
+
     function test_v2Liquidity_swapBackBuffersThenProcessAddsLp() public {
         address token = _createLiquidityV2Token(400, 5000); // 4% sell tax; 50% of earnings → liquidity
         testToken = token;

@@ -53,6 +53,39 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(LivoTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
     }
 
+    /// @dev The dividends module has not shipped and tokens are non-upgradeable clones, so a non-zero
+    ///      `dividendsBps` would silently fund-fallback for the token's whole life. Reject at creation.
+    function test_createToken_revertsOnNonZeroDividendsBps() public {
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "DivToken",
+            symbol: "DIV",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 400,
+            taxDurationSeconds: uint32(14 days),
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationConfig({burnBps: 0, dividendsBps: 1, liquidityBps: 0})
+        });
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.DividendsNotSupportedYet.selector);
+        factoryTax.createToken(
+            setup,
+            cfg,
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+    }
+
     function test_v4Liquidity_accruesThenProcessMintsPosition() public {
         address token = _createLiquidityTaxToken(400, 5000); // 4% sell tax; 50% of earnings → liquidity
         testToken = token;

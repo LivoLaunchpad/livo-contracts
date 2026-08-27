@@ -163,7 +163,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         dividends / liquidity bps; the fund wallets take the remainder). The split is stored on
     ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
     ///         taxable token — `taxConfigs` must configure a tax or launch-decay — since the split
-    ///         machinery lives on the taxable impl.
+    ///         machinery lives on the taxable impl. `dividendsBps` must be 0 until the dividends module
+    ///         ships (see `DividendsNotSupportedYet`).
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithAllocation calldata taxAllocationConfigs,
@@ -174,6 +175,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+
+        require(alloc.dividendsBps == 0, DividendsNotSupportedYet());
 
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
         if (hasAllocation) require(_isTaxConfigured(taxConfigs), EarningsAllocationRequiresTax());
