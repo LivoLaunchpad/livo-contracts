@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
@@ -70,8 +71,9 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
 
         // Manual swap-back by the launchpad owner (V2 tokens are ownerless). Burns the burn share as
         // tokens in-place (no ETH→token round trip), then swaps the rest.
+        // Shared two-field signature; V2 spends no ETH to burn (token-space burn), so `ethSpent` is 0.
         vm.expectEmit(true, true, true, true, address(burnToken));
-        emit LivoTaxableTokenUniV2.CreatorTaxBurn(expectedBurn);
+        emit LivoTaxableToken.CreatorTaxBurn(0, expectedBurn);
         vm.prank(admin);
         burnToken.swapBack(accrued, 0);
 

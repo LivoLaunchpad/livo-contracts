@@ -100,6 +100,15 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
     ///           the dead address).
     event LiquidityAdded(uint256 ethIn, uint256 tokensAdded, uint256 liquidity);
 
+    /// @notice Emitted when a token's burn earnings allocation removes supply. Shared by both venues;
+    ///         `ethSpent` is venue-specific:
+    ///         - V4: the buffered ETH spent buying the tokens back before burning them (`processBurn`).
+    ///         - V2: always 0 — the burn share is taken in TOKEN-space during the swap-back, before the
+    ///           sell, so no ETH round trip happens and no ETH is spent to burn.
+    ///         Summing `ethSpent` across both venues therefore gives the protocol-wide ETH actually
+    ///         spent on buy-backs.
+    event CreatorTaxBurn(uint256 ethSpent, uint256 tokensBurned);
+
     //////////////////////// Errors //////////////////////
 
     error NotTokenOwner();

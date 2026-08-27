@@ -86,10 +86,6 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         first. `ethAmount` is the ETH proceeds routed through the earnings-allocation split.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
 
-    /// @notice Emitted when the burn-share of a swap-back is burned in token-space (before the swap),
-    ///         removing `tokenAmount` from the total supply. Only fired for tokens with `burnBps > 0`.
-    event CreatorTaxBurn(uint256 tokenAmount);
-
     /// @notice Thrown by the manual `swapBack` before graduation (no tax accrues / no pair yet), and by
     ///         `processLiquidity` (no pool to add to before graduation).
     error NotGraduated();
@@ -318,7 +314,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         uint256 burnAmount = tokenAmount * burnBps / BPS_TOTAL;
         if (burnAmount > 0) {
             _burn(address(this), burnAmount);
-            emit CreatorTaxBurn(burnAmount);
+            // `ethSpent` is 0: the burn happens in token-space, with no ETH→token round trip.
+            emit CreatorTaxBurn(0, burnAmount);
         }
 
         // Set aside the liquidity-share as TOKENS — kept on this contract (tracked by

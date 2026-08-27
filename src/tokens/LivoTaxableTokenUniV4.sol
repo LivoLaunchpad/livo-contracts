@@ -65,9 +65,6 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
 
     //////////////////////// Events & errors //////////////////////
 
-    /// @notice Emitted when accrued burn ETH is spent buying back and burning tokens via `processBurn`.
-    event CreatorTaxBurn(uint256 ethSpent, uint256 tokensBurned);
-
     error NothingToBurn();
     error NothingToAdd();
     error Reentrancy();
