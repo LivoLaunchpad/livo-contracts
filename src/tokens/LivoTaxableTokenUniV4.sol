@@ -65,6 +65,16 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
 
     //////////////////////// Events & errors //////////////////////
 
+    /// @notice Emitted immediately BEFORE `processBurn`'s buy-back swap, as a precursor marker.
+    /// @dev The buy-back is an ordinary pool swap, so `LivoSwapHook` emits a normal `LivoSwapBuy`
+    ///      carrying `tx.origin` — the keeper that triggered the call, not a trader. Without a marker an
+    ///      indexer credits that keeper with a buy it never made: the tokens go to this contract and are
+    ///      burned in the same call. Emitting BEFORE the swap is what makes it usable — the indexer can
+    ///      flag the buy as protocol-internal as it arrives, whereas `CreatorTaxBurn` lands after the
+    ///      swap, once the PnL update has already been applied. Mirrors the V2 swap-back, which is
+    ///      pre-flagged by the token's transfer to the pair.
+    event BuyBackInitiated(uint256 ethIn);
+
     error NothingToBurn();
     error NothingToAdd();
     error Reentrancy();
@@ -113,6 +123,9 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks {
 
         address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
         uint256 balanceBefore = balanceOf(address(this));
+        // Precursor marker: must stay BEFORE the swap so indexers can classify the resulting
+        // `LivoSwapHook.LivoSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
+        emit BuyBackInitiated(ethIn);
         _buyBackTokensWithEth(hook, ethIn, minTokensOut);
         uint256 tokensBought = balanceOf(address(this)) - balanceBefore;
 

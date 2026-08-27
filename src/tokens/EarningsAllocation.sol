@@ -76,12 +76,18 @@ abstract contract EarningsAllocation {
     ///      identical splits for the same config. The fund wallets take the remainder plus any residual a
     ///      leg leaves unconsumed, folded into one deposit. Pre-graduation the whole amount goes to the
     ///      fund wallets unchanged.
-    function _allocateEthEarnings(uint256 amount, uint256 burnShare, uint256 liquidityShare) internal {
-        if (amount == 0) return;
+    /// @return fundAmount The ETH actually deposited to the fund wallets — i.e. the slice that reaches
+    ///         the fee handler and shows up as creator fees. Callers emit it so off-chain accounting can
+    ///         separate creator fees from the token-earnings slices (burn / dividends / liquidity).
+    function _allocateEthEarnings(uint256 amount, uint256 burnShare, uint256 liquidityShare)
+        internal
+        returns (uint256 fundAmount)
+    {
+        if (amount == 0) return 0;
 
         if (!_earningsGraduated()) {
             _depositToFund(amount);
-            return;
+            return amount;
         }
 
         // Carve the burn/liquidity slices this venue takes from the ETH here; a venue that peeled them
@@ -105,6 +111,7 @@ abstract contract EarningsAllocation {
         if (liquidity > 0) fund += _handleLiquidity(liquidity);
         if (dividends > 0) fund += _handleDividends(dividends);
         if (fund > 0) _depositToFund(fund);
+        return fund;
     }
 
     /// @dev True once the token has graduated (a live pool exists). Implemented by the token.

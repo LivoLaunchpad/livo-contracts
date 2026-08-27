@@ -80,11 +80,19 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
     //////////////////////// Events //////////////////////
 
-    /// @notice Emitted whenever the contract auto- or manually-swaps accumulated tax tokens to ETH
-    ///         and forwards the proceeds to the master fee handler. `tokenAmountIn` is the amount
-    ///         actually swapped — i.e. net of any burn-share removed in-token by `CreatorTaxBurn`
-    ///         first. `ethAmount` is the ETH proceeds routed through the earnings-allocation split.
-    event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount);
+    /// @notice Emitted whenever the contract auto- or manually-swaps accumulated tax tokens to ETH and
+    ///         routes the proceeds through the earnings-allocation split.
+    /// @dev `tokenAmountIn` / `ethAmount` describe THIS SWAP exactly — the same token and native amounts
+    ///      the `UniswapV2Pair.Swap` in this tx carries — so an indexer can pair the two by amount and
+    ///      mark the swap as a protocol swap-back rather than a trader sell. `tokenAmountIn` is therefore
+    ///      net of any burn-share already removed in token-space (`CreatorTaxBurn`) and of the liquidity
+    ///      share set aside as tokens; `ethAmount` is the balance DELTA across the swap, not the contract
+    ///      balance, which may also hold router refunds from an earlier `processLiquidity`.
+    /// @dev `ethToFund` is the slice of the routed ETH that actually reached the fee handler, i.e. the
+    ///      creator fees. It differs from `ethAmount` for a token with a non-zero earnings allocation
+    ///      (the dividends slice is withheld, and any stray balance is swept in on top), so accounting
+    ///      must use this field and not `ethAmount`. The two are equal for a token with no allocation.
+    event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount, uint256 ethToFund);
 
     /// @notice Thrown by the manual `swapBack` before graduation (no tax accrues / no pair yet), and by
     ///         `processLiquidity` (no pool to add to before graduation).
@@ -327,12 +335,17 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         uint256 swapAmount = tokenAmount - burnAmount - liquidityAmount;
 
         // Sell the remainder for native via the per-chain venue: token→ETH on ETH-family, token→USDC on
-        // ARC. On ARC the received 6-dec USDC IS native balance, so the `address(this).balance` read
-        // below reflects the proceeds with no unwrap. `amountOutMinWei` is in quote decimals (18-dec
-        // ETH / 6-dec USDC); the auto path passes 0. See UniswapV2Venue.
+        // ARC. On ARC the received 6-dec USDC IS native balance, so the balance reads below reflect the
+        // proceeds with no unwrap. `amountOutMinWei` is in quote decimals (18-dec ETH / 6-dec USDC); the
+        // auto path passes 0. See UniswapV2Venue.
+        // Measured as a DELTA, not as the closing balance: the contract may already hold router refunds
+        // from an earlier `processLiquidity`, and the event must report this swap's own proceeds so an
+        // indexer can match it against the pair's `Swap`.
+        uint256 ethBefore = address(this).balance;
         if (swapAmount > 0) {
             UniswapV2Venue.swapTaxToNative(UNISWAP_V2_ROUTER, WETH, swapAmount, amountOutMinWei);
         }
+        uint256 ethFromSwap = address(this).balance - ethBefore;
 
         _inSwap = false;
         unchecked {
@@ -341,14 +354,15 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         swapbacksThisBlock = count;
         lastSwapbackBlock = uint48(block.number);
 
-        // Full ETH balance is this swap-back's proceeds plus any router refunds from a prior
+        // Route the FULL balance — this swap-back's proceeds plus any router refunds from a prior
         // `processLiquidity` (the liquidity slice is buffered as TOKENS, not ETH, so nothing to exclude).
-        uint256 ethBalance = address(this).balance;
-        emit CreatorTaxSwapback(swapAmount, ethBalance);
+        // Pass `0, 0`: both the burn AND the liquidity slices were already taken above in TOKEN-space, so
+        // `_allocateEthEarnings` carves no ETH burn/liquidity slice and renormalizes dividends/fund over
+        // the leftover. No-ops on a 0 balance.
+        uint256 ethToFund = _allocateEthEarnings(address(this).balance, 0, 0);
 
-        // Split the swapped-back ETH across the ETH-side buckets. Pass `0, 0`: both the burn AND the
-        // liquidity slices were already taken above in TOKEN-space, so `_allocateEthEarnings` carves no
-        // ETH burn/liquidity slice and renormalizes dividends/fund over the leftover. No-ops on 0 balance.
-        _allocateEthEarnings(ethBalance, 0, 0);
+        // Emitted after the split so the fund slice is known. `ethFromSwap` (this swap) and `ethToFund`
+        // (what reached the fee handler) are equal for a token with no earnings allocation.
+        emit CreatorTaxSwapback(swapAmount, ethFromSwap, ethToFund);
     }
 }
