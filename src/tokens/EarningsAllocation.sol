@@ -83,10 +83,22 @@ abstract contract EarningsAllocation {
         internal
         returns (uint256 fundAmount)
     {
+        fundAmount = _splitEthEarnings(amount, burnShare, liquidityShare);
+        if (fundAmount > 0) _depositToFund(fundAmount);
+    }
+
+    /// @dev `_allocateEthEarnings` minus the final fund deposit: dispatches the burn / liquidity /
+    ///      dividends legs and RETURNS the fund slice without depositing it. Exists so a caller can emit
+    ///      its own event between the split and the `CreatorFeesDeposited` the deposit emits (the V2
+    ///      swap-back must keep `CreatorTaxSwapback` first for the indexer). The caller MUST deposit the
+    ///      returned amount itself.
+    function _splitEthEarnings(uint256 amount, uint256 burnShare, uint256 liquidityShare)
+        internal
+        returns (uint256 fundAmount)
+    {
         if (amount == 0) return 0;
 
         if (!_earningsGraduated()) {
-            _depositToFund(amount);
             return amount;
         }
 
@@ -110,7 +122,6 @@ abstract contract EarningsAllocation {
         if (burn > 0) fund += _handleBurn(burn);
         if (liquidity > 0) fund += _handleLiquidity(liquidity);
         if (dividends > 0) fund += _handleDividends(dividends);
-        if (fund > 0) _depositToFund(fund);
         return fund;
     }
 

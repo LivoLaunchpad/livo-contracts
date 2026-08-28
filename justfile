@@ -87,13 +87,16 @@ _retarget taxlib gradsuffix="":
     @just _taxtoken {{taxlib}} "{{gradsuffix}}"
     @just _graduators "{{gradsuffix}}"
 
-# (internal) Repoints the two taxable-token impls' `DeploymentAddresses` import, and the V2 taxable
-# token's venue lib (swap-back path), to the target chain. Use a `chain-*` recipe.
+# (internal) Repoints the taxable-token impls' (and the V4 buy-backs mixin's) `DeploymentAddresses`
+# import, the V2 taxable token's venue lib (swap-back path), and the V4 token-side pool-constants lib
+# to the target chain. Use a `chain-*` recipe.
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
-        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
         src/tokens/LivoTaxableTokenUniV2.sol
+    sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
+        src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol
 
 # (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.

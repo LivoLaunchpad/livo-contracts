@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+// Self-aliased so the `chain-arc-*` recipes can import-swap it for the ARC pool constants.
+import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+// The repo vendors TWO v4-core copies: lib/v4-core (used by all Livo contracts, incl.
+// `UniswapV4PoolConstants.livoPoolKey`) and v4-periphery's own pin (which types `IV4Router`).
+// The structs are field-identical but nominally distinct, so the canonical key is converted at
+// this periphery boundary via an abi round-trip (see `_buyBackTokensWithEth`).
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 
-/// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
+/// this line below is swapped per target chain at deploy time (the addresses are compile-time
+/// constants baked into bytecode) — see the justfile `_taxtoken` recipe.
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title LivoUniv4BuyBacks
@@ -27,20 +31,14 @@ abstract contract LivoUniv4BuyBacks {
     /// @notice Universal-router command byte selecting a V4 swap.
     uint8 internal constant V4_SWAP_COMMAND = 0x10;
 
-    /// @dev Buys this token with `ethIn` native ETH on the pool `(ETH, this, LP_FEE, TICK_SPACING,
-    ///      hook)`, requiring at least `minTokensOut` (reverts on slippage). Tokens are TAKEn to this
-    ///      contract. The pool key mirrors `LivoGraduatorUniswapV4._getPoolKey` exactly, so the swap
-    ///      always hits the token's real graduated pool.
+    /// @dev Buys this token with `ethIn` native ETH on its canonical graduated pool
+    ///      (`UniswapV4PoolConstants.livoPoolKey` — the same key the graduator initialized), requiring at
+    ///      least `minTokensOut` (reverts on slippage). Tokens are TAKEn to this contract.
     /// @dev The swap routes through `LivoSwapHook`, which charges the usual LP fee (and, inside the tax
     ///      window, tax). Callers must guard against reentrancy from those hooks themselves.
     function _buyBackTokensWithEth(address hook, uint256 ethIn, uint256 minTokensOut) internal {
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(this)),
-            fee: UniswapV4PoolConstants.LP_FEE,
-            tickSpacing: UniswapV4PoolConstants.TICK_SPACING,
-            hooks: IHooks(hook)
-        });
+        // abi round-trip converts the canonical lib/v4-core key into v4-periphery's identical PoolKey.
+        PoolKey memory key = abi.decode(abi.encode(UniswapV4PoolConstants.livoPoolKey(address(this), hook)), (PoolKey));
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(

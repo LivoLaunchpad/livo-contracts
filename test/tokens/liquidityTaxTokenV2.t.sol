@@ -105,8 +105,18 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         liqToken.processLiquidity(0);
 
-        assertEq(liqToken.liquidityPendingTokens(), 0, "liquidity buffer drained");
+        // Per-call cap: at most 2*SWAP_THRESHOLD processed; the remainder stays buffered (this
+        // buffer exceeds the cap) and a same-block retry hits the cooldown.
+        uint256 cap = 2 * liqToken.SWAP_THRESHOLD();
+        assertEq(liqToken.liquidityPendingTokens(), pendingTokens - cap, "remainder stays buffered");
         assertGt(IERC20(pair).balanceOf(DEAD_ADDRESS), deadLpBefore, "LP minted and locked at the dead address");
+
+        vm.expectRevert(LivoTaxableTokenUniV2.ProcessCooldown.selector);
+        liqToken.processLiquidity(0);
+
+        vm.roll(block.number + 1);
+        liqToken.processLiquidity(0);
+        assertEq(liqToken.liquidityPendingTokens(), 0, "liquidity buffer drained");
     }
 
     /// @dev `LiquidityAdded` must report the router's ACTUAL amounts, not the requested ones. The
@@ -129,7 +139,9 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         liqToken.swapBack(taxBalance, 0);
 
         uint256 pendingTokens = liqToken.liquidityPendingTokens();
-        uint256 tokensRequested = pendingTokens - pendingTokens / 2; // the half retained for the LP side
+        uint256 cap = 2 * liqToken.SWAP_THRESHOLD();
+        uint256 processed = pendingTokens > cap ? cap : pendingTokens; // per-call cap
+        uint256 tokensRequested = processed - processed / 2; // the half retained for the LP side
 
         vm.recordLogs();
         liqToken.processLiquidity(0);

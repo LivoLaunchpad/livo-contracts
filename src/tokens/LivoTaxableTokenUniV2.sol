@@ -71,6 +71,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         of a new block; at `MAX_SWAPBACKS_PER_BLOCK` further same-block calls silent-no-op.
     uint8 public swapbacksThisBlock;
 
+    /// @notice `block.number` of the last `processLiquidity` — enforces its once-per-block cooldown
+    ///         (with the `2 * SWAP_THRESHOLD` per-call cap, bounds what a sandwich of the half-sell can
+    ///         extract per block). Packed with the swap-back counters above.
+    uint48 public lastLiquidityProcessBlock;
+
     /// @notice Tax TOKENS set aside for the liquidity allocation, awaiting a `processLiquidity` add. Held
     ///         in the token's own balance alongside not-yet-swapped tax, but tracked apart: the swap-back
     ///         paths subtract it so this committed slice is never re-processed as tax. V2 buffers liquidity
@@ -100,6 +105,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
 
     /// @notice Thrown by `processLiquidity` when there is no accrued liquidity ETH to add.
     error NothingToAdd();
+
+    /// @notice Thrown by `processLiquidity` when it already ran this block (once-per-block cooldown).
+    error ProcessCooldown();
 
     //////////////////////////////////////////////////////
 
@@ -159,7 +167,9 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @notice Turns the buffered liquidity TOKENS into a locked V2 LP position: sells half for ETH,
     ///         pairs the retained half with that ETH, and sends the LP to the dead address (permanent
     ///         depth). Permissionless, out-of-band (batches accruals off the swap hot path), mirroring the
-    ///         V4 `processLiquidity` and the burn `processBurn` async pattern.
+    ///         V4 `processLiquidity` and the burn `processBurn` async pattern. Processes at most
+    ///         `2 * SWAP_THRESHOLD` tokens per call, once per block (`ProcessCooldown`), capping what a
+    ///         sandwich of the half-sell can extract per block; the remainder stays buffered.
     /// @param amountOutMinWei Slippage floor for the half-sell, in QUOTE decimals (18-dec ETH on
     ///        ETH-family builds, 6-dec USDC on ARC) — the swap reverts if it yields less. Keepers
     ///        should set it from the current price (via a private mempool); 0 invites sandwiching of
@@ -171,9 +181,15 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///      swap-back (ETH) / the tax pool (tokens).
     function processLiquidity(uint256 amountOutMinWei) external {
         require(graduated, NotGraduated());
+        // Once per block + capped at the swap-back's own per-sell size: bounds what a sandwich of the
+        // half-sell can extract per manipulated block; the remainder stays buffered for later calls.
+        require(block.number > lastLiquidityProcessBlock, ProcessCooldown());
+        lastLiquidityProcessBlock = uint48(block.number);
+
         uint256 tokenIn = liquidityPendingTokens;
         require(tokenIn > 0, NothingToAdd());
-        liquidityPendingTokens = 0;
+        if (tokenIn > 2 * SWAP_THRESHOLD) tokenIn = 2 * SWAP_THRESHOLD;
+        liquidityPendingTokens -= tokenIn;
 
         _inSwap = true;
 
@@ -252,7 +268,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // `block.number` out of the transfer hook (Go+ flags such reads as a trading cooldown).
         if (isSell && from != graduator) {
             // Exclude the liquidity buffer: those tokens are committed to `processLiquidity`, not tax.
-            uint256 contractBalance = balanceOf(address(this)) - liquidityPendingTokens;
+            // Gated on `liquidityBps` (warm tax slot) so the common no-liquidity-allocation token skips
+            // the cold `liquidityPendingTokens` SLOAD on every sell.
+            uint256 contractBalance = balanceOf(address(this));
+            if (liquidityBps != 0) contractBalance -= liquidityPendingTokens;
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
                 _processCollectedTokens(swapAmount, 0);
@@ -357,12 +376,15 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // Route the FULL balance — this swap-back's proceeds plus any router refunds from a prior
         // `processLiquidity` (the liquidity slice is buffered as TOKENS, not ETH, so nothing to exclude).
         // Pass `0, 0`: both the burn AND the liquidity slices were already taken above in TOKEN-space, so
-        // `_allocateEthEarnings` carves no ETH burn/liquidity slice and renormalizes dividends/fund over
+        // `_splitEthEarnings` carves no ETH burn/liquidity slice and renormalizes dividends/fund over
         // the leftover. No-ops on a 0 balance.
-        uint256 ethToFund = _allocateEthEarnings(address(this).balance, 0, 0);
+        uint256 ethToFund = _splitEthEarnings(address(this).balance, 0, 0);
 
-        // Emitted after the split so the fund slice is known. `ethFromSwap` (this swap) and `ethToFund`
-        // (what reached the fee handler) are equal for a token with no earnings allocation.
+        // Emitted after the split (so the fund slice is known) but BEFORE the deposit, preserving the
+        // historical on-chain order `CreatorTaxSwapback` → `CreatorFeesDeposited` the indexer relies on.
+        // `ethFromSwap` (this swap) and `ethToFund` (what reaches the fee handler) are equal for a token
+        // with no earnings allocation.
         emit CreatorTaxSwapback(swapAmount, ethFromSwap, ethToFund);
+        if (ethToFund > 0) _depositToFund(ethToFund);
     }
 }

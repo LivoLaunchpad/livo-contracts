@@ -47,6 +47,11 @@ library DeploymentAddressesEthereumMainnet {
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev With the once-per-block cooldown, caps what a price-manipulation sandwich can extract from the
+    ///      earnings buffers per block; the remainder stays buffered for later calls.
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -91,6 +96,10 @@ library DeploymentAddressesEthereumSepolia {
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev See the mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -134,6 +143,10 @@ library DeploymentAddressesRobinhoodMainnet {
 
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
     /// @notice Livo Treasury (same address as Ethereum mainnet)
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
@@ -182,6 +195,10 @@ library DeploymentAddressesRobinhoodTestnet {
 
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
@@ -239,6 +256,11 @@ library DeploymentAddressesArcMainnet {
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev 400 native USDC ≈ 0.2 ETH under the ×2000 ARC repricing assumption. See the Ethereum
+    ///      mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
+
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -287,6 +309,11 @@ library DeploymentAddressesArcTestnet {
 
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev 400 native USDC ≈ 0.2 ETH under the ×2000 ARC repricing assumption. See the Ethereum
+    ///      mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
 
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;

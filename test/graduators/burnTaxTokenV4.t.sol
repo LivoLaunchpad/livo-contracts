@@ -80,6 +80,35 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         LivoTaxableTokenUniV4(payable(token)).processBurn(0);
     }
 
+    /// @dev Sandwich-extraction bound: at most `MAX_EARNINGS_PER_PROCESS` spent per call, once per block.
+    function test_v4ProcessBurn_cappedPerCallAndOncePerBlock() public {
+        address token = _createBurnTaxToken(400, 5000);
+        testToken = token;
+        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _graduateToken();
+
+        // Overfill the buffer past the per-call cap via a stray-ETH sweep (50% burn allocation).
+        vm.deal(address(burnToken), 1 ether);
+        burnToken.sweepStrayEth();
+        uint256 pending = burnToken.burnPendingEth();
+        uint256 cap = burnToken.MAX_EARNINGS_PER_PROCESS();
+        assertGt(pending, cap, "setup: buffer must exceed the cap");
+
+        burnToken.processBurn(0);
+        // At most `cap` spent; the remainder (plus any re-accrual from the buy-back's own fees) stays.
+        assertGe(burnToken.burnPendingEth(), pending - cap, "spend capped per call");
+
+        vm.expectRevert(LivoTaxableTokenUniV4.ProcessCooldown.selector);
+        burnToken.processBurn(0);
+
+        vm.roll(block.number + 1);
+        burnToken.processBurn(0); // next block processes again
+    }
+
     function test_v4SweepStrayEth_routesStrayToBurnBuffer() public {
         address token = _createBurnTaxToken(400, 5000);
         testToken = token;

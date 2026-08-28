@@ -263,13 +263,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /// @notice Constructs the Uniswap V4 PoolKey for a given token paired with native ETH
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {
-        return PoolKey({
-            currency0: Currency.wrap(address(0)), // native ETH
-            currency1: Currency.wrap(address(tokenAddress)),
-            fee: UniswapV4PoolConstants.LP_FEE,
-            tickSpacing: UniswapV4PoolConstants.TICK_SPACING,
-            hooks: IHooks(HOOK_ADDRESS)
-        });
+        return UniswapV4PoolConstants.livoPoolKey(tokenAddress, HOOK_ADDRESS);
     }
 
     /// @notice Adds primary and secondary liquidity positions

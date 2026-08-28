@@ -54,6 +54,10 @@ contract LivoUniV4LiquidityAdder is ILivoUniV4LiquidityAdder {
     error NoEthProvided();
     /// @notice Thrown when the requested tick width is not strictly positive.
     error InvalidTickWidth();
+    /// @notice Thrown by `addSingleSidedEthBelowPrice` when the current tick is so close to `MAX_TICK`
+    ///         (token price collapsed to the absolute tick boundary, ~1e-39 native per token) that no
+    ///         spacing-aligned range fits above it. Reverting leaves the caller's ETH with the caller.
+    error WallOutOfRange();
 
     constructor(address positionManager, address poolManager) {
         UNIV4_POSITION_MANAGER = IPositionManager(positionManager);
@@ -91,7 +95,14 @@ contract LivoUniV4LiquidityAdder is ILivoUniV4LiquidityAdder {
         require(tickWidth > 0, InvalidTickWidth());
         (, int24 currentTick,,) = UNIV4_POOL_MANAGER.getSlot0(key.toId());
         int24 tickLower = _ceilToSpacing(currentTick + 1, key.tickSpacing);
-        liquidity = _mintSingleSidedEth(key, tickLower, tickLower + tickWidth, nftReceiver, excessEthReceiver);
+        // Clamp the top to the highest spacing-aligned tick: a deeply depreciated pool (current tick
+        // within `tickWidth` of MAX_TICK) gets a narrower wall instead of a TickMath revert.
+        // forge-lint: disable-next-line(divide-before-multiply)
+        int24 maxUsableTick = (TickMath.MAX_TICK / key.tickSpacing) * key.tickSpacing;
+        int24 tickUpper = tickLower + tickWidth;
+        if (tickUpper > maxUsableTick) tickUpper = maxUsableTick;
+        require(tickLower < tickUpper, WallOutOfRange());
+        liquidity = _mintSingleSidedEth(key, tickLower, tickUpper, nftReceiver, excessEthReceiver);
     }
 
     /// @dev Sizes single-sided-ETH liquidity for `[tickLower, tickUpper]` from `msg.value` and mints it via
