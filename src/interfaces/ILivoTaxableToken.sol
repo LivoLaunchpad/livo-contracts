@@ -59,7 +59,8 @@ struct EarningsAllocationConfig {
 ///         by the allocation-aware `createToken` overload, which lifts the tax fields back into a
 ///         `TaxConfigs` for the shared creation pipeline and forwards `earningsAllocation` to
 ///         `initializeEarningsAllocation` at creation.
-/// @dev A non-zero allocation requires a taxable token — the split machinery lives on the taxable impl.
+/// @dev A non-zero allocation requires a token with a long-term static tax (`taxDurationSeconds != 0`);
+///      decay-only tokens are rejected by the factories (`EarningsAllocationRequiresTax`).
 ///      The leading fields mirror `TaxConfigs` exactly.
 struct TaxConfigsWithAllocation {
     uint16 buyTaxBps;

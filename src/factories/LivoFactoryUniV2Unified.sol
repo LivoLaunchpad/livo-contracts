@@ -162,9 +162,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         `TaxConfigsWithAllocation` that also carries the earnings-allocation split (burn /
     ///         dividends / liquidity bps; the fund wallets take the remainder). The split is stored on
     ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
-    ///         taxable token — `taxConfigs` must configure a tax or launch-decay — since the split
-    ///         machinery lives on the taxable impl. `dividendsBps` must be 0 until the dividends module
-    ///         ships (see `DividendsNotSupportedYet`).
+    ///         token with a LONG-TERM static tax (`taxDurationSeconds != 0`); a decay-only token is
+    ///         rejected — its tax window lasts minutes, so there is no earnings stream worth splitting.
+    ///         `dividendsBps` must be 0 until the dividends module ships (see `DividendsNotSupportedYet`).
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithAllocation calldata taxAllocationConfigs,
@@ -179,7 +179,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         require(alloc.dividendsBps == 0, DividendsNotSupportedYet());
 
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
-        if (hasAllocation) require(_isTaxConfigured(taxConfigs), EarningsAllocationRequiresTax());
+        if (hasAllocation) require(_hasStaticTax(taxConfigs), EarningsAllocationRequiresTax());
 
         // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
         _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);

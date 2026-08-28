@@ -680,6 +680,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         return t.taxDurationSeconds != 0 || t.taxDecayDuration != 0;
     }
 
+    /// @dev Whether the token configures a LONG-TERM static tax (a decay-only token returns false).
+    ///      Gate for the earnings allocation: the decay window is capped at 20 minutes, so a decay-only
+    ///      token has no meaningful post-graduation tax stream to split — its allocation would only ever
+    ///      apply to the LP-fee creator share, which is not what the split is for.
+    function _hasStaticTax(TaxConfigs memory t) internal pure returns (bool) {
+        return t.taxDurationSeconds != 0;
+    }
+
     /// @dev Buy tax (bps) the launchpad will charge on the deploy buy inside `createToken`. Only a
     ///      creation-anchored window (`startTaxFromLaunch`) is open at creation; a graduation-anchored
     ///      one charges no tax pre-graduation, so the deploy buy pays the LP fee alone. The deploy buy

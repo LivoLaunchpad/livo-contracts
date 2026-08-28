@@ -98,4 +98,37 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // 50% burn allocation → ~half the stray becomes burn buffer; the rest routes to the fund wallets.
         assertApproxEqAbs(burnToken.burnPendingEth() - pendingBefore, 0.5 ether, 1, "half of stray -> burn buffer");
     }
+
+    function test_createToken_revertsOnAllocationForDecayOnlyToken() public {
+        // The V4 factory carries its own copy of the gate: decay-only tokens (no long-term static tax)
+        // cannot configure an earnings allocation.
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "DecayOnly",
+            symbol: "DEC",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 0,
+            taxDurationSeconds: 0,
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 1000,
+            sellTaxDecayStartBps: 1000,
+            taxDecayDuration: 20 minutes,
+            earningsAllocation: EarningsAllocationConfig({burnBps: 5000, dividendsBps: 0, liquidityBps: 0})
+        });
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.EarningsAllocationRequiresTax.selector);
+        factoryTax.createToken(
+            setup,
+            cfg,
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+    }
 }

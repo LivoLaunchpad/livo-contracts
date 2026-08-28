@@ -136,8 +136,9 @@ interface ILivoFactory {
     error InvalidTaxConfig();
     error InvalidTaxBps();
     error InvalidTaxDuration();
-    /// @notice A non-zero earnings allocation was passed for a token that is not taxable. The split
-    ///         machinery lives on the taxable impl, so allocation requires a configured tax/decay.
+    /// @notice A non-zero earnings allocation was passed for a token with no long-term static tax
+    ///         (`taxDurationSeconds == 0`). Decay-only tokens are excluded on purpose: the decay window
+    ///         is capped at 20 minutes, so there is no post-graduation tax stream worth splitting.
     error EarningsAllocationRequiresTax();
     /// @notice A non-zero `dividendsBps` was passed. The dividends module has not shipped yet and tokens
     ///         are non-upgradeable clones, so the slice would silently fund-fallback for the token's whole
