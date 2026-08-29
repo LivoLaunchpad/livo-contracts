@@ -9,6 +9,8 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: rounds,
 ///         the minimum-balance share rule, threshold-gated freezing, the push payout, and the
@@ -379,6 +381,133 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token.sweepStrayEth();
         assertApproxEqAbs(token.roundPot(0), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "an undelivered pot is not stray ETH");
         assertGe(address(token).balance, 0.5 ether, "and is still backed by a real balance");
+    }
+
+    ///////////////////////// the exclusion set /////////////////////////
+
+    /// @dev The excluded set is written out TWICE in `LivoTaxableToken` — once as a predicate
+    ///      (`_dividendExcluded`) and once as an arithmetic subtraction (`_dividendEligibleSupply`) — and
+    ///      the two must name the same addresses. If they drift, the denominator counts a balance that
+    ///      can never be paid, and every round under-distributes by that much, forever.
+    /// @dev Asserted from outside via the only two things the pair is observable through: the opening
+    ///      `roundTotalShares` (the subtraction) and `dividendShares` per address (the predicate).
+    function test_theTwoExclusionListsAgree() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        IERC20 erc = IERC20(address(token));
+
+        address[4] memory excluded = [address(token), token.pair(), address(token.launchpad()), address(0xdEaD)];
+
+        uint256 expected = erc.totalSupply();
+        for (uint256 i; i < excluded.length; ++i) {
+            expected -= erc.balanceOf(excluded[i]);
+            assertEq(token.dividendShares(excluded[i]), 0, "an excluded address must carry no weight");
+        }
+
+        assertEq(
+            token.roundTotalShares(),
+            expected,
+            "the opening denominator is exactly supply minus the balances of the SAME four addresses"
+        );
+    }
+
+    /// @dev The graduator is deliberately NOT excluded — the round opens on the first earnings, by which
+    ///      point graduation is over and it holds only dust. Pinning that here so the decision (and the
+    ///      per-transfer SLOAD it avoids) is not quietly reversed.
+    function test_graduatorIsAnOrdinaryAddress_notExcluded() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        uint256 dust = IERC20(address(token)).balanceOf(token.graduator());
+        assertEq(token.dividendShares(token.graduator()), dust, "the graduator is counted like any holder");
+        assertLt(dust, GRADUATOR_DUST_TOLERANCE, "and what it still holds is dust, which is why that is safe");
+    }
+
+    ///////////////////////// the self-token leg /////////////////////////
+
+    /// @dev A graduated token paying its holders in ITSELF. On V4 this is the only leg that runs a swap:
+    ///      earnings arrive as ETH and `_acquireDividendAsset` buys the token back on its own pool,
+    ///      reusing the primitive `processBurn` uses.
+    function _graduatedSelfTokenDividendToken() internal returns (LivoTaxableTokenUniV4 token) {
+        address addr = _createDividendToken(5_000, [token_SELF(), address(0), address(0)], [uint16(10_000), 0, 0]);
+        testToken = addr;
+        _launchpadBuy(addr, 2 ether);
+        _graduateToken();
+        return LivoTaxableTokenUniV4(payable(addr));
+    }
+
+    /// @dev The whole V4 self-token path end to end: accrue ETH, buy the token back on its own pool at
+    ///      freeze time, and pay holders in tokens. Nothing else exercises `_acquireDividendAsset`'s V4
+    ///      override, so without this the leg is configurable but never executed.
+    function test_selfTokenLeg_boughtBackOnFreezeAndPaidInTokens() public {
+        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        _accrue(token, 1 ether);
+        assertEq(token.pendingNative(0), 0.5 ether, "the self-token leg buffers as ETH on V4");
+
+        uint256 holderBefore = IERC20(address(token)).balanceOf(buyer);
+        skip(token.MIN_ROUND_DURATION() + 1);
+        token.processDividends([uint256(0), 0, 0]);
+
+        uint256 pot = token.roundPot(0);
+        assertGt(pot, 0, "ETH was converted into the token itself");
+        assertEq(token.dividendTokens(0), address(token), "the pot is denominated in the token");
+        // A self-token leg swaps, so one freeze converts at most `MAX_DIVIDEND_PER_FREEZE`. What is left
+        // is the uncapped remainder plus the buy-back's own tax, which loops back in as fresh earnings.
+        assertApproxEqAbs(
+            token.pendingNative(0),
+            0.5 ether - token.MAX_DIVIDEND_PER_FREEZE(),
+            0.01 ether,
+            "the freeze took the cap, the remainder stayed buffered"
+        );
+
+        address[] memory holders = new address[](1);
+        holders[0] = buyer;
+        token.distributeDividends(holders);
+
+        assertGt(IERC20(address(token)).balanceOf(buyer), holderBefore, "the holder was paid in tokens");
+        assertApproxEqAbs(
+            IERC20(address(token)).balanceOf(buyer) - holderBefore, pot, GRADUATOR_DUST_TOLERANCE, "paid the whole pot"
+        );
+    }
+
+    /// @dev The buy-back is an ordinary pool swap, so `LivoSwapHook` emits a `LivoSwapBuy` crediting
+    ///      `tx.origin` — the keeper. `DividendBuyBackInitiated` must land BEFORE it so an indexer can
+    ///      classify that buy as protocol-internal as it arrives, rather than as a trade by the keeper.
+    function test_selfTokenBuyBack_isFlaggedBeforeTheSwap() public {
+        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        _accrue(token, 1 ether);
+        skip(token.MIN_ROUND_DURATION() + 1);
+
+        vm.recordLogs();
+        token.processDividends([uint256(0), 0, 0]);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 marker = keccak256("DividendBuyBackInitiated(uint256)");
+        bytes32 swapBuy = keccak256("LivoSwapBuy(address,address,uint256,uint256,uint256)");
+        uint256 markerAt = type(uint256).max;
+        uint256 swapAt = type(uint256).max;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == marker && markerAt == type(uint256).max) markerAt = i;
+            if (logs[i].topics[0] == swapBuy && swapAt == type(uint256).max) swapAt = i;
+        }
+
+        assertLt(markerAt, type(uint256).max, "the precursor marker was emitted");
+        assertLt(swapAt, type(uint256).max, "the hook's buy event was emitted");
+        assertLt(markerAt, swapAt, "the marker must precede the swap it flags");
+    }
+
+    /// @dev The self-token pot is the token's OWN balance, shared with the tax pool. It must be invisible
+    ///      to the swap-back accounting, or an undelivered pot would be re-processed as tax.
+    function test_selfTokenPot_isNotSweepableAsStray() public {
+        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        _accrue(token, 1 ether);
+        skip(token.MIN_ROUND_DURATION() + 1);
+        token.processDividends([uint256(0), 0, 0]);
+
+        uint256 pot = token.roundPot(0);
+        assertEq(token.committedDividends(address(token)), pot, "the pot is reported as committed");
+
+        // A rescue must not be able to reach it either: it is holders' money, not a stuck balance.
+        vm.prank(creator);
+        vm.expectRevert(LivoTaxableToken.CannotRescueSelfToken.selector);
+        token.rescueTokens(address(token));
     }
 
     /// @dev Helper: the "pay me in the token itself" sentinel.
