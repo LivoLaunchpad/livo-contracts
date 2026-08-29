@@ -51,9 +51,6 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         whales selling in the same block both get their tax routed.
     uint8 public constant MAX_SWAPBACKS_PER_BLOCK = 2;
 
-    /// @notice Where `processLiquidity` LP tokens are sent, permanently locking the added liquidity.
-    address internal constant DEAD_ADDRESS = address(0xdEaD);
-
     /////////////////////////// pure storage ///////////////////////
 
     /// @dev Re-entrancy guard for the swap-back path. When true, `_update` short-circuits the
@@ -82,6 +79,13 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     ///         as TOKENS (not ETH) because a V2 pair cannot deliver a token to its own address (INVALID_TO),
     ///         so the token side is kept, not bought back; `processLiquidity` sells only half for the ETH side.
     uint256 public liquidityPendingTokens;
+
+    /// @notice Tax TOKENS set aside for a SELF-TOKEN dividend leg, awaiting a `processDividends` freeze.
+    ///         V2 buffers this leg in token space, not as native, because a V2 pair reverts `INVALID_TO`
+    ///         when asked to deliver a token to its own address — the ETH round trip every other venue
+    ///         uses is simply not available here. Tracked apart from the tax pool for the same reason
+    ///         `liquidityPendingTokens` is: it shares this contract's balance but is already committed.
+    uint256 public dividendPendingTokens;
 
     //////////////////////// Events //////////////////////
 
@@ -267,11 +271,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // pre-funding `address(this)`). Per-block cap is enforced inside `_processCollectedTokens` to keep
         // `block.number` out of the transfer hook (Go+ flags such reads as a trading cooldown).
         if (isSell && from != graduator) {
-            // Exclude the liquidity buffer: those tokens are committed to `processLiquidity`, not tax.
-            // Gated on `liquidityBps` (warm tax slot) so the common no-liquidity-allocation token skips
-            // the cold `liquidityPendingTokens` SLOAD on every sell.
-            uint256 contractBalance = balanceOf(address(this));
-            if (liquidityBps != 0) contractBalance -= liquidityPendingTokens;
+            // Only the UNCOMMITTED balance is tax. `_sweepableAsset` is the single place that knows
+            // which buckets share this balance (liquidity buffer, self-token dividend buffer, an
+            // undelivered self-token dividend pot); a token with no allocation short-circuits inside it
+            // to a plain `balanceOf` plus one warm SLOAD.
+            uint256 contractBalance = _sweepableAsset(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
                 _processCollectedTokens(swapAmount, 0);
@@ -327,9 +331,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         }
         if (count >= MAX_SWAPBACKS_PER_BLOCK) return;
 
-        // Never process the committed liquidity buffer as tax: it shares this contract's token balance
-        // but is earmarked for `processLiquidity`. Clamp so the manual `swapBack` can't reach it either.
-        uint256 avail = balanceOf(address(this)) - liquidityPendingTokens;
+        // Never process a committed buffer as tax: the liquidity and self-token-dividend buffers share
+        // this contract's token balance but are already earmarked. Clamp so the manual `swapBack` can't
+        // reach them either.
+        uint256 avail = _sweepableAsset(address(this));
         if (tokenAmount > avail) tokenAmount = avail;
         if (tokenAmount == 0) return;
 
@@ -351,7 +356,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         uint256 liquidityAmount = tokenAmount * liquidityBps / BPS_TOTAL;
         if (liquidityAmount > 0) liquidityPendingTokens += liquidityAmount;
 
-        uint256 swapAmount = tokenAmount - burnAmount - liquidityAmount;
+        // Set aside a SELF-TOKEN dividend leg's share as TOKENS too, for the same reason: it cannot be
+        // bought back with ETH on V2. `_tokenSpaceDividendBps` is 0 unless such a leg is configured, and
+        // `_splitEthEarnings` excludes the same share from the ETH it later routes, so the slice is
+        // taken exactly once.
+        uint256 dividendAmount = tokenAmount * _tokenSpaceDividendBps() / BPS_TOTAL;
+        if (dividendAmount > 0) dividendPendingTokens += dividendAmount;
+
+        uint256 swapAmount = tokenAmount - burnAmount - liquidityAmount - dividendAmount;
 
         // Sell the remainder for native via the per-chain venue: token→ETH on ETH-family, token→USDC on
         // ARC. On ARC the received 6-dec USDC IS native balance, so the balance reads below reflect the
@@ -373,12 +385,15 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         swapbacksThisBlock = count;
         lastSwapbackBlock = uint48(block.number);
 
-        // Route the FULL balance — this swap-back's proceeds plus any router refunds from a prior
-        // `processLiquidity` (the liquidity slice is buffered as TOKENS, not ETH, so nothing to exclude).
+        // Route the whole UNCOMMITTED balance — this swap-back's proceeds plus any router refunds from a
+        // prior `processLiquidity`. `_sweepableNative` is what keeps the accrued native dividend buffers
+        // and undelivered pots out of it: this branch fires automatically on every sell that triggers a
+        // swap-back, so reading the raw balance here would re-split the dividend money into
+        // fund/burn/liquidity on every trade, with no attacker and no privilege required.
         // Pass `0, 0`: both the burn AND the liquidity slices were already taken above in TOKEN-space, so
         // `_splitEthEarnings` carves no ETH burn/liquidity slice and renormalizes dividends/fund over
         // the leftover. No-ops on a 0 balance.
-        uint256 ethToFund = _splitEthEarnings(address(this).balance, 0, 0);
+        uint256 ethToFund = _splitEthEarnings(_sweepableNative(), 0, 0);
 
         // Emitted after the split (so the fund slice is known) but BEFORE the deposit, preserving the
         // historical on-chain order `CreatorTaxSwapback` → `CreatorFeesDeposited` the indexer relies on.
@@ -386,5 +401,53 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         // with no earnings allocation.
         emit CreatorTaxSwapback(swapAmount, ethFromSwap, ethToFund);
         if (ethToFund > 0) _depositToFund(ethToFund);
+    }
+
+    /// @dev On V2 a leg paying the token ITSELF must be buffered in token space: `UniswapV2Pair.swap`
+    ///      reverts `INVALID_TO` when the recipient is one of the pair's own tokens, so there is no
+    ///      ETH -> self-token route to buy it back with.
+    function _isTokenSpaceDividendAsset(address asset) internal view override returns (bool) {
+        return asset == address(this);
+    }
+
+    /// @dev The share of total earnings the self-token dividend leg takes, in token space. Derived on
+    ///      read from the two configured values rather than cached: it is only needed on the swap-back
+    ///      path, and a cached copy would be a third place for the allocation to disagree with itself.
+    function _tokenSpaceDividendBps() internal view override returns (uint256) {
+        uint8 leg = tokenSpaceLeg;
+        if (leg == NO_TOKEN_SPACE_LEG) return 0;
+        return uint256(dividendsBps) * dividendWeightsBps[leg] / BPS_TOTAL;
+    }
+
+    /// @dev Freezes the self-token leg straight out of its token buffer — no conversion, no slippage.
+    ///      Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply size the swap-back amortises
+    ///      against) because the buffer is denominated in tokens, not native. Every other leg is native
+    ///      and goes through the base.
+    function _freezeLeg(uint256 leg, address asset, uint256 minOut)
+        internal
+        override
+        returns (uint256 nativeIn, uint256 out)
+    {
+        if (asset != address(this)) return super._freezeLeg(leg, asset, minOut);
+
+        uint256 buffered = dividendPendingTokens;
+        if (buffered == 0) return (0, 0);
+        if (buffered < SWAP_THRESHOLD && _taxWindowActive()) return (0, 0);
+
+        dividendPendingTokens = 0;
+        return (0, buffered);
+    }
+
+    /// @dev The token's own balance is shared by the tax pool, the liquidity buffer, the self-token
+    ///      dividend buffer and any undelivered self-token dividend pot. Everything that asks "how much
+    ///      of this is unspoken for" asks here.
+    function _sweepableAsset(address asset) internal view override returns (uint256) {
+        if (asset != address(this)) return super._sweepableAsset(asset);
+
+        uint256 balance = balanceOf(address(this));
+        // Gated on warm-slot flags so a token with no allocation pays for no cold SLOAD here.
+        uint256 reserved = liquidityBps != 0 ? liquidityPendingTokens : 0;
+        if (hasDividends) reserved += dividendPendingTokens + committedDividends(address(this));
+        return balance > reserved ? balance - reserved : 0;
     }
 }

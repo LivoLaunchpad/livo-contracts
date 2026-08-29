@@ -59,4 +59,23 @@ library UniswapV2VenueArc {
             amountIn, minOut, path, address(this), block.timestamp
         );
     }
+
+    /// @notice Spends `nativeValue` (18-dec native USDC) buying the asset at the end of `path`,
+    ///         delivering it to `address(this)`. Native USDC and its 6-dec ERC-20 alias share one
+    ///         balance, so the swap is a plain two-ERC20 hop out of the 6-dec side — no wrap, and the
+    ///         debit shows up as a drop in `address(this).balance`.
+    /// @param minOut minimum output in the ASSET's own decimals.
+    function swapNativeToAsset(
+        IUniswapV2Router router,
+        address quote,
+        address[] memory path,
+        uint256 nativeValue,
+        uint256 minOut
+    ) internal {
+        uint256 usdc6 = nativeValue / QUOTE_TO_NATIVE_SCALE;
+        IERC20(quote).forceApprove(address(router), usdc6);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            usdc6, minOut, path, address(this), block.timestamp
+        );
+    }
 }

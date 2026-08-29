@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
+import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableToken, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
@@ -23,8 +24,16 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 ///      the V2 subclass's swap-back counters now occupy the FOLLOWING slot (a negligible extra cold
 ///      SLOAD only in the swap-back path). Subclasses that add their own state must do so AFTER these
 ///      fields to preserve clone-storage layout.
-abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllocation {
+/// @dev ⚠️ `DividendDistribution` is listed BEFORE `EarningsAllocation` on purpose: inheritance lays
+///      base storage out in declaration order, so putting it after would wedge its state between the
+///      allocation bps and the tax fields and break the packing described above.
+abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDistribution, EarningsAllocation {
     using SafeERC20 for IERC20;
+
+    /// @notice Where `processLiquidity` locks LP tokens, and an address users sometimes send tokens to by
+    ///         hand. Excluded from dividends for the latter reason only — the token's own burns go to
+    ///         `address(0)` via `_burn`, so this is not a burn sink.
+    address internal constant DEAD_ADDRESS = address(0xdEaD);
 
     //////////////////////// potentially immutable //////////////////
 
@@ -148,11 +157,15 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
     ///      Rescued ERC20s go to `owner` (which may be `address(0)`, in which case the transfer reverts —
     ///      acceptable, as a stuck-balance rescue with no recipient is a no-op anyway).
     /// @param token ERC20 to rescue. `address(this)` and `address(0)` both revert.
+    /// @dev ⚠️ Rescues only what `_sweepableAsset` says is unclaimed. A dividend payout asset sits in
+    ///      this same balance, and handing an undistributed pot to the owner would not lose it — it would
+    ///      TRANSFER it from holders to the owner, which is worse. Never open-code
+    ///      `IERC20(token).balanceOf(address(this))` on a sweep path.
     function rescueTokens(address token) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         // disallow rescuing the token's own balance to prevent siphoning accrued taxes
         require(token != address(this), CannotRescueSelfToken());
-        IERC20(token).safeTransfer(owner, IERC20(token).balanceOf(address(this)));
+        IERC20(token).safeTransfer(owner, _sweepableAsset(token));
     }
 
     /// @notice Updates `buyTaxBps` and/or `sellTaxBps`. Today this is decrease-only — any attempt
@@ -187,6 +200,27 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
+    /// @notice Same as the three-bps overload, plus the dividend payout configuration: which assets the
+    ///         dividends slice buys and how it divides across them. Kept as a separate overload so the
+    ///         original signature stays untouched.
+    /// @dev `hasDividends` is what actually turns the feature on. It lives on `LivoToken`, packed into
+    ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
+    ///      nothing for the feature on any transfer.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[3] calldata _dividendTokens,
+        uint16[3] calldata _dividendWeightsBps
+    ) external {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            _initializeDividends(_dividendTokens, _dividendWeightsBps);
+            hasDividends = true;
+        }
+    }
+
     /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the
     ///         earnings-allocation split before they reach the fund wallets. Overrides the base
     ///         passthrough; see `EarningsAllocation`.
@@ -207,6 +241,110 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, EarningsAllo
     ///      earnings took before the allocation split was introduced.
     function _depositToFund(uint256 amount) internal override {
         ILivoMasterFeeHandler(feeHandler).depositFees{value: amount}(address(this));
+    }
+
+    /// @dev Dividends accrue as native into the packed per-leg buffer — one SSTORE for all three legs,
+    ///      well inside the router gas budget — and are converted out-of-band by `processDividends`.
+    ///      A token with no dividend configuration has a zero native weight total, so this consumes
+    ///      nothing and the slice folds back to the fund wallets.
+    function _handleDividends(uint256 amount) internal override returns (uint256 unconsumed) {
+        return _accrueDividends(amount);
+    }
+
+    /// @inheritdoc EarningsAllocation
+    /// @dev Opens the token's FIRST dividend round, on the first earnings it ever routes — not at
+    ///      creation, and not at graduation:
+    ///        - creation is too early: the launchpad holds the whole supply then, so the round would
+    ///          open with an almost-empty denominator and every bonding-curve buyer would look like a
+    ///          mid-round arrival worth zero.
+    ///        - `markGraduated()` is too early too, less obviously. It runs while the GRADUATOR still
+    ///          holds the entire graduating supply, so the opening denominator would count a bag handed
+    ///          to the pool moments later in the same transaction. Excluding the graduator would fix
+    ///          that — at the price of an `SLOAD` on every transfer for the life of the token, to
+    ///          neutralise an address that can never be paid anyway (it ends graduation at 0 on V2 and
+    ///          at a few thousand wei on V4, far under the dust floor). Not worth it.
+    ///      By the time earnings arrive the graduation transaction is over and the token is in its
+    ///      steady state, so the snapshot is clean and the hot path never learns the graduator exists.
+    /// @dev Hooked HERE rather than in `_handleDividends` so the Uniswap-V2 self-token leg is covered
+    ///      too: that leg is carved in token space and never reaches `_handleDividends`, so a token
+    ///      paying only in itself would otherwise never open a round.
+    /// @dev One-off cost: four `balanceOf` reads and two SSTOREs, once per token, inside the router's
+    ///      gas budget. If it ever ran out of gas the fee falls through to the treasury and the next
+    ///      accrual opens the round instead — self-healing, not a one-shot.
+    function _onGraduatedEarnings() internal override {
+        if (hasDividends && currentRound == 0) _openDividendRound();
+    }
+
+    //////////////////////// DIVIDEND HOOKS //////////////////////
+
+    /// @inheritdoc LivoToken
+    function _onBalanceChange(address from, address to, uint256 amount) internal override {
+        _trackDividendShares(from, to, amount);
+    }
+
+    /// @inheritdoc DividendDistribution
+    function _dividendBalanceOf(address account) internal view override returns (uint256) {
+        return balanceOf(account);
+    }
+
+    /// @inheritdoc DividendDistribution
+    /// @dev Exactly four addresses, and every one of them is either free to test (`address(this)`, the
+    ///      `DEAD_ADDRESS` constant) or already in the warm slot `_update` loads (`pair`). Nothing here
+    ///      costs a cold read.
+    /// @dev Nothing else needs listing, and that is the minimum rule paying for itself: the V4 position
+    ///      manager, the routers, the liquidity adder and the GRADUATOR all hold a balance only within a
+    ///      single transaction, and an address that is empty when a round opens is worth zero for that
+    ///      whole round however much it holds in between. The exclusion list only has to name addresses
+    ///      that hold a balance CONTINUOUSLY across a round. (This is also why the first round opens on
+    ///      the first earnings rather than inside `markGraduated()` — see `_handleDividends`.)
+    /// @dev Creator vaults are deliberately NOT here: they hold a real, merely-vested team allocation
+    ///      continuously across rounds, so they are ordinary holders (and `LivoCreatorVault` accepts and
+    ///      can sweep whatever it is paid).
+    function _dividendExcluded(address account) internal view override returns (bool) {
+        return account == address(this) || account == pair || account == address(launchpad) || account == DEAD_ADDRESS;
+    }
+
+    /// @inheritdoc DividendDistribution
+    function _dividendEligibleSupply() internal view override returns (uint256) {
+        return totalSupply() - balanceOf(pair) - balanceOf(address(this)) - balanceOf(address(launchpad))
+            - balanceOf(DEAD_ADDRESS);
+    }
+
+    /// @inheritdoc DividendDistribution
+    /// @dev Swap tax is the one earnings source guaranteed to stop, so the base answer is the tax
+    ///      window. A venue with a second, unending source overrides this.
+    function _dividendEarningsMayStillArrive() internal view virtual override returns (bool) {
+        return _taxWindowActive();
+    }
+
+    //////////////////////// COMMITTED FUNDS //////////////////////
+
+    /// @notice Native balance that is genuinely stray — not owed to anyone — and may therefore be swept
+    ///         back through the earnings split.
+    /// @dev Every sweep and swap-back path MUST route through this instead of reading
+    ///      `address(this).balance`. Three call sites used to subtract their own buckets by hand; a
+    ///      fourth bucket (the dividend pots) is exactly the kind of addition that gets forgotten in one
+    ///      of them, and the failure mode is not a lost balance but a silent transfer of holders' money
+    ///      to the creator's fee receivers.
+    function _sweepableNative() internal view returns (uint256) {
+        uint256 reserved = _reservedNative();
+        uint256 balance = address(this).balance;
+        return balance > reserved ? balance - reserved : 0;
+    }
+
+    /// @notice ERC20 balance of `asset` that is not owed to dividend holders.
+    function _sweepableAsset(address asset) internal view virtual returns (uint256) {
+        uint256 balance = IERC20(asset).balanceOf(address(this));
+        if (!hasDividends) return balance;
+        uint256 reserved = committedDividends(asset);
+        return balance > reserved ? balance - reserved : 0;
+    }
+
+    /// @dev Native this contract holds on someone else's behalf. Venues extend it with their own
+    ///      buffers; the base covers the dividend buffers and the undelivered dividend pots.
+    function _reservedNative() internal view virtual returns (uint256) {
+        if (!hasDividends) return 0;
+        return pendingNativeDividends() + committedDividends(address(0));
     }
 
     //////////////////////// VIEW FUNCTIONS //////////////////////

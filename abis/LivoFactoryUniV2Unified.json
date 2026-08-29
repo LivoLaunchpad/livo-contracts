@@ -1139,6 +1139,16 @@
                 "name": "liquidityBps",
                 "type": "uint16",
                 "internalType": "uint16"
+              },
+              {
+                "name": "dividendTokens",
+                "type": "address[3]",
+                "internalType": "address[3]"
+              },
+              {
+                "name": "dividendWeightsBps",
+                "type": "uint16[3]",
+                "internalType": "uint16[3]"
               }
             ]
           }
@@ -1762,6 +1772,11 @@
   {
     "type": "error",
     "name": "CreatorVaultDistributionFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DividendsNotSupportedYet",
     "inputs": []
   },
   {

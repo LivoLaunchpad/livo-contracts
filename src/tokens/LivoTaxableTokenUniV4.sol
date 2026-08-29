@@ -88,6 +88,14 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
     ///      pre-flagged by the token's transfer to the pair.
     event BuyBackInitiated(uint256 ethIn);
 
+    /// @notice Emitted immediately BEFORE the buy-back swap that funds a SELF-TOKEN dividend leg. Same
+    ///         job as `BuyBackInitiated`, for the same reason: the swap is an ordinary pool swap, so
+    ///         `LivoSwapHook` emits a `LivoSwapBuy` carrying `tx.origin` — the keeper that called
+    ///         `processDividends` — and without a precursor marker an indexer credits that keeper with a
+    ///         buy it never made. Kept as its own event rather than reusing `BuyBackInitiated` so the two
+    ///         protocol buy-backs stay distinguishable off-chain (one shrinks supply, one pays holders).
+    event DividendBuyBackInitiated(uint256 ethIn);
+
     error NothingToBurn();
     error NothingToAdd();
     error ProcessCooldown();
@@ -156,8 +164,11 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
     ///         liquidity, plus its own burn slice). No-ops when there is nothing stray.
     function sweepStrayEth() external nonReentrant {
         // Stray ETH is treated as fresh V4 earnings, so carve its burn and liquidity shares on the ETH
-        // side too. The burn and liquidity buffers are committed ETH, not stray, so they are excluded.
-        _allocateEthEarnings(address(this).balance - burnPendingEth - liquidityPendingEth, burnBps, liquidityBps);
+        // side too. What is NOT stray — the burn/liquidity buffers and the dividend buffers and pots —
+        // is excluded by `_sweepableNative`. This call is permissionless and repeatable, so open-coding
+        // the subtraction here would let anyone recycle the dividend pot through the split and hand the
+        // fund-wallet slice of it to the creator on every call.
+        _allocateEthEarnings(_sweepableNative(), burnBps, liquidityBps);
     }
 
     /// @notice Deposits the accrued liquidity ETH as a single-sided ETH position just below the current
@@ -224,5 +235,41 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
     function _handleLiquidity(uint256 amount) internal override returns (uint256) {
         liquidityPendingEth += amount;
         return 0;
+    }
+
+    /// @dev The burn and liquidity buffers are committed ETH, not stray, and neither is the dividend
+    ///      money the base already accounts for.
+    function _reservedNative() internal view override returns (uint256) {
+        return super._reservedNative() + burnPendingEth + liquidityPendingEth;
+    }
+
+    /// @dev Adds the SELF-TOKEN payout shape: V4 is ETH-native, so a leg paying the token itself buys it
+    ///      back on the token's own pool, reusing the same primitive `processBurn` uses. Native and
+    ///      third-token legs fall through to the base.
+    /// @dev The precursor event must stay BEFORE the swap: an indexer has to classify the resulting
+    ///      `LivoSwapHook.LivoSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
+    ///      the swap lands once the keeper's PnL has already been updated.
+    function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
+        internal
+        override
+        returns (uint256)
+    {
+        if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
+
+        address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
+        uint256 balanceBefore = balanceOf(address(this));
+        emit DividendBuyBackInitiated(nativeIn);
+        _buyBackTokensWithEth(hook, nativeIn, minOut);
+        return balanceOf(address(this)) - balanceBefore;
+    }
+
+    /// @inheritdoc LivoTaxableToken
+    /// @dev V4 earnings never stop: the creator's share of LP fees keeps arriving through `accrueFees`
+    ///      long after the tax window closes, so the tax window is the wrong question here. Letting the
+    ///      `DIVIDEND_THRESHOLD` bypass open would hand anyone a cheap round-stall — freeze a wei-sized
+    ///      pot, every holder's share rounds to zero, and the round cannot settle until `PAYOUT_WINDOW`
+    ///      expires while the real accrual waits in `pendingNative`.
+    function _dividendEarningsMayStillArrive() internal view override returns (bool) {
+        return true;
     }
 }

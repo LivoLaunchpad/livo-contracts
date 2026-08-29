@@ -29,7 +29,13 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({burnBps: burnBps, dividendsBps: 0, liquidityBps: 0})
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: burnBps,
+                dividendsBps: 0,
+                liquidityBps: 0,
+                dividendTokens: [address(0), address(0), address(0)],
+                dividendWeightsBps: [uint16(0), 0, 0]
+            })
         });
         vm.prank(creator);
         token = factoryTax.createToken(
@@ -146,7 +152,13 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 1000,
             sellTaxDecayStartBps: 1000,
             taxDecayDuration: 20 minutes,
-            earningsAllocation: EarningsAllocationConfig({burnBps: 5000, dividendsBps: 0, liquidityBps: 0})
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: 5000,
+                dividendsBps: 0,
+                liquidityBps: 0,
+                dividendTokens: [address(0), address(0), address(0)],
+                dividendWeightsBps: [uint16(0), 0, 0]
+            })
         });
         vm.prank(creator);
         vm.expectRevert(ILivoFactory.EarningsAllocationRequiresTax.selector);

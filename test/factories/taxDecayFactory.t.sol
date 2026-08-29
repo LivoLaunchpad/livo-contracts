@@ -211,7 +211,13 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
             buyTaxDecayStartBps: t.buyTaxDecayStartBps,
             sellTaxDecayStartBps: t.sellTaxDecayStartBps,
             taxDecayDuration: t.taxDecayDuration,
-            earningsAllocation: EarningsAllocationConfig({burnBps: burnBps, dividendsBps: 0, liquidityBps: 0})
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: burnBps,
+                dividendsBps: 0,
+                liquidityBps: 0,
+                dividendTokens: [address(0), address(0), address(0)],
+                dividendWeightsBps: [uint16(0), 0, 0]
+            })
         });
     }
 

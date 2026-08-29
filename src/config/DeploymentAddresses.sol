@@ -52,6 +52,17 @@ library DeploymentAddressesEthereumMainnet {
     ///      earnings buffers per block; the remainder stays buffered for later calls.
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
+    /// @notice Minimum accrued native amount a single dividend leg must hold before
+    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
+    ///         window has closed, so a sub-threshold residual can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
+
+    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
+    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
+    ///         which case the factories reject any third-token dividend asset at creation.
+    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -100,6 +111,17 @@ library DeploymentAddressesEthereumSepolia {
     /// @dev See the mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
+    /// @notice Minimum accrued native amount a single dividend leg must hold before
+    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
+    ///         window has closed, so a sub-threshold residual can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
+
+    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
+    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
+    ///         which case the factories reject any third-token dividend asset at creation.
+    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -147,6 +169,17 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
     /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
+    /// @notice Minimum accrued native amount a single dividend leg must hold before
+    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
+    ///         window has closed, so a sub-threshold residual can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
+
+    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
+    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
+    ///         which case the factories reject any third-token dividend asset at creation.
+    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
     /// @notice Livo Treasury (same address as Ethereum mainnet)
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
@@ -199,6 +232,17 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
     /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
+    /// @notice Minimum accrued native amount a single dividend leg must hold before
+    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
+    ///         window has closed, so a sub-threshold residual can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
+
+    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
+    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
+    ///         which case the factories reject any third-token dividend asset at creation.
+    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
@@ -261,6 +305,17 @@ library DeploymentAddressesArcMainnet {
     ///      mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
 
+    /// @notice Minimum accrued native amount a single dividend leg must hold before
+    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
+    ///         window has closed, so a sub-threshold residual can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 250e18;
+
+    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
+    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
+    ///         which case the factories reject any third-token dividend asset at creation.
+    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -314,6 +369,17 @@ library DeploymentAddressesArcTestnet {
     /// @dev 400 native USDC ≈ 0.2 ETH under the ×2000 ARC repricing assumption. See the Ethereum
     ///      mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
+
+    /// @notice Minimum accrued native amount a single dividend leg must hold before
+    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
+    ///         window has closed, so a sub-threshold residual can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 250e18;
+
+    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
+    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
+    ///         which case the factories reject any third-token dividend asset at creation.
+    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;

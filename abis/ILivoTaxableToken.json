@@ -441,6 +441,39 @@
   },
   {
     "type": "function",
+    "name": "initializeEarningsAllocation",
+    "inputs": [
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendsBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendTokens",
+        "type": "address[3]",
+        "internalType": "address[3]"
+      },
+      {
+        "name": "dividendWeightsBps",
+        "type": "uint16[3]",
+        "internalType": "uint16[3]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "launchTimestamp",
     "inputs": [],
     "outputs": [

@@ -5,6 +5,7 @@ import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/lau
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -36,7 +37,13 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({burnBps: 0, dividendsBps: 0, liquidityBps: liquidityBps})
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: 0,
+                dividendsBps: 0,
+                liquidityBps: liquidityBps,
+                dividendTokens: [address(0), address(0), address(0)],
+                dividendWeightsBps: [uint16(0), 0, 0]
+            })
         });
         vm.prank(creator);
         token = factoryV2Unified.createToken(
@@ -49,9 +56,9 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(LivoTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
     }
 
-    /// @dev The dividends module has not shipped and tokens are non-upgradeable clones, so a non-zero
-    ///      `dividendsBps` would silently fund-fallback for the token's whole life. Reject at creation.
-    function test_createToken_revertsOnNonZeroDividendsBps() public {
+    /// @dev A non-zero `dividendsBps` with no payout configuration would leave the slice accruing into
+    ///      legs that can never be funded, forever — tokens are non-upgradeable clones. Reject at creation.
+    function test_createToken_revertsOnDividendsWithoutPayoutConfig() public {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivV2",
             symbol: "DV2",
@@ -67,10 +74,16 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({burnBps: 0, dividendsBps: 1, liquidityBps: 0})
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: 0,
+                dividendsBps: 1,
+                liquidityBps: 0,
+                dividendTokens: [address(0), address(0), address(0)],
+                dividendWeightsBps: [uint16(0), 0, 0]
+            })
         });
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.DividendsNotSupportedYet.selector);
+        vm.expectRevert(DividendDistribution.InvalidDividendConfig.selector);
         factoryV2Unified.createToken(
             setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
         );

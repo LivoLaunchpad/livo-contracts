@@ -46,13 +46,18 @@ struct TaxConfigs {
 /// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
 ///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions. The
 ///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
-/// @dev `dividendsBps` MUST be 0 today: the dividends module has not shipped, and the factories reject a
-///      non-zero value (`DividendsNotSupportedYet`). The field stays in the struct so the ABI does not
-///      break when the module lands.
+/// @dev A non-zero `dividendsBps` also needs the two payout fields: `dividendTokens` names up to three
+///      assets holders are paid in and `dividendWeightsBps` says how the dividends slice divides across
+///      them (summing to 10 000, left-packed). An asset may be `address(0)` for native,
+///      `DividendDistribution.DIVIDEND_SELF_TOKEN` for the token itself, or any ERC20 with a curated
+///      route in the protocol's `SwapRouteRegistry` — the token rejects anything else at creation, since
+///      a clone cannot be patched afterwards.
 struct EarningsAllocationConfig {
     uint16 burnBps;
     uint16 dividendsBps;
     uint16 liquidityBps;
+    address[3] dividendTokens;
+    uint16[3] dividendWeightsBps;
 }
 
 /// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split. Consumed
@@ -107,4 +112,15 @@ interface ILivoTaxableToken is ILivoToken {
     ///         liquidity bps; the fund wallets take the remainder). Guarded by the transient factory,
     ///         so it is only callable during the deploy tx.
     function initializeEarningsAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) external;
+
+    /// @notice Same as above plus the dividend payout configuration (which assets the dividends slice
+    ///         buys, and how it divides across them). Separate overload so the original signature is
+    ///         untouched.
+    function initializeEarningsAllocation(
+        uint16 burnBps,
+        uint16 dividendsBps,
+        uint16 liquidityBps,
+        address[3] calldata dividendTokens,
+        uint16[3] calldata dividendWeightsBps
+    ) external;
 }

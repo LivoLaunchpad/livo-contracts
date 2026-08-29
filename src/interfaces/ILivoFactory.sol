@@ -140,9 +140,10 @@ interface ILivoFactory {
     ///         (`taxDurationSeconds == 0`). Decay-only tokens are excluded on purpose: the decay window
     ///         is capped at 20 minutes, so there is no post-graduation tax stream worth splitting.
     error EarningsAllocationRequiresTax();
-    /// @notice A non-zero `dividendsBps` was passed. The dividends module has not shipped yet and tokens
-    ///         are non-upgradeable clones, so the slice would silently fund-fallback for the token's whole
-    ///         life. Rejected at creation until the module exists.
+    /// @notice DEPRECATED and no longer thrown: the dividends module has shipped. Kept so the ABI is not
+    ///         rewritten under integrators that already decode it. A misconfigured dividend allocation now
+    ///         reverts inside the token instead, with `DividendDistribution.InvalidDividendConfig` or
+    ///         `UnsupportedDividendAsset`.
     error DividendsNotSupportedYet();
     error TooManyCreatorVaults();
     error InvalidCreatorVault();

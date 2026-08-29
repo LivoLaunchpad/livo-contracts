@@ -43,4 +43,20 @@ library UniswapV2Venue {
             amountIn, minOut, path, address(this), block.timestamp
         );
     }
+
+    /// @notice Spends `nativeValue` (18-dec native) buying the asset at the end of `path`, delivering it
+    ///         to `address(this)`. `path` comes from the protocol's `SwapRouteRegistry`; on ETH-family
+    ///         chains it must start at WETH, which `swapExactETHForTokens…` wraps implicitly.
+    /// @param minOut minimum output in the ASSET's own decimals.
+    function swapNativeToAsset(
+        IUniswapV2Router router,
+        address, /*quote*/
+        address[] memory path,
+        uint256 nativeValue,
+        uint256 minOut
+    ) internal {
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: nativeValue}(
+            minOut, path, address(this), block.timestamp
+        );
+    }
 }

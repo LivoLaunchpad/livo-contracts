@@ -164,7 +164,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
     ///         token with a LONG-TERM static tax (`taxDurationSeconds != 0`); a decay-only token is
     ///         rejected — its tax window lasts minutes, so there is no earnings stream worth splitting.
-    ///         `dividendsBps` must be 0 until the dividends module ships (see `DividendsNotSupportedYet`).
+    ///         A non-zero `dividendsBps` must come with a payout configuration in `dividendTokens` /
+    ///         `dividendWeightsBps`; the token validates it (weights summing to 100%, distinct assets,
+    ///         and a curated swap route for any third-party asset) and reverts at creation otherwise.
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithAllocation calldata taxAllocationConfigs,
@@ -175,8 +177,6 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
-
-        require(alloc.dividendsBps == 0, DividendsNotSupportedYet());
 
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
         if (hasAllocation) require(_hasStaticTax(taxConfigs), EarningsAllocationRequiresTax());
@@ -195,7 +195,13 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         );
         if (hasAllocation) {
             ILivoTaxableToken(payable(token))
-                .initializeEarningsAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
+                .initializeEarningsAllocation(
+                    alloc.burnBps,
+                    alloc.dividendsBps,
+                    alloc.liquidityBps,
+                    alloc.dividendTokens,
+                    alloc.dividendWeightsBps
+                );
         }
         if (referral != address(0)) emit TokenReferral(token, referral);
     }

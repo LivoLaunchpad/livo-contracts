@@ -102,6 +102,11 @@ abstract contract EarningsAllocation {
             return amount;
         }
 
+        // First point at which a token is provably past graduation AND actually earning. Modules that
+        // need a one-off "the token is live now" moment hook in here rather than into `markGraduated()`,
+        // which still runs mid-graduation with the graduator holding the whole supply.
+        _onGraduatedEarnings();
+
         // Carve the burn/liquidity slices this venue takes from the ETH here; a venue that peeled them
         // upstream in token-space passes 0 for that share.
         uint256 burn = amount * burnShare / BPS_TOTAL;
@@ -110,12 +115,16 @@ abstract contract EarningsAllocation {
         // `fund` accumulates the fund-wallet slice plus whatever each leg leaves unconsumed. Residuals
         // fold into FUND, never back into `remaining` — that would re-split them over dividends.
         // `denom == 0` only for a token routing 100% to burn+liquidity, where `remaining` is 0 too.
-        uint256 denom = BPS_TOTAL - burnBps - liquidityBps;
+        // A venue may also peel part of the DIVIDENDS slice upstream in token-space (the Uniswap-V2
+        // self-token leg, which cannot be bought back with ETH); that share is out of both the numerator
+        // and the denominator here, exactly like the burn/liquidity shares it sits beside.
+        uint256 preCarvedDividends = _tokenSpaceDividendBps();
+        uint256 denom = BPS_TOTAL - burnBps - liquidityBps - preCarvedDividends;
         uint256 remaining = amount - burn - liquidity;
         uint256 dividends;
         uint256 fund = remaining;
         if (denom != 0) {
-            dividends = remaining * dividendsBps / denom;
+            dividends = remaining * (dividendsBps - preCarvedDividends) / denom;
             fund = remaining - dividends;
         }
 
@@ -124,6 +133,22 @@ abstract contract EarningsAllocation {
         if (dividends > 0) fund += _handleDividends(dividends);
         return fund;
     }
+
+    /// @dev The share of `dividendsBps` a venue already peeled upstream in TOKEN space, so the ETH split
+    ///      neither pays it again nor counts it in its denominator. 0 everywhere except the Uniswap-V2
+    ///      self-token dividend leg (a V2 pair reverts `INVALID_TO` when asked to deliver a token to its
+    ///      own address, so that leg is carved from the tax tokens instead of bought back).
+    function _tokenSpaceDividendBps() internal view virtual returns (uint256) {
+        return 0;
+    }
+
+    /// @dev Fires on every routing of post-graduation earnings, before any slice is carved. A no-op by
+    ///      default; the dividend module uses it to open its first round. Deliberately NOT
+    ///      `markGraduated()`: that runs while the graduator still holds the graduating supply, so any
+    ///      snapshot taken there would have to exclude it — and paying for that exclusion on every
+    ///      transfer, forever, to neutralise an address that ends the same transaction empty is a bad
+    ///      trade. By the time earnings arrive the graduation transaction is over.
+    function _onGraduatedEarnings() internal virtual {}
 
     /// @dev True once the token has graduated (a live pool exists). Implemented by the token.
     function _earningsGraduated() internal view virtual returns (bool);
