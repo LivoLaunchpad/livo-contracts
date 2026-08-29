@@ -104,7 +104,8 @@ contract DividendsThirdAssetTests is Test {
 
         uint256 pot = harness.roundPot(0);
         assertGt(pot, 0, "native converted into DAI");
-        assertEq(harness.pendingNative(0), 0, "native buffer consumed");
+        // A swapping leg converts at most `MAX_DIVIDEND_PER_FREEZE` per freeze; the rest stays buffered.
+        assertEq(harness.pendingNative(0), 1 ether - harness.MAX_DIVIDEND_PER_FREEZE(), "only the cap was converted");
         assertEq(IERC20(DAI).balanceOf(address(harness)), pot, "the pot is a real DAI balance");
 
         address[] memory holders = new address[](1);
@@ -113,6 +114,30 @@ contract DividendsThirdAssetTests is Test {
 
         assertEq(IERC20(DAI).balanceOf(holder), pot, "sole holder paid the whole pot, in DAI");
         assertEq(harness.committedDividends(DAI), 0, "nothing left owed");
+    }
+
+    /// @dev The per-freeze cap bounds one sandwich, it does not cap what a leg can ever pay: whatever
+    ///      it leaves behind stays buffered and converts in a later round, so nothing strands.
+    function test_thirdAsset_cappedFreezeLeavesTheRemainderForTheNextRound() public {
+        harness.setBalance(holder, 1_000e18);
+        harness.openRound();
+
+        vm.deal(address(this), 1 ether);
+        harness.accrue{value: 1 ether}();
+        uint256 cap = harness.MAX_DIVIDEND_PER_FREEZE();
+
+        skip(harness.MIN_ROUND_DURATION() + 1);
+        harness.processDividends([uint256(0), 0, 0]);
+        assertEq(harness.pendingNative(0), 1 ether - cap, "the first freeze took exactly the cap");
+
+        address[] memory holders = new address[](1);
+        holders[0] = holder;
+        harness.distributeDividends(holders);
+        harness.finalizeRound();
+
+        skip(harness.MIN_ROUND_DURATION() + 1);
+        harness.processDividends([uint256(0), 0, 0]);
+        assertEq(harness.pendingNative(0), 1 ether - 2 * cap, "the next round takes the next slice");
     }
 
     /// @dev The route is protocol-owned, but `minOut` is what actually bounds the swap — an admin who

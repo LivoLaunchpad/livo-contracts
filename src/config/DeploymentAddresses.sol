@@ -54,8 +54,9 @@ library DeploymentAddressesEthereumMainnet {
 
     /// @notice Minimum accrued native amount a single dividend leg must hold before
     ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
-    ///         window has closed, so a sub-threshold residual can never strand.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
+    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
+    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
 
     /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
@@ -113,8 +114,9 @@ library DeploymentAddressesEthereumSepolia {
 
     /// @notice Minimum accrued native amount a single dividend leg must hold before
     ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
-    ///         window has closed, so a sub-threshold residual can never strand.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
+    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
+    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
 
     /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
@@ -172,8 +174,9 @@ library DeploymentAddressesRobinhoodMainnet {
 
     /// @notice Minimum accrued native amount a single dividend leg must hold before
     ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
-    ///         window has closed, so a sub-threshold residual can never strand.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
+    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
+    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
 
     /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
@@ -235,8 +238,9 @@ library DeploymentAddressesRobinhoodTestnet {
 
     /// @notice Minimum accrued native amount a single dividend leg must hold before
     ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
-    ///         window has closed, so a sub-threshold residual can never strand.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
+    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
+    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
 
     /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
@@ -307,8 +311,9 @@ library DeploymentAddressesArcMainnet {
 
     /// @notice Minimum accrued native amount a single dividend leg must hold before
     ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
-    ///         window has closed, so a sub-threshold residual can never strand.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
+    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
+    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 250e18;
 
     /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
@@ -372,8 +377,9 @@ library DeploymentAddressesArcTestnet {
 
     /// @notice Minimum accrued native amount a single dividend leg must hold before
     ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed once the tax
-    ///         window has closed, so a sub-threshold residual can never strand.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
+    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
+    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 250e18;
 
     /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays

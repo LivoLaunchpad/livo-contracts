@@ -62,6 +62,19 @@ abstract contract DividendDistribution {
     ///         not stranded in the buffer forever — see `_dividendEarningsMayStillArrive`.
     uint256 public constant DIVIDEND_THRESHOLD = DeploymentAddresses.DIVIDEND_THRESHOLD;
 
+    /// @notice Max native a single leg may convert in ONE freeze. `processDividends` is permissionless
+    ///         and takes its slippage floor from the caller, so an unbounded conversion lets anyone
+    ///         sandwich their own freeze and skim the round's whole pot; what bounds the skim is swap
+    ///         size against pool depth. Deliberately the SAME constant `processBurn` and
+    ///         `processLiquidity` cap with, for the same reason and on the same scale — roughly 3–11%
+    ///         of a graduated pool across the liquidity tiers.
+    /// @dev Necessarily >= `DIVIDEND_THRESHOLD`: a cap below the floor would leave a leg that qualifies
+    ///      to freeze unable to convert what qualified it. The remainder above the cap stays buffered
+    ///      and freezes in a later round, so nothing is stranded — at an hourly keeper cadence this
+    ///      clears ~24x the cap per day per leg, orders of magnitude above what any graduated pool can
+    ///      generate in earnings.
+    uint256 public constant MAX_DIVIDEND_PER_FREEZE = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
+
     /// @notice Minimum age of a round before its pots may be frozen, and before an unfrozen round may be
     ///         rolled over.
     /// @dev This exists for exactly one reason: `finalizeRound` is permissionless, so an attacker
@@ -602,13 +615,18 @@ abstract contract DividendDistribution {
     {
         uint256 buffered = pendingNative[leg];
         if (buffered == 0) return (0, 0);
-        // The threshold exists so a distribution only fires when the pot is worth its gas. Once the tax
-        // window has closed no further earnings can ever arrive, so it must stop applying or the last
-        // residual strands — the same drain rule the V2 swap-back already uses.
+        // The threshold exists so a distribution only fires when the pot is worth its gas. Where no
+        // further earnings can ever arrive it must stop applying, or the last residual strands — the
+        // same drain rule the V2 swap-back already uses.
         if (buffered < DIVIDEND_THRESHOLD && _dividendEarningsMayStillArrive()) return (0, 0);
 
-        pendingNative[leg] = 0;
-        return (buffered, _acquireDividendAsset(asset, buffered, minOut));
+        // Only a leg that SWAPS is capped. A native leg is already denominated in the payout asset, so
+        // it has no swap to sandwich, and throttling it would delay real money for no security gain.
+        uint256 spend = (asset != address(0) && buffered > MAX_DIVIDEND_PER_FREEZE) ? MAX_DIVIDEND_PER_FREEZE : buffered;
+        // Bounded by `buffered`, which is already a `uint80`.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pendingNative[leg] = uint80(buffered - spend);
+        return (spend, _acquireDividendAsset(asset, spend, minOut));
     }
 
     /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought through
