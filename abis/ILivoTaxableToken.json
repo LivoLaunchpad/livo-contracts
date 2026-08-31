@@ -434,6 +434,43 @@
         "name": "liquidityBps",
         "type": "uint16",
         "internalType": "uint16"
+      },
+      {
+        "name": "dividendTokens",
+        "type": "address[3]",
+        "internalType": "address[3]"
+      },
+      {
+        "name": "dividendWeightsBps",
+        "type": "uint16[3]",
+        "internalType": "uint16[3]"
+      },
+      {
+        "name": "dividendRoutes",
+        "type": "tuple[3]",
+        "internalType": "struct DividendRoute[3]",
+        "components": [
+          {
+            "name": "venue",
+            "type": "uint8",
+            "internalType": "enum DividendVenue"
+          },
+          {
+            "name": "fee",
+            "type": "uint24",
+            "internalType": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
+            "name": "aux",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
       }
     ],
     "outputs": [],
@@ -457,16 +494,6 @@
         "name": "liquidityBps",
         "type": "uint16",
         "internalType": "uint16"
-      },
-      {
-        "name": "dividendTokens",
-        "type": "address[3]",
-        "internalType": "address[3]"
-      },
-      {
-        "name": "dividendWeightsBps",
-        "type": "uint16[3]",
-        "internalType": "uint16[3]"
       }
     ],
     "outputs": [],

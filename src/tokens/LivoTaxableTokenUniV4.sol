@@ -249,12 +249,12 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
     /// @dev The precursor event must stay BEFORE the swap: an indexer has to classify the resulting
     ///      `LivoSwapHook.LivoSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
     ///      the swap lands once the keeper's PnL has already been updated.
-    function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
+    function _acquireDividendAsset(address asset, uint256 leg, uint256 nativeIn, uint256 minOut)
         internal
         override
         returns (uint256)
     {
-        if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
+        if (asset != address(this)) return super._acquireDividendAsset(asset, leg, nativeIn, minOut);
 
         address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
         uint256 balanceBefore = balanceOf(address(this));

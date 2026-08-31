@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @notice Initialization-time tax configuration for taxable tokens (legacy: static tax only).
 /// @dev Separate from `ILivoToken.TaxConfig` (which adds the post-init `graduationTimestamp`).
@@ -46,18 +47,20 @@ struct TaxConfigs {
 /// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
 ///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions. The
 ///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
-/// @dev A non-zero `dividendsBps` also needs the two payout fields: `dividendTokens` names up to three
-///      assets holders are paid in and `dividendWeightsBps` says how the dividends slice divides across
-///      them (summing to 10 000, left-packed). An asset may be `address(0)` for native,
-///      `DividendDistribution.DIVIDEND_SELF_TOKEN` for the token itself, or any ERC20 with a curated
-///      route in the protocol's `SwapRouteRegistry` — the token rejects anything else at creation, since
-///      a clone cannot be patched afterwards.
+/// @dev A non-zero `dividendsBps` also needs the payout fields: `dividendTokens` names up to three
+///      assets holders are paid in, `dividendWeightsBps` says how the dividends slice divides across
+///      them (summing to 10 000, left-packed), and `dividendRoutes` says which pool each THIRD asset is
+///      bought on. An asset may be `address(0)` for native, `DividendDistribution.DIVIDEND_SELF_TOKEN`
+///      for the token itself, or any ERC20 — with its route as the matching `dividendRoutes` entry, since
+///      a clone cannot be patched afterwards. The route entries of the native and self-token legs are
+///      ignored.
 struct EarningsAllocationConfig {
     uint16 burnBps;
     uint16 dividendsBps;
     uint16 liquidityBps;
     address[3] dividendTokens;
     uint16[3] dividendWeightsBps;
+    DividendRoute[3] dividendRoutes;
 }
 
 /// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split. Consumed
@@ -114,13 +117,14 @@ interface ILivoTaxableToken is ILivoToken {
     function initializeEarningsAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) external;
 
     /// @notice Same as above plus the dividend payout configuration (which assets the dividends slice
-    ///         buys, and how it divides across them). Separate overload so the original signature is
-    ///         untouched.
+    ///         buys, how it divides across them, and the pool each third asset is bought on). Separate
+    ///         overload so the original signature is untouched.
     function initializeEarningsAllocation(
         uint16 burnBps,
         uint16 dividendsBps,
         uint16 liquidityBps,
         address[3] calldata dividendTokens,
-        uint16[3] calldata dividendWeightsBps
+        uint16[3] calldata dividendWeightsBps,
+        DividendRoute[3] calldata dividendRoutes
     ) external;
 }

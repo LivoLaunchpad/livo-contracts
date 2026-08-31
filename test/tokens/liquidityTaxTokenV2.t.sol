@@ -10,6 +10,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Integration tests for the V2 liquidity earnings-allocation leg: the liquidity slice is set
 ///         aside as tax TOKENS during the swap-back, then `processLiquidity` sells half for ETH and adds
@@ -42,7 +43,8 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
                 dividendsBps: 0,
                 liquidityBps: liquidityBps,
                 dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0]
+                dividendWeightsBps: [uint16(0), 0, 0],
+                dividendRoutes: noDividendRoutes()
             })
         });
         vm.prank(creator);
@@ -79,7 +81,8 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
                 dividendsBps: 1,
                 liquidityBps: 0,
                 dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0]
+                dividendWeightsBps: [uint16(0), 0, 0],
+                dividendRoutes: noDividendRoutes()
             })
         });
         vm.prank(creator);

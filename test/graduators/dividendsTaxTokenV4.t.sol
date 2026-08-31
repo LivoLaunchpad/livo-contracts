@@ -11,6 +11,8 @@ import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {noDividendRoutes, v2DividendRoute, v3DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
+import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: rounds,
 ///         the minimum-balance share rule, threshold-gated freezing, the push payout, and the
@@ -24,6 +26,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         internal
         returns (address token)
     {
+        return _createDividendToken(dividendsBps, assets, weights, noDividendRoutes());
+    }
+
+    function _createDividendToken(
+        uint16 dividendsBps,
+        address[3] memory assets,
+        uint16[3] memory weights,
+        DividendRoute[3] memory routes
+    ) internal returns (address token) {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivToken",
             symbol: "DIV",
@@ -44,7 +55,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
                 dividendsBps: dividendsBps,
                 liquidityBps: 0,
                 dividendTokens: assets,
-                dividendWeightsBps: weights
+                dividendWeightsBps: weights,
+                dividendRoutes: routes
             })
         });
         vm.prank(creator);
@@ -136,13 +148,29 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         _createDividendToken(5_000, assets, weights);
     }
 
-    /// @dev No `SwapRouteRegistry` is deployed on this build, so a third-party asset can never be bought.
-    ///      Rejecting at creation beats handing the creator a leg that can never be funded.
-    function test_unroutableThirdAssetRejected() public {
+    /// @dev ANY ERC20 is a valid payout asset — there is no whitelist and no curated-route requirement.
+    ///      What the creator must supply is the route that buys it.
+    function test_anyThirdAssetIsAccepted() public {
         address[3] memory assets = [makeAddr("xStock"), address(0), address(0)];
         uint16[3] memory weights = [uint16(10_000), 0, 0];
+        DividendRoute[3] memory routes = noDividendRoutes();
+        routes[0] = v2DividendRoute(address(0));
+
+        address token = _createDividendToken(5_000, assets, weights, routes);
+
+        assertEq(LivoTaxableTokenUniV4(payable(token)).dividendTokens(0), assets[0], "the asset was accepted");
+    }
+
+    /// @dev The one route error worth a revert: one this chain could never execute at all. A clone cannot
+    ///      be patched, so the leg would accrue forever.
+    function test_thirdAssetWithAnUnexecutableRouteRejected() public {
+        address[3] memory assets = [makeAddr("xStock"), address(0), address(0)];
+        uint16[3] memory weights = [uint16(10_000), 0, 0];
+        DividendRoute[3] memory routes = noDividendRoutes();
+        routes[0] = v3DividendRoute(0); // no V3 pool has a zero fee tier
+
         vm.expectRevert(DividendDistribution.UnsupportedDividendAsset.selector);
-        _createDividendToken(5_000, assets, weights);
+        _createDividendToken(5_000, assets, weights, routes);
     }
 
     ///////////////////////// rounds /////////////////////////

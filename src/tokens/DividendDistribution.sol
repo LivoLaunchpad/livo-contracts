@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {ISwapRouteRegistry} from "src/interfaces/ISwapRouteRegistry.sol";
+import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
+import {DividendRoute, DividendVenue} from "src/types/DividendRoute.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
@@ -120,13 +122,24 @@ abstract contract DividendDistribution {
     ///         written — so the sentinel is resolved to `address(this)` during initialization.
     address public constant DIVIDEND_SELF_TOKEN = address(type(uint160).max);
 
-    /// @notice Router a third-asset leg's native -> asset conversion goes through. Exposed so the
+    /// @notice Router a `UNIV2` third-asset leg's native -> asset conversion goes through. Exposed so the
     ///         off-chain keeper can price its slippage floor against the same pools the swap will cross,
     ///         on BOTH venues (the V4 token has no Uniswap-V2 constant of its own).
     address public constant DIVIDEND_SWAP_ROUTER = DeploymentAddresses.UNIV2_ROUTER;
 
-    /// @notice Registry the protocol curates `asset -> swap path` entries in. `address(0)` on a chain
-    ///         where it is not deployed, which makes third-token payouts unconfigurable there.
+    /// @notice Router a `UNIV3` / `UNIV4` third-asset leg's conversion goes through. Same purpose as
+    ///         `DIVIDEND_SWAP_ROUTER`, for the two venues that are only reachable through it.
+    address public constant DIVIDEND_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
+
+    /// @notice Whether this chain's native currency is 18-dec ETH. False on ARC, where "native" is USDC
+    ///         and the universal router's native-in swaps therefore do not apply — the reason a `UNIV3` /
+    ///         `UNIV4` route is refused there while `UNIV2` (whose venue lib IS chain-swapped) is not.
+    bool internal constant NATIVE_IS_ETH = UniswapV2Venue.QUOTE_TO_NATIVE_SCALE == 1;
+
+    /// @notice Registry of protocol-curated `asset -> Uniswap-V2 swap path` entries. Not a gate: a
+    ///         creator's own route is what normally funds a leg, and an entry here OVERRIDES it. It
+    ///         exists as the repair hatch for a clone whose configured pool has died — without one, that
+    ///         leg's buffer would be stranded forever. `address(0)` where it is not deployed.
     address public constant DIVIDEND_ROUTE_REGISTRY = DeploymentAddresses.DIVIDEND_ROUTE_REGISTRY;
 
     /// @notice Per-account dividend state. One slot, and the only per-account storage the feature has.
@@ -144,9 +157,13 @@ abstract contract DividendDistribution {
     mapping(address account => Acct) public dividendAccounts;
 
     /// @notice The payout assets, in leg order. `address(0)` = native, `address(this)` = the token
-    ///         itself, anything else = a third ERC20 bought through the protocol route registry.
+    ///         itself, anything else = a third ERC20 bought through that leg's `dividendRoutes` entry.
     ///         Left-packed: unused legs are `address(0)` with a zero weight.
     address[3] public dividendTokens;
+
+    /// @notice How each third-asset leg buys its payout asset. One slot per leg, written once at
+    ///         creation. Ignored for the native and self-token legs, which have nothing to buy.
+    DividendRoute[3] public dividendRoutes;
 
     /// @notice How the token's `dividendsBps` slice divides across `dividendTokens`. Sums to 10 000,
     ///         left-packed. Read only when earnings are routed or a round is processed — never on a
@@ -263,10 +280,12 @@ abstract contract DividendDistribution {
     /// @dev Validation is limited to what would make the configuration functionally broken: the weights
     ///      must sum to 100%, they must be left-packed (so the rounding remainder always has leg 0 to
     ///      land in), the assets must be distinct (each leg's unpaid pot is reconciled against that
-    ///      asset's balance, which only works one-to-one), and a third-token asset must have a curated
-    ///      route — without one the leg could never be funded, and the token cannot be patched later.
-    ///      WHICH assets a creator picks, beyond that, is their choice.
-    function _initializeDividends(address[3] memory tokens, uint16[3] memory weights) internal {
+    ///      asset's balance, which only works one-to-one), and a third-token asset must name a venue this
+    ///      chain can actually reach (`_validateDividendRoute`). WHICH asset a creator picks, and which
+    ///      pool they point at, is their choice.
+    function _initializeDividends(address[3] memory tokens, uint16[3] memory weights, DividendRoute[3] memory routes)
+        internal
+    {
         uint256 sum;
         uint8 tsLeg = NO_TOKEN_SPACE_LEG;
         uint256 nativeWeights;
@@ -282,15 +301,12 @@ abstract contract DividendDistribution {
             for (uint256 j; j < i; ++j) {
                 require(tokens[j] != tokens[i], InvalidDividendConfig());
             }
-            // A third asset must be buyable through the protocol's curated routes, checked HERE rather
-            // than in the factory: this contract is the one that knows the registry for its chain, and a
-            // creator who picks an unroutable asset would otherwise own a leg that can never be funded.
+            // A third asset's route is checked HERE rather than in the factory: this contract is the one
+            // that knows which venues its chain can reach, and a creator who names an unreachable one
+            // would otherwise own a leg that can never be funded.
             if (tokens[i] != address(0) && tokens[i] != address(this)) {
-                address registry = _dividendRouteRegistry();
-                require(
-                    registry != address(0) && ISwapRouteRegistry(registry).hasRoute(tokens[i]),
-                    UnsupportedDividendAsset()
-                );
+                _validateDividendRoute(routes[i]);
+                dividendRoutes[i] = routes[i];
             }
             sum += weights[i];
             if (_isTokenSpaceDividendAsset(tokens[i])) {
@@ -311,6 +327,26 @@ abstract contract DividendDistribution {
         nativeWeightTotal = uint16(nativeWeights);
 
         emit DividendsInitialized(tokens, weights);
+    }
+
+    /// @dev Rejects a third-asset route this chain could never execute — the only class of route error
+    ///      worth a revert, since the token is a clone and the leg would accrue forever. What is NOT
+    ///      checked is whether the pool exists or holds liquidity: that is a live property, not a
+    ///      creation-time one, and a route that stops working is handled by the freeze skipping the leg
+    ///      (and, if it never comes back, by a registry override) rather than by bricking the token.
+    /// ponytail: no pool-existence probe, which would need a factory address per venue per chain; the
+    ///           creator's own route is theirs to get right, and a wrong one costs only that leg.
+    function _validateDividendRoute(DividendRoute memory route) private pure {
+        if (route.venue == DividendVenue.UNIV2) {
+            require(DIVIDEND_SWAP_ROUTER != address(0), UnsupportedDividendAsset());
+        } else {
+            // Both universal-router venues pay with native ETH, which ARC does not have.
+            require(NATIVE_IS_ETH && DIVIDEND_UNIVERSAL_ROUTER != address(0), UnsupportedDividendAsset());
+            // A V3 pool is keyed by its fee tier and a V4 pool by its tick spacing; neither is ever zero,
+            // so a zero here is a route that can only ever miss.
+            if (route.venue == DividendVenue.UNIV3) require(route.fee != 0, UnsupportedDividendAsset());
+            else require(route.tickSpacing != 0, UnsupportedDividendAsset());
+        }
     }
 
     /// @dev `frozenLegs` bit for `leg`. A helper only so the shift has one home.
@@ -623,33 +659,96 @@ abstract contract DividendDistribution {
         // Only a leg that SWAPS is capped. A native leg is already denominated in the payout asset, so
         // it has no swap to sandwich, and throttling it would delay real money for no security gain.
         uint256 spend = (asset != address(0) && buffered > MAX_DIVIDEND_PER_FREEZE) ? MAX_DIVIDEND_PER_FREEZE : buffered;
-        // Bounded by `buffered`, which is already a `uint80`.
+        out = _acquireDividendAsset(asset, leg, spend, minOut);
+        // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
+        // fail for reasons outside anyone's control (a dead pool, a floor the pool moved past), and the
+        // leg simply stays unfrozen and tries again next round.
+        if (out == 0) return (0, 0);
+        // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
+        // during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
+        // Bounded by the value read, which is already a `uint80`.
         // forge-lint: disable-next-line(unsafe-typecast)
-        pendingNative[leg] = uint80(buffered - spend);
-        return (spend, _acquireDividendAsset(asset, spend, minOut));
+        pendingNative[leg] = uint80(pendingNative[leg] - spend);
+        return (spend, out);
     }
 
-    /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought through
-    ///      the protocol's curated route. The token itself is venue-specific and handled by an override.
-    /// @dev Creators choose WHICH assets, never the route. A route the creator supplied could point at a
-    ///      pool they control, and a route baked in at creation would brick the leg forever the day that
-    ///      pool dies — tokens are non-upgradeable clones. So the route is read live from the registry
-    ///      and the swap is bounded by `minOut`.
-    function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
+    /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought on the
+    ///      pool the creator named for that leg. The token itself is venue-specific, handled by an
+    ///      override.
+    /// @dev The route is the creator's, fixed at creation, and never the caller's: `processDividends` is
+    ///      permissionless, so a route supplied there would let any caller send the token's earnings
+    ///      through a pool they control. Picking the asset already picks its pool, so nothing is gained
+    ///      by curating the route once the asset itself is unrestricted — the swap is bounded by `minOut`
+    ///      either way.
+    /// @dev A registry entry for the asset OVERRIDES the creator's route. That is the escape hatch for a
+    ///      clone whose pool has died: without it the leg's buffer would be stranded for good.
+    /// @return out asset actually received, measured as a balance delta so a fee-on-transfer asset is
+    ///         counted for what it delivered. 0 when the conversion did not happen — see `_freezeLeg`.
+    function _acquireDividendAsset(address asset, uint256 leg, uint256 nativeIn, uint256 minOut)
         internal
         virtual
         returns (uint256 out)
     {
         if (asset == address(0)) return nativeIn; // native: the buffer already IS the payout asset
 
-        address[] memory path = ISwapRouteRegistry(_dividendRouteRegistry()).getRoute(asset);
-        require(path.length >= 2, UnsupportedDividendAsset());
-
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        UniswapV2Venue.swapNativeToAsset(
-            IUniswapV2Router(DIVIDEND_SWAP_ROUTER), DeploymentAddresses.WETH, path, nativeIn, minOut
-        );
+        if (!_swapNativeToDividendAsset(asset, leg, nativeIn, minOut)) return 0;
         return IERC20(asset).balanceOf(address(this)) - balanceBefore;
+    }
+
+    /// @dev The venue dispatch of `_acquireDividendAsset`, split out only to keep that function's stack
+    ///      shallow. Reports failure instead of reverting; see `_freezeLeg`.
+    function _swapNativeToDividendAsset(address asset, uint256 leg, uint256 nativeIn, uint256 minOut)
+        private
+        returns (bool)
+    {
+        address registry = _dividendRouteRegistry();
+        // ponytail: the override is V2-only, matching the registry's own `address[] path` shape. A V3/V4
+        //           pool that dies can still be repaired by pointing the asset at any V2 pair.
+        if (registry != address(0)) {
+            address[] memory curated = ISwapRouteRegistry(registry).getRoute(asset);
+            if (curated.length >= 2) {
+                return UniswapV2Venue.trySwapNativeToAsset(
+                    IUniswapV2Router(DIVIDEND_SWAP_ROUTER), DeploymentAddresses.WETH, curated, nativeIn, minOut
+                );
+            }
+        }
+
+        DividendRoute memory route = dividendRoutes[leg];
+        if (route.venue == DividendVenue.UNIV2) {
+            return UniswapV2Venue.trySwapNativeToAsset(
+                IUniswapV2Router(DIVIDEND_SWAP_ROUTER),
+                DeploymentAddresses.WETH,
+                _v2Path(asset, route.aux),
+                nativeIn,
+                minOut
+            );
+        }
+        if (route.venue == DividendVenue.UNIV3) {
+            return UniversalRouterVenue.swapNativeToAssetV3(
+                DIVIDEND_UNIVERSAL_ROUTER, DeploymentAddresses.WETH, asset, route.fee, nativeIn, minOut
+            );
+        }
+        return UniversalRouterVenue.swapNativeToAssetV4(
+            DIVIDEND_UNIVERSAL_ROUTER, asset, route.fee, route.tickSpacing, route.aux, nativeIn, minOut
+        );
+    }
+
+    /// @dev `quote -> [hop] -> asset`. One optional hop is all a V2 route gets: it covers the direct pair
+    ///      and the usual detour through a stable, and the alternative is a dynamic array in a clone's
+    ///      storage for a shape nobody has needed.
+    /// ponytail: one hop, add a second when a real asset needs three legs to reach the quote.
+    function _v2Path(address asset, address hop) private pure returns (address[] memory path) {
+        if (hop == address(0)) {
+            path = new address[](2);
+            path[0] = DeploymentAddresses.WETH;
+            path[1] = asset;
+        } else {
+            path = new address[](3);
+            path[0] = DeploymentAddresses.WETH;
+            path[1] = hop;
+            path[2] = asset;
+        }
     }
 
     /// @dev Pays one holder every frozen leg, or nothing. The caller holds `nonReentrantDividends`, so
@@ -731,9 +830,10 @@ abstract contract DividendDistribution {
     ///      cannot settle. A venue whose earnings never stop must answer true forever.
     function _dividendEarningsMayStillArrive() internal view virtual returns (bool);
 
-    /// @dev Where the curated `asset -> path` entries live. A `virtual` read of the compile-time
-    ///      constant rather than the constant itself, so a test harness (or a future chain whose registry
-    ///      is deployed after the token implementations) can point it elsewhere without a redeploy dance.
+    /// @dev Where the curated `asset -> path` overrides live (see `DIVIDEND_ROUTE_REGISTRY`). A
+    ///      `virtual` read of the compile-time constant rather than the constant itself, so a test
+    ///      harness (or a future chain whose registry is deployed after the token implementations) can
+    ///      point it elsewhere without a redeploy dance.
     function _dividendRouteRegistry() internal view virtual returns (address) {
         return DIVIDEND_ROUTE_REGISTRY;
     }

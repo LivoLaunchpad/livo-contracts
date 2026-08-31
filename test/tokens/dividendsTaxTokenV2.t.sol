@@ -10,6 +10,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -47,7 +48,8 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
                 dividendsBps: dividendsBps,
                 liquidityBps: 0,
                 dividendTokens: assets,
-                dividendWeightsBps: weights
+                dividendWeightsBps: weights,
+                dividendRoutes: noDividendRoutes()
             })
         });
         vm.prank(creator);

@@ -9,6 +9,7 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
 
 interface IERC721Minimal {
     function balanceOf(address owner) external view returns (uint256);
@@ -40,7 +41,8 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
                 dividendsBps: 0,
                 liquidityBps: liquidityBps,
                 dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0]
+                dividendWeightsBps: [uint16(0), 0, 0],
+                dividendRoutes: noDividendRoutes()
             })
         });
         vm.prank(creator);
@@ -83,7 +85,8 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
                 dividendsBps: 1,
                 liquidityBps: 0,
                 dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0]
+                dividendWeightsBps: [uint16(0), 0, 0],
+                dividendRoutes: noDividendRoutes()
             })
         });
         vm.prank(creator);

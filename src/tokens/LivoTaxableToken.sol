@@ -6,6 +6,7 @@ import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableToken, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {DividendRoute} from "src/types/DividendRoute.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -201,8 +202,8 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     }
 
     /// @notice Same as the three-bps overload, plus the dividend payout configuration: which assets the
-    ///         dividends slice buys and how it divides across them. Kept as a separate overload so the
-    ///         original signature stays untouched.
+    ///         dividends slice buys, how it divides across them, and the pool each third asset is bought
+    ///         on. Kept as a separate overload so the original signature stays untouched.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `LivoToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
     ///      nothing for the feature on any transfer.
@@ -211,12 +212,13 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
         uint16 _dividendsBps,
         uint16 _liquidityBps,
         address[3] calldata _dividendTokens,
-        uint16[3] calldata _dividendWeightsBps
+        uint16[3] calldata _dividendWeightsBps,
+        DividendRoute[3] calldata _dividendRoutes
     ) external {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            _initializeDividends(_dividendTokens, _dividendWeightsBps);
+            _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
             hasDividends = true;
         }
     }

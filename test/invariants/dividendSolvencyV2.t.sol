@@ -9,6 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Drives every path that can move a V2 dividend token's balances. Unlike the V4 handler, the
 ///         interesting balance here is the token's own ERC20 balance: the tax pool, the liquidity buffer,
@@ -129,7 +130,8 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
                 dividendsBps: 4_000,
                 liquidityBps: 2_000,
                 dividendTokens: [address(type(uint160).max), address(0), address(0)],
-                dividendWeightsBps: [uint16(6_000), 4_000, 0]
+                dividendWeightsBps: [uint16(6_000), 4_000, 0],
+                dividendRoutes: noDividendRoutes()
             })
         });
         vm.prank(creator);

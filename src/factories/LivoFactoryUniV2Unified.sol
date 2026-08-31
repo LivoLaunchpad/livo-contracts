@@ -165,8 +165,9 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         token with a LONG-TERM static tax (`taxDurationSeconds != 0`); a decay-only token is
     ///         rejected — its tax window lasts minutes, so there is no earnings stream worth splitting.
     ///         A non-zero `dividendsBps` must come with a payout configuration in `dividendTokens` /
-    ///         `dividendWeightsBps`; the token validates it (weights summing to 100%, distinct assets,
-    ///         and a curated swap route for any third-party asset) and reverts at creation otherwise.
+    ///         `dividendWeightsBps` / `dividendRoutes`; the token validates it (weights summing to 100%,
+    ///         distinct assets, and a reachable swap venue for any third-party asset) and reverts at
+    ///         creation otherwise.
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithAllocation calldata taxAllocationConfigs,
@@ -200,7 +201,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
                     alloc.dividendsBps,
                     alloc.liquidityBps,
                     alloc.dividendTokens,
-                    alloc.dividendWeightsBps
+                    alloc.dividendWeightsBps,
+                    alloc.dividendRoutes
                 );
         }
         if (referral != address(0)) emit TokenReferral(token, referral);
