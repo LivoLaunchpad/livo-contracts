@@ -114,6 +114,54 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     receive() external payable {}
 
+    ///////////////////////// stray native /////////////////////////
+
+    /// @dev V2 used to have no way out for stray native at all: `rescueTokens(address(0))` was removed
+    ///      with the ETH branch, and the only sweep left was inside the swap-back — which needs tax
+    ///      tokens to run. Past the tax window, with the tax pool drained, anything sitting here was
+    ///      stuck forever. `sweepStrayEth` is that exit, and it is shared with V4 rather than V4-only.
+    function test_sweepStrayEth_recoversStrayNativeOnV2() public {
+        LivoTaxableTokenUniV2 token = _nativeToken();
+
+        // Past the tax window: no fresh tax can ever accrue, so no swap-back will ever fire again.
+        skip(uint256(token.taxDurationSeconds()) + 1);
+        assertEq(token.pendingNative(0), 0, "nothing buffered yet");
+
+        vm.deal(address(token), address(token).balance + 1 ether);
+        token.sweepStrayEth();
+
+        // Half to the dividend buffer, half to the fund wallets: the burn and liquidity shares are zero
+        // for this token, so the split is the plain dividends/fund one.
+        assertEq(token.pendingNative(0), 0.5 ether, "stray native became holder earnings");
+    }
+
+    /// @dev The reason the swap-back stopped sweeping the whole balance. Router refunds from an earlier
+    ///      `processLiquidity` had no token-space burn/liquidity peel, so folding them into the swap's
+    ///      own split renormalizes them over a denominator that already excludes those buckets — paying
+    ///      the dividend pot a share earmarked for burning. They belong to `sweepStrayEth` instead.
+    function test_swapBackRoutesOnlyItsOwnProceeds() public {
+        LivoTaxableTokenUniV2 token = _nativeToken();
+
+        // Accrue some sell tax as tokens, so there is a swap-back to run.
+        uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 10;
+        _swapSellV2(buyer, address(token), sellAmount, 0, true);
+        uint256 taxBalance = IERC20(address(token)).balanceOf(address(token));
+        assertGt(taxBalance, 0, "sell tax accrued as tokens");
+
+        // Stray native sitting in the token, on top of the tax pool.
+        vm.deal(address(token), address(token).balance + 1 ether);
+        uint256 strayBefore = address(token).balance;
+
+        vm.prank(admin);
+        token.swapBack(taxBalance, 0);
+
+        // The swap-back routed its own proceeds — and only those. Under the old whole-balance sweep the
+        // 1 ETH would have been split too, depositing half of it to the fund wallets and leaving the
+        // balance BELOW what was already there.
+        assertGt(token.pendingNative(0), 0, "the swap-back routed its own proceeds");
+        assertGe(address(token).balance, strayBefore, "the stray native was not swept into the swap-back");
+    }
+
     ///////////////////////// native leg /////////////////////////
 
     function test_nativeDividends_accrueFreezeAndPay() public {

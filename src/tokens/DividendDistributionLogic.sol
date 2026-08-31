@@ -45,6 +45,15 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
     error NotAToken();
 
+    /// @dev Set by `_freezeLeg` when a leg that HELD enough still failed to convert, read once by
+    ///      `processDividends` to pick which error to revert with. Transient: it is a signal between two
+    ///      frames of one call, never state, and it clears itself at the end of the transaction.
+    ///      A return value would be the more honest channel, but `_freezeLeg` is `virtual` with a venue
+    ///      override, so widening it costs three files to carry one bit.
+    /// ponytail: transient flag over a third return value; make it a return value if a second caller
+    ///           ever needs to distinguish the same three outcomes.
+    bool private transient _legConversionFailed;
+
     //////////////////////// configuration //////////////////////
 
     /// @dev Stores the creation-time payout configuration. Called once, by the token, only when the
@@ -162,7 +171,14 @@ abstract contract DividendDistributionLogic is DividendDistribution {
             legs |= _legMask(i);
             emit DividendRoundFunded(round, asset, nativeIn, roundPot[i], denom);
         }
-        require(legs != 0, NoLegAboveThreshold());
+        if (legs == 0) {
+            // Two different situations, two different errors: a keeper that sees `NoLegAboveThreshold`
+            // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
+            // swap problem — a `minOut` the pool has moved past, or a pool that is gone. Reporting the
+            // first for the second sends it away to wait for money that already arrived.
+            if (_legConversionFailed) revert DividendConversionFailed();
+            revert NoLegAboveThreshold();
+        }
 
         frozenLegs = legs;
         frozenShares = denom;
@@ -181,7 +197,7 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         uint256[3] memory paid;
 
         for (uint256 i; i < holders.length; ++i) {
-            _payHolder(holders[i], round, legs, denom, paid);
+            _payHolder(holders[i], round, legs, denom, paid, NATIVE_PAYOUT_GAS);
         }
 
         for (uint256 i; i < MAX_DIVIDEND_ASSETS; ++i) {
@@ -190,12 +206,20 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     }
 
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
+    /// @dev Forwards ALL remaining gas to a native payout instead of `NATIVE_PAYOUT_GAS`. The stipend
+    ///      exists to stop one expensive fallback from starving the REST of a keeper batch; a self-serve
+    ///      claim has no rest of a batch, and the caller is spending their own gas on their own payout.
+    ///      This is what keeps the stipend a throughput knob rather than a permanent eligibility gate —
+    ///      a holder whose wallet costs more than a batch will spend can still always be paid here.
+    /// @dev Within one claim, an expensive first leg can leave too little for the later ones; those legs
+    ///      simply stay unpaid and roll into the next round, exactly as a skipped holder does. Not worth
+    ///      sub-budgeting per leg: the caller chose the gas limit and can retry with more.
     function claimRound() external nonReentrantDividends {
         uint8 legs = frozenLegs;
         require(legs != 0, NoFrozenRound());
 
         uint256[3] memory paid;
-        _payHolder(msg.sender, currentRound, legs, frozenShares, paid);
+        _payHolder(msg.sender, currentRound, legs, frozenShares, paid, gasleft());
         for (uint256 i; i < MAX_DIVIDEND_ASSETS; ++i) {
             if (paid[i] != 0) roundPaid[i] += paid[i];
         }
@@ -259,8 +283,14 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         out = _acquireDividendAsset(asset, leg, spend, minOut);
         // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
         // fail for reasons outside anyone's control (a dead pool, a floor the pool moved past), and the
-        // leg simply stays unfrozen and tries again next round.
-        if (out == 0) return (0, 0);
+        // leg simply stays unfrozen and tries again next round. It is announced, though — unlike the two
+        // quiet declines above, this one is a leg that HELD enough and still did not fund, which is the
+        // only case a keeper can do anything about.
+        if (out == 0) {
+            _legConversionFailed = true;
+            emit DividendLegConversionFailed(currentRound, leg, asset);
+            return (0, 0);
+        }
         // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
         // during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
         // Bounded by the value read, which is already a `uint80`.
@@ -351,7 +381,14 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     /// @dev Pays one holder every frozen leg, or nothing. The caller holds `nonReentrantDividends`, so
     ///      nothing can revisit this holder mid-payout and the marker is safe to write at the END —
     ///      which is what lets it record whether anything actually went out.
-    function _payHolder(address holder, uint32 round, uint8 legs, uint256 denom, uint256[3] memory paid) private {
+    function _payHolder(
+        address holder,
+        uint32 round,
+        uint8 legs,
+        uint256 denom,
+        uint256[3] memory paid,
+        uint256 gasStipend
+    ) private {
         Acct storage acct = dividendAccounts[holder];
         if (acct.lastPaidRound == round || _dividendExcluded(holder)) return;
 
@@ -368,7 +405,7 @@ abstract contract DividendDistributionLogic is DividendDistribution {
             // A failed send is skipped, not reverted: one holder with a reverting `receive()` — or one
             // blacklisted by a payout asset — must not brick the batch. The amount stays in the pot and
             // rolls to the next round.
-            if (_payDividend(asset, holder, amount)) {
+            if (_payDividend(asset, holder, amount, gasStipend)) {
                 paid[i] += amount;
                 paidAny = true;
                 emit DividendPaid(round, holder, asset, amount);
@@ -386,9 +423,11 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///      always-transferable: the obvious registry candidates blacklist addresses, and a reverting
     ///      `safeTransfer` on ONE holder would take down the whole batch, `claimRound` for everyone, and
     ///      with them the round's ability to settle.
-    function _payDividend(address asset, address to, uint256 amount) private returns (bool) {
+    /// @param gasStipend Gas forwarded to a native payout: `NATIVE_PAYOUT_GAS` from a keeper batch,
+    ///        `gasleft()` from `claimRound` (which, under EIP-150's 63/64 rule, is an uncapped call).
+    function _payDividend(address asset, address to, uint256 amount, uint256 gasStipend) private returns (bool) {
         if (asset == address(0)) {
-            (bool sent,) = to.call{value: amount, gas: NATIVE_PAYOUT_GAS}("");
+            (bool sent,) = to.call{value: amount, gas: gasStipend}("");
             return sent;
         }
         (bool ok, bytes memory ret) = asset.call(abi.encodeCall(IERC20.transfer, (to, amount)));

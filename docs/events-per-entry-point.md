@@ -261,7 +261,7 @@ Indexer-relevant points:
   1. Burn allocation only (`burnBps > 0`): ERC20 `Transfer(address(token), address(0), burnAmount)` then **`LivoTaxableToken.CreatorTaxBurn`** (`ethSpent = 0, tokensBurned = burnAmount`) — the burn share removed from total supply *before* the swap. The shared two-field signature; `ethSpent` is 0 here because V2 burns in token-space with no ETH→token round trip.
   2. ERC20 transfer from `address(token)` to `pair` for the swap input (the remainder after the burn and liquidity shares).
   3. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
-  4. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount, ethToFund`) — `tokenAmountIn` is the amount actually swapped (net of the burn and liquidity shares); `ethAmount` is this swap's ETH proceeds (a balance delta, matching the pair's `Swap`); `ethToFund` is the slice of the routed ETH that reaches the fee handler as creator fees (the full routed balance may exceed `ethAmount` when stray/refund ETH is swept in on top). `ethAmount` and `ethToFund` are equal for a token with no earnings allocation.
+  4. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount, ethToFund`) — `tokenAmountIn` is the amount actually swapped (net of the burn and liquidity shares); `ethAmount` is this swap's ETH proceeds (a balance delta, matching the pair's `Swap`); `ethToFund` is the slice of THAT ETH which reaches the fee handler as creator fees. The swap-back routes its own proceeds and nothing else — stray or refunded ETH sitting in the same balance is left for `sweepStrayEth()`, which splits it with the burn/liquidity shares it is owed rather than renormalizing it into the dividend pot — so `ethToFund <= ethAmount` always, and the two are equal for a token with no earnings allocation.
   5. Fund deposit of `ethToFund`: **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount = ethToFund`), plus optional **`CreatorClaimed`** per direct forward — always AFTER `CreatorTaxSwapback` (historical order preserved). The dividends bucket is accrue-only and emits nothing on this path — its slice is buffered as native (or, for a V2 self-token leg, set aside as TOKENS alongside the liquidity buffer) and converted out-of-band by `processDividends`. So a token still emits exactly one `CreatorFeesDeposited` (the liquidity slice, and any self-token dividend slice, were already set aside as tokens above, not carved from this ETH).
 - The token's `swapBack(uint256 swapAmount, uint256 amountOutMinWei)` external function is owner/launchpad-owner gated and reverts `NotGraduated` before graduation; it produces the same event sequence as the auto-trigger. Factory-deployed V2 tokens are ownerless, so the launchpad owner is the only reachable manual caller.
 - The token's **`processLiquidity(uint256 amountOutMinWei)`** external function (permissionless; reverts `NotGraduated` / `NothingToAdd` / `ProcessCooldown` when already run this block; processes at most `2 * SWAP_THRESHOLD` tokens per call, remainder stays buffered) turns the set-aside liquidity tokens into a locked LP position: under `inSwap` it sells half through `UniswapV2Venue.swapTaxToNative()`, then adds the retained half plus the proceeds through `UniswapV2Venue.supplyLiquidity()` and sends the LP to `0xdEaD`. The venue lib is import-swapped per chain, so ETH-family builds take the WETH `swapExactTokensForETHSupportingFeeOnTransferTokens` / `addLiquidityETH` path while ARC builds pair `<token, USDC-ERC20>` via `swapExactTokensForTokensSupportingFeeOnTransferTokens` / two-ERC20 `addLiquidity` — the emitted event sequence is the same either way. Emits the external V2 `Sync` / `Swap` / pair `Mint` / `Transfer` events, then **`LivoTaxableToken.LiquidityAdded`** (`ethIn, tokensAdded, liquidity`) — the shared event; here `liquidity` is the V2 LP tokens minted, and `ethIn` / `tokensAdded` are the router's ACTUAL deposited amounts (they match the pair's `Mint`), not the requested ones: V2 adds at whatever ratio the pool is at and the router refunds the excess side back to the token.
@@ -273,7 +273,7 @@ For a V4 token with a burn or liquidity allocation, the swap-time `CreatorTaxesA
 
 - **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: **`LivoTaxableTokenUniV4.BuyBackInitiated`** (`ethIn`) — a precursor marker emitted BEFORE the swap so indexers can classify the following hook `LivoSwapBuy` (which carries the keeper's `tx.origin`) as a protocol buy-back rather than a trade — then the external V4 buy-back swap events (`Swap`, plus the hook's own LP-fee/tax events since the buy-back is an ordinary swap), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`LivoTaxableToken.CreatorTaxBurn`** (`ethSpent, tokensBurned`) — the same shared event V2 emits, with a non-zero `ethSpent` here since V4 does buy the tokens back before burning. Reverts `NothingToBurn` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered).
 - **`processLiquidity()`** — deposits `liquidityPendingEth` as a single-sided ETH position just below the current price (a bid wall) via the shared `LivoUniV4LiquidityAdder`. Emits the external V4 position-mint events (`ModifyLiquidity`, settlement `Transfer`s), then **`LivoTaxableToken.LiquidityAdded`** (`ethIn, tokensAdded, liquidity`) — the shared event; `tokensAdded` is always 0 (ETH-only wall) and `liquidity` is the V4 liquidity units minted. Reverts `NothingToAdd` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered). The minted position NFT is held by the token (permanent depth).
-- **`sweepStrayEth()`** — routes the token's ETH balance beyond `burnPendingEth` and `liquidityPendingEth` back through the earnings-allocation split (same events as an `accrueFees` split), so stray ETH becomes token earnings instead of being stuck.
+- **`sweepStrayEth()`** — routes the token's native balance beyond everything it owes (`burnPendingEth`, `liquidityPendingEth`, the dividend buffers and undelivered pots) back through the earnings-allocation split (same events as an `accrueFees` split), so stray native becomes token earnings instead of being stuck. Permissionless. Present on BOTH venues — it lives on `LivoTaxableToken` — and it is the only exit for stray native on V2, where `rescueTokens` no longer accepts `address(0)` and the swap-back only routes its own swap proceeds. Pre-graduation it deposits the whole balance to the fund wallets, which is what `rescueTokens(address(0))` used to do.
 
 ---
 
@@ -344,16 +344,29 @@ their bodies do not fit in the clone's implementation under EIP-170. This change
 the selectors, the argument shapes, the event signatures and the emitting ADDRESS are all still the
 token's. The extension address is never an event source and never needs indexing.
 
-**At graduation**, after `Graduated`: **`DividendRoundOpened`** (`roundId, totalShares`) — the first
-round opens here rather than at creation, because at creation the launchpad holds the whole supply
-and every bonding-curve buyer would look like a mid-round arrival worth zero. `totalShares` is the
-AUTHORITATIVE opening denominator; a replica must seed from it and never compute its own.
+**At graduation**, immediately after `Graduated` and from `markGraduated()` itself:
+**`DividendRoundOpened`** (`roundId, totalShares`) — the first round opens here rather than at
+creation, because at creation the launchpad holds the whole supply and every bonding-curve buyer
+would look like a mid-round arrival worth zero. `totalShares` is the AUTHORITATIVE opening
+denominator; a replica must seed from it and never compute its own — in particular it is emitted
+while the GRADUATOR still holds the graduating supply, and the graduator's transfer into the pool,
+later in that same transaction, decrements the denominator back down through the ordinary
+min-balance rule. There is ONE exception to the timing: a deploy buy large enough to graduate the
+token inside `createToken` runs `markGraduated()` before the allocation is configured, so that token
+emits `DividendRoundOpened` on its first earnings instead.
 
 **`processDividends(uint256[3] minOut)`** — permissionless, threshold-gated per leg:
 1. Per leg frozen, in leg order: **`DividendRoundFunded`** (`roundId, asset, nativeIn, assetOut,
    totalShares`). Only legs over `DIVIDEND_THRESHOLD` freeze, and the set is derived, never
    caller-chosen. `totalShares` is the frozen denominator, snapshotted on the round's FIRST freeze
    and reused by any leg that freezes later in the same round.
+1b. Per leg that held enough but could NOT convert: **`DividendLegConversionFailed`**
+   (`roundId, leg, asset`) — the leg stays unfrozen with its buffer intact and retries next round.
+   Only this case is announced; an empty or below-threshold buffer is the normal quiet path and
+   emits nothing, so the event always marks something actionable (a `minOut` the pool moved past, or
+   a dead pool needing a `SwapRouteRegistry` override). If NO leg froze, the call reverts —
+   `DividendConversionFailed` when at least one leg tried and failed, `NoLegAboveThreshold` when none
+   had earned enough to try.
 2. V4 self-token leg only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
    (`ethIn`), followed by the pool's own `LivoSwapHook.LivoSwapBuy`. Same contract as
    `BuyBackInitiated`: the precursor must be classified as it arrives, so the keeper's PnL is not
@@ -361,7 +374,10 @@ AUTHORITATIVE opening denominator; a replica must seed from it and never compute
 
 **`distributeDividends(address[])` / `claimRound()`** — one **`DividendPaid`**
 (`roundId, holder, asset, amount`) per holder per frozen leg. A holder already paid this round, a
-holder below the relative dust floor, and a failed native send all emit nothing.
+holder below the relative dust floor, and a failed native send all emit nothing. The two differ in
+one respect: a native payout from `distributeDividends` is capped at the chain's
+`NATIVE_PAYOUT_GAS`, so one expensive `receive()` cannot starve the batch, while `claimRound`
+forwards all remaining gas — a holder skipped by a batch can therefore always be paid by claiming.
 
 **`finalizeRound()`** — **`DividendRoundFinalized`** (`roundId, residualRolled`) followed by
 **`DividendRoundOpened`** for the next round, in that order.

@@ -186,12 +186,38 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.pendingNative(0), 1 ether - 2 * cap, "the next round takes the next slice");
     }
 
-    /// @dev `minOut` is what bounds the swap. A floor the pool cannot meet does NOT revert the call: the
-    ///      leg simply does not freeze, and its buffer is untouched for the next attempt.
+    /// @dev The failed conversion is ANNOUNCED, and only that case is. An empty or below-threshold
+    ///      buffer is the normal quiet path and stays silent, so this event firing always means a leg
+    ///      that held enough and still did not fund — the one thing an operator can act on.
+    function test_aFailedConversionEmitsTheDiagnosticEvent() public {
+        _fundAndOpen(harness);
+
+        vm.expectEmit(true, true, true, false, address(harness));
+        emit DividendDistribution.DividendLegConversionFailed(1, 0, DAI);
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        harness.processDividends([uint256(1_000_000e18), 0, 0]);
+    }
+
+    /// @dev A leg that simply has not earned enough yet reports the OTHER error, and says nothing: the
+    ///      keeper is told to wait, not sent looking for a broken pool.
+    function test_aBelowThresholdLegIsQuietAndReportsNoLegAboveThreshold() public {
+        harness.setBalance(holder, 1_000e18);
+        harness.openRound();
+        vm.deal(address(this), 1 wei);
+        harness.accrue{value: 1 wei}();
+        skip(harness.MIN_ROUND_DURATION() + 1);
+
+        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
+        harness.processDividends([uint256(0), 0, 0]);
+    }
+
+    /// @dev `minOut` is what bounds the swap. A floor the pool cannot meet leaves the leg unfrozen with
+    ///      its buffer untouched — and says so precisely: the money IS there, the swap is the problem, so
+    ///      the keeper is told to retry rather than to wait for earnings it already has.
     function test_thirdAsset_aMissedSlippageFloorLeavesTheLegUnfrozen() public {
         _fundAndOpen(harness);
 
-        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         harness.processDividends([uint256(1_000_000e18), 0, 0]);
 
         assertEq(harness.pendingNative(0), 1 ether, "nothing was spent");
@@ -231,8 +257,9 @@ contract DividendsThirdAssetTests is Test {
         DividendHarness dead = _harness(DAI, v3DividendRoute(1234));
         _fundAndOpen(dead);
 
-        // The sole leg cannot convert, so there is nothing to freeze at all.
-        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
+        // The sole leg cannot convert, so there is nothing to freeze at all — reported as a conversion
+        // failure, not as "no earnings yet", which is what points an operator at the dead pool.
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         dead.processDividends([uint256(0), 0, 0]);
         assertEq(dead.pendingNative(0), 1 ether, "the buffer is intact");
 

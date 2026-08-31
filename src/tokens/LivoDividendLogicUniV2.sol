@@ -104,6 +104,13 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
         revert NotAToken();
     }
 
+    /// @dev The second entry point into the earnings split, stubbed for the same reason `accrueFees` is:
+    ///      an extension holds no balance, so it has no stray native — and leaving it live would link
+    ///      `_allocateEthEarnings` and everything under it back into this contract's bytecode.
+    function sweepStrayEth() external pure override {
+        revert NotAToken();
+    }
+
     function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata)
         external
         pure

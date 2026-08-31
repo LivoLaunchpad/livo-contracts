@@ -100,10 +100,17 @@ abstract contract DividendDistribution {
     ///      window only lengthens how long a stuck round blocks the next one.
     uint256 public constant PAYOUT_WINDOW = 1 days;
 
-    /// @notice Gas stipend for a native payout. Bounded so one holder with an expensive (or reverting)
-    ///         `receive()` cannot brick or grief a whole batch; a plain `receive()` and the common
-    ///         smart-account fallbacks fit comfortably.
-    uint256 internal constant NATIVE_PAYOUT_GAS = 50_000;
+    /// @notice Gas stipend for a native payout inside a KEEPER BATCH. Bounded so one holder with an
+    ///         expensive (or reverting) `receive()` cannot brick or grief the rest of the batch; a plain
+    ///         `receive()` and the common smart-account fallbacks fit comfortably.
+    /// @dev Per-chain, because what a holder's wallet costs to pay is a property of the chain's wallet
+    ///      population and not of this protocol — a future chain can raise it without a code change.
+    /// @dev This is a batch-throughput knob, NOT an eligibility gate. A holder whose fallback needs more
+    ///      than this is skipped by `distributeDividends` but can still be paid in full through
+    ///      `claimRound()`, which forwards all remaining gas because it has no batch to protect and the
+    ///      caller is spending their own gas. Without that escape hatch a stipend set too low for some
+    ///      wallet would lock those holders out of every round, permanently.
+    uint256 public constant NATIVE_PAYOUT_GAS = DeploymentAddresses.NATIVE_PAYOUT_GAS;
 
     /// @notice Relative dust floor. A holder whose share of `frozenShares` is below `1 / MIN_SHARE_DENOM`
     ///         is skipped. Relative rather than absolute because every leg is proportional to the SAME
@@ -256,12 +263,24 @@ abstract contract DividendDistribution {
     ///         events).
     event DividendRoundFinalized(uint32 indexed roundId, uint256 residualRolled);
 
+    /// @notice A leg held enough to freeze but its conversion did not happen, so it stays unfrozen and
+    ///         keeps accruing. The ONLY actionable one of the three ways a leg can decline to freeze —
+    ///         an empty buffer and a below-threshold buffer are the normal quiet path and are silent, so
+    ///         this firing always means something a keeper can act on: retry with a different `minOut`,
+    ///         or, if it persists, the leg's pool is dead and needs a `SwapRouteRegistry` entry.
+    event DividendLegConversionFailed(uint32 indexed roundId, uint256 indexed leg, address indexed asset);
+
     //////////////////////// Errors //////////////////////
 
     error InvalidDividendConfig();
     error DividendsNotActive();
     error RoundTooYoung();
+    /// @notice No leg held enough to freeze. Distinct from `DividendConversionFailed`: this one means
+    ///         wait for more earnings, that one means the earnings are there and the swap is the problem.
     error NoLegAboveThreshold();
+    /// @notice At least one leg was fundable, but every leg that tried failed to convert, so the round
+    ///         froze nothing. See the `DividendLegConversionFailed` events in the same call for which.
+    error DividendConversionFailed();
     error RoundAlreadyFrozen();
     error NoFrozenRound();
     error PayoutWindowOpen();

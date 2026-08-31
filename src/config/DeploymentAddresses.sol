@@ -64,6 +64,12 @@ library DeploymentAddressesEthereumMainnet {
     ///         which case the factories reject any third-token dividend asset at creation.
     address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimRound()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -124,6 +130,12 @@ library DeploymentAddressesEthereumSepolia {
     ///         which case the factories reject any third-token dividend asset at creation.
     address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimRound()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -184,6 +196,12 @@ library DeploymentAddressesRobinhoodMainnet {
     ///         which case the factories reject any third-token dividend asset at creation.
     address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimRound()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
     /// @notice Livo Treasury (same address as Ethereum mainnet)
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -248,6 +266,12 @@ library DeploymentAddressesRobinhoodTestnet {
     ///         which case the factories reject any third-token dividend asset at creation.
     address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimRound()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -321,6 +345,12 @@ library DeploymentAddressesArcMainnet {
     ///         which case the factories reject any third-token dividend asset at creation.
     address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimRound()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -387,6 +417,12 @@ library DeploymentAddressesArcTestnet {
     ///         which case the factories reject any third-token dividend asset at creation.
     address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimRound()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }

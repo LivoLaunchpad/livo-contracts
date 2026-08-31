@@ -330,15 +330,21 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
         swapbacksThisBlock = count;
         lastSwapbackBlock = uint48(block.number);
 
-        // Route the whole UNCOMMITTED balance — this swap-back's proceeds plus any router refunds from a
-        // prior `processLiquidity`. `_sweepableNative` is what keeps the accrued native dividend buffers
-        // and undelivered pots out of it: this branch fires automatically on every sell that triggers a
-        // swap-back, so reading the raw balance here would re-split the dividend money into
-        // fund/burn/liquidity on every trade, with no attacker and no privilege required.
-        // Pass `0, 0`: both the burn AND the liquidity slices were already taken above in TOKEN-space, so
-        // `_splitEthEarnings` carves no ETH burn/liquidity slice and renormalizes dividends/fund over
-        // the leftover. No-ops on a 0 balance.
-        uint256 ethToFund = _splitEthEarnings(_sweepableNative(), 0, 0);
+        // Route THIS SWAP'S PROCEEDS, and only those. Pass `0, 0`: both the burn AND the liquidity
+        // slices were already taken above in TOKEN-space, so `_splitEthEarnings` carves no native
+        // burn/liquidity slice and renormalizes dividends/fund over the leftover.
+        //
+        // Stray native — router refunds from an earlier `processLiquidity`, a force-fed balance — is
+        // deliberately NOT swept in here, even though it sits in the same balance. It had no token-space
+        // peel, so renormalizing it over that same reduced denominator would pay the dividend pot the
+        // share earmarked for burning and liquidity. `sweepStrayEth()` routes that population with the
+        // `(burnBps, liquidityBps)` it deserves, and keeping the two apart is also what makes this
+        // event's `ethAmount`/`ethToFund` pair describe one swap exactly.
+        //
+        // Clamped to `_sweepableNative()`: the swap is an external call, so a callback that accrues into
+        // the dividend buffers mid-swap would otherwise be counted once there and once in this delta.
+        uint256 sweepable = _sweepableNative();
+        uint256 ethToFund = _splitEthEarnings(ethFromSwap < sweepable ? ethFromSwap : sweepable, 0, 0);
 
         // Emitted after the split (so the fund slice is known) but BEFORE the deposit, preserving the
         // historical on-chain order `CreatorTaxSwapback` → `CreatorFeesDeposited` the indexer relies on.

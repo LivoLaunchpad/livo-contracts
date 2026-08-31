@@ -122,19 +122,6 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
         emit CreatorTaxBurn(ethIn, tokensBought);
     }
 
-    /// @notice Routes any stray ETH — the token's balance beyond the `burnPendingEth` buy-back buffer —
-    ///         back through the earnings-allocation split. Permissionless: stray ETH is not recoverable
-    ///         by its sender, but instead becomes token earnings for holders (fund / dividends /
-    ///         liquidity, plus its own burn slice). No-ops when there is nothing stray.
-    function sweepStrayEth() external nonReentrant {
-        // Stray ETH is treated as fresh V4 earnings, so carve its burn and liquidity shares on the ETH
-        // side too. What is NOT stray — the burn/liquidity buffers and the dividend buffers and pots —
-        // is excluded by `_sweepableNative`. This call is permissionless and repeatable, so open-coding
-        // the subtraction here would let anyone recycle the dividend pot through the split and hand the
-        // fund-wallet slice of it to the creator on every call.
-        _allocateEthEarnings(_sweepableNative(), burnBps, liquidityBps);
-    }
-
     /// @notice Deposits the accrued liquidity ETH as a single-sided ETH position just below the current
     ///         price — a protective bid wall — via the shared `LivoUniV4LiquidityAdder`. Permissionless
     ///         and off the swap hot path, mirroring `processBurn`: the ETH is protocol-committed to

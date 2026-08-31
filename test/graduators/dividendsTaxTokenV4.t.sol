@@ -179,13 +179,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      creation the launchpad holds the whole supply; at `markGraduated()` the graduator does. By
     ///      the time earnings arrive both are done, so the denominator is just the real holders — and
     ///      the transfer hot path never has to know either address exists.
-    function test_firstRoundOpensOnTheFirstEarnings() public {
+    /// @dev The round opens in `markGraduated()`, so a holder is earning from the moment the token is
+    ///      live — not from whenever the first earnings happen to arrive.
+    function test_firstRoundOpensAtGraduation() public {
         LivoTaxableTokenUniV4 token = _graduatedDividendToken();
-        assertEq(token.currentRound(), 0, "no round yet, even though the token has graduated");
+        assertEq(token.currentRound(), 1, "round 1 opened by graduation itself");
 
         _accrue(token, 1 ether);
 
-        assertEq(token.currentRound(), 1, "round 1 opened by the first earnings");
+        assertEq(token.currentRound(), 1, "earnings do not open a second round");
         assertApproxEqAbs(
             uint256(token.roundTotalShares()),
             IERC20(address(token)).balanceOf(buyer),
@@ -375,12 +377,24 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     /// @dev Before any earnings there is no round at all, so nothing can be frozen or rolled over.
-    function test_noRoundBeforeTheFirstEarnings() public {
+    /// @dev The graduator holds the ENTIRE supply when `markGraduated()` opens round 1, and moves it
+    ///      into the pool later in that same transaction. The min-balance rule has to see that transfer
+    ///      and take the graduator back out of the denominator, or every holder is diluted by a bag that
+    ///      no longer exists — the whole reason opening the round this early is safe.
+    function test_graduatorDropsOutOfTheOpeningDenominator() public {
         LivoTaxableTokenUniV4 token = _graduatedDividendToken();
-        vm.expectRevert(DividendDistribution.DividendsNotActive.selector);
-        token.finalizeRound();
-        vm.expectRevert(DividendDistribution.DividendsNotActive.selector);
-        token.processDividends([uint256(0), 0, 0]);
+
+        assertApproxEqAbs(
+            uint256(token.roundTotalShares()),
+            IERC20(address(token)).balanceOf(buyer),
+            GRADUATOR_DUST_TOLERANCE,
+            "denominator self-corrected to the real holders inside the graduation tx"
+        );
+        assertLt(
+            token.dividendShares(address(token.graduator())),
+            GRADUATOR_DUST_TOLERANCE,
+            "graduator keeps no meaningful share of round 1"
+        );
     }
 
     ///////////////////////// committed funds (§2.9) /////////////////////////

@@ -10,6 +10,7 @@ import {DividendRoute} from "src/types/DividendRoute.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @title LivoTaxableToken
 /// @notice Abstract base for Livo taxable tokens shared by the Uniswap V2 and V4 variants.
@@ -28,7 +29,16 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 /// @dev ⚠️ `DividendDistribution` is listed BEFORE `EarningsAllocation` on purpose: inheritance lays
 ///      base storage out in declaration order, so putting it after would wedge its state between the
 ///      allocation bps and the tax fields and break the packing described above.
-abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDistribution, EarningsAllocation {
+/// @dev `ReentrancyGuardTransient` is last and holds NO regular storage (its flag lives in transient
+///      storage), so it adds nothing to the layout above and is safe wherever it sits. It is inherited
+///      here, rather than per venue, because `sweepStrayEth` needs it on both.
+abstract contract LivoTaxableToken is
+    LivoToken,
+    ILivoTaxableToken,
+    DividendDistribution,
+    EarningsAllocation,
+    ReentrancyGuardTransient
+{
     using SafeERC20 for IERC20;
 
     /// @notice Where `processLiquidity` locks LP tokens, and an address users sometimes send tokens to by
@@ -136,12 +146,30 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///      timestamp tracking. `graduationTimestamp` is the tax-window anchor for tokens configured
     ///      with `startTaxFromLaunch == false`; for `startTaxFromLaunch == true` tokens it is only the
     ///      V4 hook's "has graduated?" guard via `getTaxConfig` (the window is creation-anchored).
+    /// @dev Also opens the token's FIRST dividend round, right here, so holders start earning the moment
+    ///      the token goes live rather than whenever the first earnings happen to arrive.
+    ///
+    ///      The graduator still holds the whole graduating supply at this instant, which looks like it
+    ///      would poison the opening denominator — but it moves that supply into the pool LATER IN THIS
+    ///      SAME TRANSACTION, and with the round already open the min-balance rule sees that transfer:
+    ///      the graduator's minimum drops to 0 and `roundTotalShares` is decremented by exactly what it
+    ///      held. The denominator self-corrects before the transaction ends, by the same mechanism that
+    ///      makes a flash loan worthless. So this costs a couple of SSTOREs once, in the graduation tx,
+    ///      and buys every bonding-curve holder a full-balance share of round 1 — without an entry in
+    ///      `_dividendExcluded` and without a single wei of per-transfer cost.
+    ///
+    ///      `_onGraduatedEarnings` stays as the fallback and is NOT redundant: a deploy buy large enough
+    ///      to graduate the token inside `createToken` runs this before the factory has called
+    ///      `initializeEarningsAllocation`, so `hasDividends` is still false here and the round opens on
+    ///      the first earnings instead.
     function markGraduated() external virtual override(ILivoToken, LivoToken) {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
         graduated = true;
         graduationTimestamp = uint40(block.timestamp);
         emit Graduated();
+        // After `Graduated`, never before: the indexer reads `DividendRoundOpened` as following it.
+        if (hasDividends) _openDividendRound();
     }
 
     /// @notice Allows the token owner OR the launchpad owner to rescue stuck ERC20 balances (never the
@@ -255,19 +283,14 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     }
 
     /// @inheritdoc EarningsAllocation
-    /// @dev Opens the token's FIRST dividend round, on the first earnings it ever routes — not at
-    ///      creation, and not at graduation:
-    ///        - creation is too early: the launchpad holds the whole supply then, so the round would
-    ///          open with an almost-empty denominator and every bonding-curve buyer would look like a
-    ///          mid-round arrival worth zero.
-    ///        - `markGraduated()` is too early too, less obviously. It runs while the GRADUATOR still
-    ///          holds the entire graduating supply, so the opening denominator would count a bag handed
-    ///          to the pool moments later in the same transaction. Excluding the graduator would fix
-    ///          that — at the price of an `SLOAD` on every transfer for the life of the token, to
-    ///          neutralise an address that can never be paid anyway (it ends graduation at 0 on V2 and
-    ///          at a few thousand wei on V4, far under the dust floor). Not worth it.
-    ///      By the time earnings arrive the graduation transaction is over and the token is in its
-    ///      steady state, so the snapshot is clean and the hot path never learns the graduator exists.
+    /// @dev FALLBACK round opener. The normal path is `markGraduated()`, which opens round 1 the moment
+    ///      the token goes live; this covers the one case that misses it — a deploy buy large enough to
+    ///      graduate the token INSIDE `createToken`, where `markGraduated()` runs before the factory has
+    ///      called `initializeEarningsAllocation` and `hasDividends` is therefore still false. Such a
+    ///      token opens its round on the first earnings it routes instead.
+    /// @dev Creation is never the right moment either way: the launchpad holds the whole supply then, so
+    ///      the round would open with an almost-empty denominator and every bonding-curve buyer would
+    ///      look like a mid-round arrival worth zero.
     /// @dev Hooked HERE rather than in `_handleDividends` so the Uniswap-V2 self-token leg is covered
     ///      too: that leg is carved in token space and never reaches `_handleDividends`, so a token
     ///      paying only in itself would otherwise never open a round.
@@ -349,6 +372,32 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     }
 
     //////////////////////// COMMITTED FUNDS //////////////////////
+
+    /// @notice Routes stray native — whatever this token holds beyond the buffers and pots it owes —
+    ///         back through the earnings-allocation split. Permissionless: stray native is not
+    ///         recoverable by whoever sent it under any design, so it becomes token earnings (fund /
+    ///         dividends / liquidity, plus its own burn slice) instead of sitting dead. No-ops when
+    ///         there is nothing stray, and pre-graduation it deposits the whole balance to the fund
+    ///         wallets — the destination `rescueTokens(address(0))` used to send it to.
+    /// @dev Shares are `(burnBps, liquidityBps)` because stray native had NO upstream token-space peel:
+    ///      its burn and liquidity slices have to be carved here or not at all. On V4 they land in the
+    ///      buy-back and bid-wall buffers. On V2 neither bucket has a native-side handler — a V2 pair
+    ///      reverts `INVALID_TO` when asked to deliver a token to its own address, which is the same
+    ///      constraint that forces the self-token dividend leg into token space — so both slices fall
+    ///      through to the fund wallets, exactly as `accrueFees` already does with native on that venue.
+    ///      Passing `(0, 0)` here instead would renormalize those slices into the dividend pot, paying
+    ///      holders money earmarked for burning.
+    /// @dev `_sweepableNative` is what keeps the dividend buffers, the undelivered pots and each venue's
+    ///      own buffers out of the sweep. This entry point is permissionless and repeatable, so
+    ///      open-coding the subtraction would let anyone recycle the dividend pot through the split and
+    ///      hand its fund-wallet slice to the creator's receivers on every call.
+    /// @dev `virtual` for the same reason `accrueFees` is: it is the only other entry point that
+    ///      reaches `_allocateEthEarnings`, and the dividend extension must be able to stub it out or
+    ///      the whole earnings split is linked into the extension's bytecode, where it is dead weight it
+    ///      has no room for.
+    function sweepStrayEth() external virtual nonReentrant {
+        _allocateEthEarnings(_sweepableNative(), burnBps, liquidityBps);
+    }
 
     /// @notice Native balance that is genuinely stray — not owed to anyone — and may therefore be swept
     ///         back through the earnings split.

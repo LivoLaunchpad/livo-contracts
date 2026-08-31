@@ -143,11 +143,10 @@ abstract contract EarningsAllocation {
     }
 
     /// @dev Fires on every routing of post-graduation earnings, before any slice is carved. A no-op by
-    ///      default; the dividend module uses it to open its first round. Deliberately NOT
-    ///      `markGraduated()`: that runs while the graduator still holds the graduating supply, so any
-    ///      snapshot taken there would have to exclude it — and paying for that exclusion on every
-    ///      transfer, forever, to neutralise an address that ends the same transaction empty is a bad
-    ///      trade. By the time earnings arrive the graduation transaction is over.
+    ///      default; the dividend module uses it as the FALLBACK opener for its first round. The normal
+    ///      opener is `markGraduated()` — the graduator's own supply transfer, later in that same
+    ///      transaction, self-corrects the denominator via the min-balance rule — and this covers only
+    ///      the token that graduates inside `createToken`, before its allocation has been configured.
     function _onGraduatedEarnings() internal virtual {}
 
     /// @dev True once the token has graduated (a live pool exists). Implemented by the token.

@@ -389,6 +389,31 @@ contract DividendAccountingTests is Test {
         assertEq(bob.balance, h.roundPot(0) / 2, "and the healthy holder was still paid");
     }
 
+    /// @dev The other half of the stipend's contract. Capping the batch is only acceptable because the
+    ///      holder it skips is not locked out: `claimRound` forwards all remaining gas, because it has no
+    ///      batch to protect and the caller is spending their own. Without this the stipend would be a
+    ///      permanent eligibility gate — a wallet costing more than `NATIVE_PAYOUT_GAS` could never be
+    ///      paid, in this round or any other, and its share would roll forward forever.
+    function test_gasGuzzlingHolderCanStillClaimItself() public {
+        address guzzler = address(new GasGuzzlingHolder());
+        h.seed(guzzler, SUPPLY / 2);
+        h.seed(bob, SUPPLY / 2);
+        h.openRound();
+        _fund(1 ether);
+        skip(h.MIN_ROUND_DURATION() + 1);
+        h.processDividends([uint256(0), 0, 0]);
+
+        address[] memory batch = new address[](1);
+        batch[0] = guzzler;
+        h.distributeDividends(batch);
+        assertEq(guzzler.balance, 0, "skipped by the batch, as the stipend intends");
+
+        vm.prank(guzzler);
+        h.claimRound();
+
+        assertEq(guzzler.balance, h.roundPot(0) / 2, "but paid in full when it claims for itself");
+    }
+
     /// @dev A payee reentering `distributeDividends` from `receive()` must be stopped by the transient
     ///      guard. Without it the attacker would be paid its share, reenter before `roundPaid` is
     ///      settled, and be paid it a second time out of the same pot.

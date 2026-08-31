@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {LivoUniv4BuyBacks} from "src/tokens/LivoUniv4BuyBacks.sol";
-import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
 ///         pool key) and the shared liquidity adder it deployed (to mint the single-sided ETH wall).
@@ -22,7 +21,7 @@ interface ILivoV4Graduator {
 ///      impossible rather than merely tested (it is tested too — see
 ///      `just check-dividend-layout`). Nothing behavioural belongs here: put a function in
 ///      this base only when BOTH sides need it, and everything else in the contract that uses it.
-abstract contract LivoTaxableTokenUniV4Base is LivoTaxableToken, LivoUniv4BuyBacks, ReentrancyGuardTransient {
+abstract contract LivoTaxableTokenUniV4Base is LivoTaxableToken, LivoUniv4BuyBacks {
     /////////////////////////// pure storage ///////////////////////
 
     /// @notice ETH accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn. Held in
@@ -41,10 +40,10 @@ abstract contract LivoTaxableTokenUniV4Base is LivoTaxableToken, LivoUniv4BuyBac
     /// @notice `block.number` of the last `processLiquidity` — enforces its once-per-block cooldown.
     uint48 public lastLiquidityProcessBlock;
 
-    // Reentrancy: `processBurn`, `processLiquidity` and `sweepStrayEth` share the inherited transient
-    // `nonReentrant` lock (they make external calls that pass through `LivoSwapHook`/the fee handler and
-    // could reenter). The hot-path `accrueFees` deliberately does NOT take the lock, so fee accrual
-    // during a buy-back still works.
+    // Reentrancy: `processBurn` and `processLiquidity` share the transient `nonReentrant` lock that
+    // `LivoTaxableToken` inherits for `sweepStrayEth` (they make external calls that pass through
+    // `LivoSwapHook`/the fee handler and could reenter). The hot-path `accrueFees` deliberately does
+    // NOT take the lock, so fee accrual during a buy-back still works.
 
     //////////////////////// Events & errors //////////////////////
 
