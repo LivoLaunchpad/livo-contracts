@@ -12,6 +12,9 @@ import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {noDividendRoutes, v2DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 import {DividendRoute} from "src/types/DividendRoute.sol";
+import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {LivoDividendLogicUniV2} from "src/tokens/LivoDividendLogicUniV2.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -274,5 +277,60 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     function test_dividendsWithoutPayoutConfigIsRejected() public {
         vm.expectRevert(DividendDistribution.InvalidDividendConfig.selector);
         _createDividendToken(5_000, [address(0), address(0), address(0)], [uint16(0), 0, 0]);
+    }
+
+    ///////////////////////// the delegatecall extension /////////////////////////
+
+    /// @dev The four dividend entry points are stubs that `delegatecall` into a separate contract,
+    ///      because their bodies do not fit in the clone's implementation alongside everything else.
+    ///      What has to hold for that to be safe is that the extension writes the TOKEN's storage and
+    ///      keeps none of its own — which is exactly what a completed round lets us observe.
+    function test_extension_roundStateLandsOnTheTokenNotTheExtension() public {
+        LivoTaxableTokenUniV2 token = _nativeToken();
+        LivoDividendLogicUniV2 extension = LivoDividendLogicUniV2(payable(token.dividendLogic()));
+
+        _accrue(token, 1 ether);
+        skip(token.MIN_ROUND_DURATION() + 1);
+        token.processDividends([uint256(0), 0, 0]);
+
+        assertGt(token.roundPot(0), 0, "the token's pot was funded through the delegatecall");
+        assertEq(token.frozenLegs(), 1, "the token's round is frozen");
+        assertEq(extension.roundPot(0), 0, "the extension kept nothing of its own");
+        assertEq(extension.currentRound(), 0, "the extension never opened a round of its own");
+        assertEq(address(extension).balance, 0, "the extension holds no money");
+    }
+
+    /// @dev Every clone of one implementation shares that implementation's extension: it is an
+    ///      `immutable` on the implementation, so a clone reads it out of the implementation's code.
+    function test_extension_isSharedByEveryCloneOfAnImplementation() public {
+        LivoTaxableTokenUniV2 a = _nativeToken();
+        LivoTaxableTokenUniV2 b = _nativeToken();
+
+        address logic = livoTaxTokenV2.DIVIDEND_LOGIC();
+        assertGt(logic.code.length, 0, "the implementation deployed its extension");
+        assertEq(a.dividendLogic(), logic, "first clone");
+        assertEq(b.dividendLogic(), logic, "second clone");
+    }
+
+    /// @dev An extension is an execution body, not a token. Reverting every token entry point is what
+    ///      makes the machinery behind them unreachable — the saving that buys the cold half its room —
+    ///      and it is also the honest answer to anyone who arrives at the wrong address.
+    function test_extension_disownsTheTokenEntryPoints() public {
+        LivoDividendLogicUniV2 extension = LivoDividendLogicUniV2(payable(livoTaxTokenV2.DIVIDEND_LOGIC()));
+
+        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        extension.transfer(buyer, 1);
+
+        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        extension.getTaxConfig();
+
+        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        extension.markGraduated();
+
+        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        extension.accrueFees{value: 0}();
+
+        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        extension.rescueTokens(DAI);
     }
 }

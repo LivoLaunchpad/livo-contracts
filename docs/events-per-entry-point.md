@@ -338,6 +338,12 @@ On success:
 None of these fire on a trade. The dividend module accrues on the earnings path and does everything
 else in separate, permissionless transactions, so an indexer sees them on their own.
 
+`processDividends`, `distributeDividends`, `claimRound` and `finalizeRound` are `delegatecall` stubs
+on the token into a per-venue extension (`LivoDividendLogicUniV2` / `LivoDividendLogicUniV4`), because
+their bodies do not fit in the clone's implementation under EIP-170. This changes nothing observable:
+the selectors, the argument shapes, the event signatures and the emitting ADDRESS are all still the
+token's. The extension address is never an event source and never needs indexing.
+
 **At graduation**, after `Graduated`: **`DividendRoundOpened`** (`roundId, totalShares`) — the first
 round opens here rather than at creation, because at creation the launchpad holds the whole supply
 and every bonding-curve buyer would look like a mid-round arrival worth zero. `totalShares` is the

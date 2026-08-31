@@ -31,6 +31,14 @@ abis:
 fast-test:
     forge test --no-match-contract Invariants --no-match-path "test/integration/**"
 
+# Fails if a taxable token and its dividend extension disagree on storage layout. The extension is
+# `delegatecall`ed with the token's storage, so this is the one property no Solidity test can assert
+# for itself. NOT wired into `fast-test`: it needs a storage-layout build (its own profile and `out`
+# dir, so it does not thrash the default cache), which is too slow to pay for on every run. Run it
+# after ANY change to the token hierarchy.
+check-dividend-layout:
+    @python3 script/checks/dividend_layout.py
+
 gas-report:
     forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report
 
@@ -87,16 +95,19 @@ _retarget taxlib gradsuffix="":
     @just _taxtoken {{taxlib}} "{{gradsuffix}}"
     @just _graduators "{{gradsuffix}}"
 
-# (internal) Repoints the taxable-token impls' (and the V4 buy-backs + dividend mixins')
+# (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs and both
+# dividend mixins')
 # `DeploymentAddresses` import, the venue lib used by the V2 swap-back AND the dividend module's
 # third-asset conversion, and the V4 token-side pool-constants lib, to the target chain.
 # Use a `chain-*` recipe.
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol \
-        src/tokens/DividendDistribution.sol
+        src/tokens/LivoTaxableTokenUniV2Base.sol \
+        src/tokens/DividendDistribution.sol src/tokens/DividendDistributionLogic.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
-        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/DividendDistribution.sol
+        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/DividendDistribution.sol \
+        src/tokens/DividendDistributionLogic.sol
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
         src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol
 

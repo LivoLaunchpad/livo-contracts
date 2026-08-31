@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {SwapRouteRegistry} from "src/registries/SwapRouteRegistry.sol";
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
@@ -14,11 +15,11 @@ import {
     v4DividendRoute
 } from "test/helpers/DividendRouteHelpers.sol";
 
-/// @notice A bare `DividendDistribution` with the token's four hooks stubbed out. It exists so the
+/// @notice A bare `DividendDistributionLogic` with the token's four hooks stubbed out. It exists so the
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
 ///         against real Uniswap pools without dragging a launchpad, a graduator and a pool through
 ///         the test. Balances are set directly instead of being moved by transfers.
-contract DividendHarness is DividendDistribution {
+contract DividendHarness is DividendDistributionLogic {
     address internal immutable ROUTE_REGISTRY;
 
     mapping(address => uint256) public balances;

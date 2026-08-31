@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LivoTaxableTokenUniV2Base} from "src/tokens/LivoTaxableTokenUniV2Base.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
+import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {LivoDividendLogicUniV2} from "src/tokens/LivoDividendLogicUniV2.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
-import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
@@ -32,76 +34,18 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap via a private
 ///      mempool. Factory-deployed tokens have `owner == address(0)`, so this entry point is
 ///      reachable only via the launchpad owner; the auto-trigger remains the live path.
-contract LivoTaxableTokenUniV2 is LivoTaxableToken {
-    ///////////////////////////////// uniswap v2 related /////////////////////////////////////////
-    // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
-
-    /// @notice Uniswap V2 router used to swap accumulated tax tokens for ETH
-    IUniswapV2Router public constant UNISWAP_V2_ROUTER = IUniswapV2Router(DeploymentAddresses.UNIV2_ROUTER);
-
-    /// @notice WETH address (the second hop in the swap path)
-    address public constant WETH = DeploymentAddresses.WETH;
-
-    /// @notice Minimum tax-token balance that triggers an auto swap-back on the next sell.
-    ///         0.05% of TOTAL_SUPPLY (= 500_000e18). Hardcoded to amortise gas across many small
-    ///         sells while keeping per-swap price-impact bounded for the common case.
-    uint256 public constant SWAP_THRESHOLD = TOTAL_SUPPLY / 2000;
-
-    /// @notice Max swap-backs per block. Further same-block calls silently no-op. Picked so two
-    ///         whales selling in the same block both get their tax routed.
-    uint8 public constant MAX_SWAPBACKS_PER_BLOCK = 2;
-
-    /////////////////////////// pure storage ///////////////////////
-
-    /// @dev Re-entrancy guard for the swap-back path. When true, `_update` short-circuits the
-    ///      tax + auto-trigger logic so the router's `transferFrom(this, pair, ...)` is a plain
-    ///      ERC20 transfer. Lives in transient storage — auto-clears at end of tx, no SSTORE cost.
-    bool internal transient _inSwap;
-
-    /// @notice `block.number` of the most recent successful `_processCollectedTokens`; zero until the first.
-    ///         Paired with `swapbacksThisBlock` for the per-block cap. `uint48`, packed with
-    ///         `swapbacksThisBlock` in the slot that FOLLOWS the parent tax + `EarningsAllocation` slot
-    ///         (that slot is full at 240 bits, so these no longer share it).
-    uint48 public lastSwapbackBlock;
-
-    /// @notice Swap-backs already settled in `lastSwapbackBlock`. Resets on the first swap-back
-    ///         of a new block; at `MAX_SWAPBACKS_PER_BLOCK` further same-block calls silent-no-op.
-    uint8 public swapbacksThisBlock;
-
-    /// @notice `block.number` of the last `processLiquidity` — enforces its once-per-block cooldown
-    ///         (with the `2 * SWAP_THRESHOLD` per-call cap, bounds what a sandwich of the half-sell can
-    ///         extract per block). Packed with the swap-back counters above.
-    uint48 public lastLiquidityProcessBlock;
-
-    /// @notice Tax TOKENS set aside for the liquidity allocation, awaiting a `processLiquidity` add. Held
-    ///         in the token's own balance alongside not-yet-swapped tax, but tracked apart: the swap-back
-    ///         paths subtract it so this committed slice is never re-processed as tax. V2 buffers liquidity
-    ///         as TOKENS (not ETH) because a V2 pair cannot deliver a token to its own address (INVALID_TO),
-    ///         so the token side is kept, not bought back; `processLiquidity` sells only half for the ETH side.
-    uint256 public liquidityPendingTokens;
-
-    /// @notice Tax TOKENS set aside for a SELF-TOKEN dividend leg, awaiting a `processDividends` freeze.
-    ///         V2 buffers this leg in token space, not as native, because a V2 pair reverts `INVALID_TO`
-    ///         when asked to deliver a token to its own address — the ETH round trip every other venue
-    ///         uses is simply not available here. Tracked apart from the tax pool for the same reason
-    ///         `liquidityPendingTokens` is: it shares this contract's balance but is already committed.
-    uint256 public dividendPendingTokens;
-
-    //////////////////////// Events //////////////////////
-
-    /// @notice Emitted whenever the contract auto- or manually-swaps accumulated tax tokens to ETH and
-    ///         routes the proceeds through the earnings-allocation split.
-    /// @dev `tokenAmountIn` / `ethAmount` describe THIS SWAP exactly — the same token and native amounts
-    ///      the `UniswapV2Pair.Swap` in this tx carries — so an indexer can pair the two by amount and
-    ///      mark the swap as a protocol swap-back rather than a trader sell. `tokenAmountIn` is therefore
-    ///      net of any burn-share already removed in token-space (`CreatorTaxBurn`) and of the liquidity
-    ///      share set aside as tokens; `ethAmount` is the balance DELTA across the swap, not the contract
-    ///      balance, which may also hold router refunds from an earlier `processLiquidity`.
-    /// @dev `ethToFund` is the slice of the routed ETH that actually reached the fee handler, i.e. the
-    ///      creator fees. It differs from `ethAmount` for a token with a non-zero earnings allocation
-    ///      (the dividends slice is withheld, and any stray balance is swept in on top), so accounting
-    ///      must use this field and not `ethAmount`. The two are equal for a token with no allocation.
-    event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount, uint256 ethToFund);
+/// @dev The out-of-band dividend entry points (`processDividends`, `distributeDividends`,
+///      `claimRound`, `finalizeRound`) are thin `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
+///      bodies live elsewhere, and nothing on the transfer hot path does. See `DividendDistributionLogic`.
+contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
+    /// @notice The `LivoDividendLogicUniV2` extension the dividend entry points `delegatecall` into.
+    /// @dev Deployed by THIS constructor rather than passed in or read from a manifest: the two are
+    ///      storage-layout-coupled, so pairing them at deploy time is one more thing that can be wired
+    ///      wrong for no benefit. Deploying it here makes the pair atomic, keeps every deploy script and
+    ///      test unchanged (`new LivoTaxableTokenUniV2()` still takes no arguments), and costs only
+    ///      creation-code size on the implementation — which EIP-170 does not bound, and EIP-3860 bounds
+    ///      far above what this needs. Immutable, so clones read it straight from the implementation.
+    address public immutable DIVIDEND_LOGIC;
 
     /// @notice Thrown by the manual `swapBack` before graduation (no tax accrues / no pair yet), and by
     ///         `processLiquidity` (no pool to add to before graduation).
@@ -119,6 +63,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
     /// @dev Token configuration is set during initialization, not in constructor
     constructor() LivoToken() {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
+        DIVIDEND_LOGIC = address(new LivoDividendLogicUniV2());
     }
 
     /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
@@ -403,51 +348,37 @@ contract LivoTaxableTokenUniV2 is LivoTaxableToken {
         if (ethToFund > 0) _depositToFund(ethToFund);
     }
 
-    /// @dev On V2 a leg paying the token ITSELF must be buffered in token space: `UniswapV2Pair.swap`
-    ///      reverts `INVALID_TO` when the recipient is one of the pair's own tokens, so there is no
-    ///      ETH -> self-token route to buy it back with.
-    function _isTokenSpaceDividendAsset(address asset) internal view override returns (bool) {
-        return asset == address(this);
+    //////////////////////// DIVIDENDS (delegated) //////////////////////
+
+    /// @notice Converts every leg currently over `DIVIDEND_THRESHOLD` into its payout asset, fixes those
+    ///         pots and the shared denominator, and opens the payout window. Permissionless.
+    /// @param minOut Per-leg slippage floor, in each asset's own decimals. Ignored by native legs.
+    function processDividends(uint256[3] calldata minOut) external {
+        minOut;
+        _delegateToDividendLogic();
     }
 
-    /// @dev The share of total earnings the self-token dividend leg takes, in token space. Derived on
-    ///      read from the two configured values rather than cached: it is only needed on the swap-back
-    ///      path, and a cached copy would be a third place for the allocation to disagree with itself.
-    function _tokenSpaceDividendBps() internal view override returns (uint256) {
-        uint8 leg = tokenSpaceLeg;
-        if (leg == NO_TOKEN_SPACE_LEG) return 0;
-        return uint256(dividendsBps) * dividendWeightsBps[leg] / BPS_TOTAL;
+    /// @notice Pushes this round's payouts to `holders`. Permissionless, idempotent and unforgeable: the
+    ///         amounts are computed from each holder's own round minimum, so a duplicate address pays 0,
+    ///         an unknown address pays 0, and an omitted holder is simply paid next round.
+    function distributeDividends(address[] calldata holders) external {
+        holders;
+        _delegateToDividendLogic();
     }
 
-    /// @dev Freezes the self-token leg straight out of its token buffer — no conversion, no slippage.
-    ///      Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply size the swap-back amortises
-    ///      against) because the buffer is denominated in tokens, not native. Every other leg is native
-    ///      and goes through the base.
-    function _freezeLeg(uint256 leg, address asset, uint256 minOut)
-        internal
-        override
-        returns (uint256 nativeIn, uint256 out)
-    {
-        if (asset != address(this)) return super._freezeLeg(leg, asset, minOut);
-
-        uint256 buffered = dividendPendingTokens;
-        if (buffered == 0) return (0, 0);
-        if (buffered < SWAP_THRESHOLD && _taxWindowActive()) return (0, 0);
-
-        dividendPendingTokens = 0;
-        return (0, buffered);
+    /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
+    function claimRound() external {
+        _delegateToDividendLogic();
     }
 
-    /// @dev The token's own balance is shared by the tax pool, the liquidity buffer, the self-token
-    ///      dividend buffer and any undelivered self-token dividend pot. Everything that asks "how much
-    ///      of this is unspoken for" asks here.
-    function _sweepableAsset(address asset) internal view override returns (uint256) {
-        if (asset != address(this)) return super._sweepableAsset(asset);
+    /// @notice Rolls the open round over: whatever stayed unpaid seeds the next round's pots, and a fresh
+    ///         denominator is read from live balances. Permissionless.
+    function finalizeRound() external {
+        _delegateToDividendLogic();
+    }
 
-        uint256 balance = balanceOf(address(this));
-        // Gated on warm-slot flags so a token with no allocation pays for no cold SLOAD here.
-        uint256 reserved = liquidityBps != 0 ? liquidityPendingTokens : 0;
-        if (hasDividends) reserved += dividendPendingTokens + committedDividends(address(this));
-        return balance > reserved ? balance - reserved : 0;
+    /// @inheritdoc LivoTaxableToken
+    function dividendLogic() public view override returns (address) {
+        return DIVIDEND_LOGIC;
     }
 }

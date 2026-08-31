@@ -136,7 +136,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///      timestamp tracking. `graduationTimestamp` is the tax-window anchor for tokens configured
     ///      with `startTaxFromLaunch == false`; for `startTaxFromLaunch == true` tokens it is only the
     ///      V4 hook's "has graduated?" guard via `getTaxConfig` (the window is creation-anchored).
-    function markGraduated() external override(ILivoToken, LivoToken) {
+    function markGraduated() external virtual override(ILivoToken, LivoToken) {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
         graduated = true;
@@ -162,7 +162,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///      this same balance, and handing an undistributed pot to the owner would not lose it — it would
     ///      TRANSFER it from holders to the owner, which is worse. Never open-code
     ///      `IERC20(token).balanceOf(address(this))` on a sweep path.
-    function rescueTokens(address token) external {
+    function rescueTokens(address token) external virtual {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         // disallow rescuing the token's own balance to prevent siphoning accrued taxes
         require(token != address(this), CannotRescueSelfToken());
@@ -180,7 +180,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///      the launchpad-owner branch is reachable, which is intentional.
     /// @param newBuyTaxBps New buy tax rate in basis points. Must be `<= buyTaxBps`.
     /// @param newSellTaxBps New sell tax rate in basis points. Must be `<= sellTaxBps`.
-    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external {
+    function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external virtual {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         require(newBuyTaxBps <= buyTaxBps && newSellTaxBps <= sellTaxBps, TaxBpsCanOnlyDecrease());
 
@@ -196,7 +196,10 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///         liquidity bps; the fund wallets take the remainder). Callable exactly once, during the
     ///         deploy tx, by the factory that initialized this token — guarded by the transient
     ///         `tokenFactory`, which is zero outside that tx (same pattern as `registerFees`).
-    function initializeEarningsAllocation(uint16 _burnBps, uint16 _dividendsBps, uint16 _liquidityBps) external {
+    function initializeEarningsAllocation(uint16 _burnBps, uint16 _dividendsBps, uint16 _liquidityBps)
+        external
+        virtual
+    {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
@@ -214,19 +217,17 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
         address[3] calldata _dividendTokens,
         uint16[3] calldata _dividendWeightsBps,
         DividendRoute[3] calldata _dividendRoutes
-    ) external {
-        require(msg.sender == tokenFactory, Unauthorized());
-        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
-        if (_dividendsBps != 0) {
-            _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
-            hasDividends = true;
-        }
+    ) external virtual {
+        // Runs in the extension: the payout configuration is validated once, at creation, and the
+        // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
+        // rather than duplicated, so there is exactly one copy of the rules.
+        _delegateToDividendLogic();
     }
 
     /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the
     ///         earnings-allocation split before they reach the fund wallets. Overrides the base
     ///         passthrough; see `EarningsAllocation`.
-    function accrueFees() external payable override(ILivoToken, LivoToken) {
+    function accrueFees() external payable virtual override(ILivoToken, LivoToken) {
         // V4 is ETH-native, so it carves both the burn and liquidity slices from this ETH. (On V2 this
         // path is only hit pre-graduation — where it short-circuits to the fund wallets — or by stray ETH,
         // which with no ETH-side burn/liquidity handlers simply folds to the fund wallets.)
@@ -275,6 +276,34 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///      accrual opens the round instead — self-healing, not a one-shot.
     function _onGraduatedEarnings() internal override {
         if (hasDividends && currentRound == 0) _openDividendRound();
+    }
+
+    //////////////////////// DIVIDEND LOGIC EXTENSION //////////////////////
+
+    /// @notice The `DividendDistributionLogic` extension this token's four out-of-band dividend entry
+    ///         points execute in, against this token's own storage.
+    /// @dev Declared here and implemented by each concrete token (which deploys its own alongside
+    ///      itself), so a venue that forgets to wire one does not compile.
+    function dividendLogic() public view virtual returns (address);
+
+    /// @dev Runs the extension's copy of the entry point against THIS contract's storage, balance and
+    ///      transient slots, forwarding calldata and returndata untouched. The extension exists for one
+    ///      reason: the round machinery, the venue routing and the payout loop are ~8.6 KB of bytecode a
+    ///      cloned token cannot afford under EIP-170, and they only ever run out-of-band. Nothing on the
+    ///      transfer hot path goes through here.
+    /// @dev ⚠️ The extension MUST have byte-identical storage layout to this token — it writes round
+    ///      state and pots directly. That is guaranteed structurally (both inherit the same venue base,
+    ///      neither adds state) and pinned by `just check-dividend-layout`.
+    function _delegateToDividendLogic() internal {
+        address logic = dividendLogic();
+        assembly ("memory-safe") {
+            calldatacopy(0, 0, calldatasize())
+            let ok := delegatecall(gas(), logic, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch ok
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
+        }
     }
 
     //////////////////////// DIVIDEND HOOKS //////////////////////
@@ -359,6 +388,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     function getLaunchpadFees(ILivoToken.LaunchpadTrade calldata trade)
         external
         view
+        virtual
         override(ILivoToken, LivoToken)
         returns (ILivoToken.LaunchpadFees memory)
     {
@@ -382,7 +412,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     ///      whole effective window regardless of anchor. Once both windows close this returns a fully
     ///      zeroed tax (rates AND duration), so the hook stops taxing; the zeroed rates also cover the
     ///      edge where the window expires before graduation and a swap lands in the graduation block.
-    function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
+    function getTaxConfig() external view virtual override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
         uint40 graduationTs = graduationTimestamp;
         (uint16 effBuy, uint16 effSell) = _effectiveTaxBps();
 
@@ -423,6 +453,7 @@ abstract contract LivoTaxableToken is LivoToken, ILivoTaxableToken, DividendDist
     function getSwapFees(bool isBuy)
         external
         view
+        virtual
         override(ILivoToken, LivoToken)
         returns (ILivoToken.LivoTradeFees memory)
     {

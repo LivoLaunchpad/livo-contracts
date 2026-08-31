@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LivoTaxableTokenUniV4Base, ILivoV4Graduator} from "src/tokens/LivoTaxableTokenUniV4Base.sol";
+import {LivoDividendLogicUniV4} from "src/tokens/LivoDividendLogicUniV4.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
+import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoUniv4BuyBacks} from "src/tokens/LivoUniv4BuyBacks.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ILivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
-import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 // Self-aliased so the `chain-arc-*` recipes can import-swap it for the ARC pool constants.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -18,20 +19,16 @@ import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 /// or DeploymentAddressesArc{Mainnet,Testnet} (ARC native currency is USDC, 18-dec at msg.value).
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
-/// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
-///         pool key) and the shared liquidity adder it deployed (to mint the single-sided ETH wall).
-interface ILivoV4Graduator {
-    function HOOK_ADDRESS() external view returns (address);
-    function LIQUIDITY_ADDER() external view returns (address);
-}
-
 /// @title LivoTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks.
-/// @dev Extends `LivoTaxableToken` (tax config + earnings split) and `LivoUniv4BuyBacks` (the ETH→token
-///      buy-back swap). Tax accounting on swaps lives in `LivoSwapHook`; the token exposes the tax
-///      config via `getTaxConfig()`. The earnings-allocation burn bucket is buffered here as ETH
+/// @dev Extends `LivoTaxableTokenUniV4Base` (tax config + earnings split + the V4 buy-back primitive).
+///      Tax accounting on swaps lives in `LivoSwapHook`; the token exposes the tax config via
+///      `getTaxConfig()`. The earnings-allocation burn bucket is buffered here as ETH
 ///      (`burnPendingEth`) and processed out-of-band by `processBurn`, which buys back and burns tokens.
-contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, ReentrancyGuardTransient {
+/// @dev The out-of-band dividend entry points (`processDividends`, `distributeDividends`,
+///      `claimRound`, `finalizeRound`) are thin `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
+///      bodies live elsewhere, and nothing on the swap hot path does. See `DividendDistributionLogic`.
+contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
@@ -53,48 +50,14 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
     ///         even if the spacing is ever retargeted per chain.
     int24 internal constant LIQUIDITY_WALL_TICK_WIDTH = 70 * UniswapV4PoolConstants.TICK_SPACING;
 
-    /////////////////////////// pure storage ///////////////////////
-
-    /// @notice ETH accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn. Held in
-    ///         the token's own balance; the rest of the balance (minus this and `liquidityPendingEth`) is
-    ///         stray ETH that `sweepStrayEth` routes back into the earnings split.
-    uint256 public burnPendingEth;
-
-    /// @notice ETH accrued from the liquidity allocation, awaiting a `processLiquidity` single-sided add.
-    ///         Held in the token's own balance and, like `burnPendingEth`, excluded from the stray sweep.
-    uint256 public liquidityPendingEth;
-
-    /// @notice `block.number` of the last `processBurn` — enforces its once-per-block cooldown
-    ///         (see `MAX_EARNINGS_PER_PROCESS`). Packed with `lastLiquidityProcessBlock`.
-    uint48 public lastBurnProcessBlock;
-
-    /// @notice `block.number` of the last `processLiquidity` — enforces its once-per-block cooldown.
-    uint48 public lastLiquidityProcessBlock;
-
-    // Reentrancy: `processBurn`, `processLiquidity` and `sweepStrayEth` share the inherited transient
-    // `nonReentrant` lock (they make external calls that pass through `LivoSwapHook`/the fee handler and
-    // could reenter). The hot-path `accrueFees` deliberately does NOT take the lock, so fee accrual
-    // during a buy-back still works.
-
-    //////////////////////// Events & errors //////////////////////
-
-    /// @notice Emitted immediately BEFORE `processBurn`'s buy-back swap, as a precursor marker.
-    /// @dev The buy-back is an ordinary pool swap, so `LivoSwapHook` emits a normal `LivoSwapBuy`
-    ///      carrying `tx.origin` — the keeper that triggered the call, not a trader. Without a marker an
-    ///      indexer credits that keeper with a buy it never made: the tokens go to this contract and are
-    ///      burned in the same call. Emitting BEFORE the swap is what makes it usable — the indexer can
-    ///      flag the buy as protocol-internal as it arrives, whereas `CreatorTaxBurn` lands after the
-    ///      swap, once the PnL update has already been applied. Mirrors the V2 swap-back, which is
-    ///      pre-flagged by the token's transfer to the pair.
-    event BuyBackInitiated(uint256 ethIn);
-
-    /// @notice Emitted immediately BEFORE the buy-back swap that funds a SELF-TOKEN dividend leg. Same
-    ///         job as `BuyBackInitiated`, for the same reason: the swap is an ordinary pool swap, so
-    ///         `LivoSwapHook` emits a `LivoSwapBuy` carrying `tx.origin` — the keeper that called
-    ///         `processDividends` — and without a precursor marker an indexer credits that keeper with a
-    ///         buy it never made. Kept as its own event rather than reusing `BuyBackInitiated` so the two
-    ///         protocol buy-backs stay distinguishable off-chain (one shrinks supply, one pays holders).
-    event DividendBuyBackInitiated(uint256 ethIn);
+    /// @notice The `LivoDividendLogicUniV4` extension the dividend entry points `delegatecall` into.
+    /// @dev Deployed by THIS constructor rather than passed in or read from a manifest: the two are
+    ///      storage-layout-coupled, so pairing them at deploy time is one more thing that can be wired
+    ///      wrong for no benefit. Deploying it here makes the pair atomic, keeps every deploy script and
+    ///      test unchanged (`new LivoTaxableTokenUniV4()` still takes no arguments), and costs only
+    ///      creation-code size on the implementation — which EIP-170 does not bound, and EIP-3860 bounds
+    ///      far above what this needs. Immutable, so clones read it straight from the implementation.
+    address public immutable DIVIDEND_LOGIC;
 
     error NothingToBurn();
     error NothingToAdd();
@@ -105,9 +68,10 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
     /// @notice Creates a new LivoTaxableTokenUniV4 instance which will be used as implementation for clones
     /// @dev Token configuration is set during initialization, not in constructor
     constructor() LivoToken() {
-        // Constructor body intentionally left empty
-        // All initialization happens in initialize() due to minimal proxy pattern
+        // All token initialization happens in initialize() due to minimal proxy pattern; the only thing
+        // the implementation itself owns is its dividend extension.
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
+        DIVIDEND_LOGIC = address(new LivoDividendLogicUniV4());
     }
 
     /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
@@ -237,39 +201,37 @@ contract LivoTaxableTokenUniV4 is LivoTaxableToken, LivoUniv4BuyBacks, Reentranc
         return 0;
     }
 
-    /// @dev The burn and liquidity buffers are committed ETH, not stray, and neither is the dividend
-    ///      money the base already accounts for.
-    function _reservedNative() internal view override returns (uint256) {
-        return super._reservedNative() + burnPendingEth + liquidityPendingEth;
+    //////////////////////// DIVIDENDS (delegated) //////////////////////
+
+    /// @notice Converts every leg currently over `DIVIDEND_THRESHOLD` into its payout asset, fixes those
+    ///         pots and the shared denominator, and opens the payout window. Permissionless.
+    /// @param minOut Per-leg slippage floor, in each asset's own decimals. Ignored by native legs.
+    function processDividends(uint256[3] calldata minOut) external {
+        minOut;
+        _delegateToDividendLogic();
     }
 
-    /// @dev Adds the SELF-TOKEN payout shape: V4 is ETH-native, so a leg paying the token itself buys it
-    ///      back on the token's own pool, reusing the same primitive `processBurn` uses. Native and
-    ///      third-token legs fall through to the base.
-    /// @dev The precursor event must stay BEFORE the swap: an indexer has to classify the resulting
-    ///      `LivoSwapHook.LivoSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
-    ///      the swap lands once the keeper's PnL has already been updated.
-    function _acquireDividendAsset(address asset, uint256 leg, uint256 nativeIn, uint256 minOut)
-        internal
-        override
-        returns (uint256)
-    {
-        if (asset != address(this)) return super._acquireDividendAsset(asset, leg, nativeIn, minOut);
+    /// @notice Pushes this round's payouts to `holders`. Permissionless, idempotent and unforgeable: the
+    ///         amounts are computed from each holder's own round minimum, so a duplicate address pays 0,
+    ///         an unknown address pays 0, and an omitted holder is simply paid next round.
+    function distributeDividends(address[] calldata holders) external {
+        holders;
+        _delegateToDividendLogic();
+    }
 
-        address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
-        uint256 balanceBefore = balanceOf(address(this));
-        emit DividendBuyBackInitiated(nativeIn);
-        _buyBackTokensWithEth(hook, nativeIn, minOut);
-        return balanceOf(address(this)) - balanceBefore;
+    /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
+    function claimRound() external {
+        _delegateToDividendLogic();
+    }
+
+    /// @notice Rolls the open round over: whatever stayed unpaid seeds the next round's pots, and a fresh
+    ///         denominator is read from live balances. Permissionless.
+    function finalizeRound() external {
+        _delegateToDividendLogic();
     }
 
     /// @inheritdoc LivoTaxableToken
-    /// @dev V4 earnings never stop: the creator's share of LP fees keeps arriving through `accrueFees`
-    ///      long after the tax window closes, so the tax window is the wrong question here. Letting the
-    ///      `DIVIDEND_THRESHOLD` bypass open would hand anyone a cheap round-stall — freeze a wei-sized
-    ///      pot, every holder's share rounds to zero, and the round cannot settle until `PAYOUT_WINDOW`
-    ///      expires while the real accrual waits in `pendingNative`.
-    function _dividendEarningsMayStillArrive() internal view override returns (bool) {
-        return true;
+    function dividendLogic() public view override returns (address) {
+        return DIVIDEND_LOGIC;
     }
 }

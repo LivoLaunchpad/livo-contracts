@@ -2,14 +2,15 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
 
-/// @notice A bare `DividendDistribution` whose balances move through `_trackDividendShares`, the way a
+/// @notice A bare `DividendDistributionLogic` whose balances move through `_trackDividendShares`, the way a
 ///         real token's `_update` moves them. `DividendHarness` in `dividendsThirdAsset.t.sol` sets
 ///         balances directly and so cannot exercise the round-minimum accounting at all; this one keeps
 ///         a holder list so the denominator can be reconciled against the sum it claims to be.
-contract SharesHarness is DividendDistribution {
+contract SharesHarness is DividendDistributionLogic {
     mapping(address account => uint256 balance) public balances;
     uint256 public eligibleSupply;
 
@@ -122,11 +123,11 @@ contract GasGuzzlingHolder {
 ///      test would prove nothing about the guard. Swallowing it lets the attacker be paid its honest
 ///      share while `blockedReentries` records that the second entry was refused.
 contract ReenteringHolder {
-    DividendDistribution public immutable TARGET;
+    DividendDistributionLogic public immutable TARGET;
     bool public useClaim;
     uint256 public blockedReentries;
 
-    constructor(DividendDistribution target) {
+    constructor(DividendDistributionLogic target) {
         TARGET = target;
     }
 
