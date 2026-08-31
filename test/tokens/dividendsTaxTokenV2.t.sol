@@ -10,7 +10,8 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoutes, v2DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
+import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -24,10 +25,21 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         super.setUp();
     }
 
+    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
     function _createDividendToken(uint16 dividendsBps, address[3] memory assets, uint16[3] memory weights)
         internal
         returns (address token)
     {
+        return _createDividendToken(dividendsBps, assets, weights, noDividendRoutes());
+    }
+
+    function _createDividendToken(
+        uint16 dividendsBps,
+        address[3] memory assets,
+        uint16[3] memory weights,
+        DividendRoute[3] memory routes
+    ) internal returns (address token) {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivV2",
             symbol: "DV2",
@@ -49,7 +61,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
                 liquidityBps: 0,
                 dividendTokens: assets,
                 dividendWeightsBps: weights,
-                dividendRoutes: noDividendRoutes()
+                dividendRoutes: routes
             })
         });
         vm.prank(creator);
@@ -63,7 +75,14 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         internal
         returns (LivoTaxableTokenUniV2 token)
     {
-        address addr = _createDividendToken(5_000, assets, weights);
+        return _graduated(assets, weights, noDividendRoutes());
+    }
+
+    function _graduated(address[3] memory assets, uint16[3] memory weights, DividendRoute[3] memory routes)
+        internal
+        returns (LivoTaxableTokenUniV2 token)
+    {
+        address addr = _createDividendToken(5_000, assets, weights, routes);
         testToken = addr;
         _launchpadBuy(addr, 1 ether);
         _graduateToken();
@@ -76,6 +95,13 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     function _selfToken() internal returns (LivoTaxableTokenUniV2) {
         return _graduated([address(type(uint160).max), address(0), address(0)], [uint16(10_000), 0, 0]);
+    }
+
+    /// @dev A leg paying a third ERC20, bought on the direct WETH/DAI Uniswap-V2 pair.
+    function _thirdAssetToken() internal returns (LivoTaxableTokenUniV2) {
+        DividendRoute[3] memory routes = noDividendRoutes();
+        routes[0] = v2DividendRoute(address(0));
+        return _graduated([DAI, address(0), address(0)], [uint16(10_000), 0, 0], routes);
     }
 
     function _accrue(LivoTaxableTokenUniV2 token, uint256 amount) internal {
@@ -216,6 +242,31 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         vm.prank(admin); // the launchpad owner; factory-deployed tokens have no token owner
         vm.expectRevert(LivoTaxableToken.CannotRescueSelfToken.selector);
         token.rescueTokens(address(token));
+    }
+
+    /// @dev The self-token pot is protected by a blanket `CannotRescueSelfToken` guard, so it never
+    ///      exercises the arithmetic. A THIRD-ASSET pot has no such guard: `rescueTokens` walks straight
+    ///      into `_sweepableAsset`, and the only thing between the owner and holders' money is the
+    ///      `committedDividends` subtraction. The stray balance dealt on top is what proves the
+    ///      subtraction is exact rather than the rescue being a blanket no-op.
+    function test_rescueTokens_cannotTakeAnUndeliveredThirdAssetPot() public {
+        LivoTaxableTokenUniV2 token = _thirdAssetToken();
+        _accrue(token, 1 ether);
+        skip(token.MIN_ROUND_DURATION() + 1);
+        token.processDividends([uint256(0), 0, 0]);
+
+        uint256 pot = token.roundPot(0);
+        assertGt(pot, 0, "DAI pot frozen");
+        assertEq(token.committedDividends(DAI), pot, "the whole pot is owed to holders");
+        assertEq(IERC20(DAI).balanceOf(address(token)), pot, "backed by a real DAI balance");
+
+        uint256 stray = 123e18;
+        deal(DAI, address(token), pot + stray);
+
+        vm.prank(admin); // the launchpad owner; factory-deployed tokens have no token owner
+        token.rescueTokens(DAI);
+
+        assertEq(IERC20(DAI).balanceOf(address(token)), pot, "the stray left, the owed pot stayed");
     }
 
     ///////////////////////// config /////////////////////////
