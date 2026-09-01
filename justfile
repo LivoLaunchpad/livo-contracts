@@ -28,14 +28,13 @@ abis:
     
 
 ##################### TESTING ################################
-fast-test:
+fast-test: check-dividend-layout
     forge test --no-match-contract Invariants --no-match-path "test/integration/**"
 
 # Fails if a taxable token and its dividend extension disagree on storage layout. The extension is
 # `delegatecall`ed with the token's storage, so this is the one property no Solidity test can assert
-# for itself. NOT wired into `fast-test`: it needs a storage-layout build (its own profile and `out`
-# dir, so it does not thrash the default cache), which is too slow to pay for on every run. Run it
-# after ANY change to the token hierarchy.
+# for itself. It builds under the `layout` profile (its own `out` dir, so enabling `extra_output` does
+# not thrash the default cache) and costs ~2s incrementally, hence running it before every `fast-test`.
 check-dividend-layout:
     @python3 script/checks/dividend_layout.py
 
