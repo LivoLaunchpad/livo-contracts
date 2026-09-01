@@ -26,7 +26,7 @@ fs_permissions = [
 # `extra_output` on in the default profile changes the build settings and would invalidate the cache
 # every test run switches back to.
 [profile.layout]
-extra_output = ["storageLayout"]
+extra_output = ["storageLayout", "transientStorageLayout"]
 out = "out-layout"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

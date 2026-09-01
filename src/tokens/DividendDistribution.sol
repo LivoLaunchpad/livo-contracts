@@ -48,8 +48,8 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      never knows the difference.
 abstract contract DividendDistribution {
     /// @notice Minimum accrued native amount the buffer must hold before a round may be frozen.
-    ///         Bypassed only where no further earnings can ever arrive, so a sub-threshold residual is
-    ///         not stranded in the buffer forever — see `_dividendEarningsMayStillArrive`.
+    ///         Bypassed only once the round has gone `STALE_ROUND_WINDOW` without rolling over, so a
+    ///         sub-threshold residual on a dead token is not stranded in the buffer forever.
     uint256 public constant DIVIDEND_THRESHOLD = DeploymentAddresses.DIVIDEND_THRESHOLD;
 
     /// @notice Max native a token may convert in ONE freeze. `processRound` is permissionless and takes
@@ -194,9 +194,14 @@ abstract contract DividendDistribution {
     ///      when its pool has become unreachable (see `DividendDistributionLogic._freezeDividends`).
     address public dividendToken;
 
-    /// @notice Native earnings accrued so far, awaiting a freeze. `uint80` holds ≈1.2M ETH, so the
-    ///         accrual stays a single SSTORE on a slot it shares with the asset it is waiting to buy.
-    uint80 public pendingNative;
+    /// @notice Native earnings accrued so far, awaiting a freeze. Sized to FILL the slot it shares with
+    ///         the asset it is waiting to buy — 160 + 88 + 8 = exactly 256 bits — so the accrual stays a
+    ///         single SSTORE and the headroom is whatever the slot had left rather than a round number.
+    /// @dev ≈309M units of the chain's native currency. The width matters because "native" is not ETH
+    ///      everywhere: on ARC it is 18-dec USDC, where `uint80` would cap the buffer at ~1.2M USDC —
+    ///      large, but a dollar figure a token could conceivably reach, unlike 1.2M ETH. The spare byte
+    ///      was already in the slot, so putting it out of reach costs nothing.
+    uint88 public pendingNative;
 
     /// @notice Whether the open round's pot is fixed and payable.
     bool public roundFrozen;
@@ -206,6 +211,16 @@ abstract contract DividendDistribution {
 
     /// @notice When the open round was frozen (0 if not yet). Anchors `PAYOUT_WINDOW`.
     uint40 public roundClosedAt;
+
+    /// @notice Set once the payout pool has been proven unreachable at any price and a freeze has
+    ///         drained an earlier round's residual in the OLD asset. Stands in for `STALE_ROUND_WINDOW`
+    ///         until the downgrade completes, so the asset falls back to native on the FOLLOWING round —
+    ///         which is what the drain exists for — instead of after a second full stale window during
+    ///         which every `processRound` call reverts `DividendConversionFailed`.
+    /// @dev Packs into the `roundOpenedAt` / `roundClosedAt` slot, which the freeze already touches.
+    ///      Cleared by whichever outcome ends the sequence: the downgrade, or a conversion that starts
+    ///      working again.
+    bool public dividendPoolDead;
 
     /// @notice Which pool a third-asset payout is bought on, and the creation-time proof that the asset
     ///         had liquidity at all. Written once at creation; ignored by the native and self-token
@@ -257,12 +272,6 @@ abstract contract DividendDistribution {
     /// @notice The round rolled over. `residualRolled` is what stayed unpaid and now seeds the next
     ///         round's pot.
     event DividendRoundFinalized(uint32 indexed roundId, uint256 residualRolled);
-
-    /// @notice The buffer held enough to freeze but its conversion did not happen, so the round stays
-    ///         unfrozen and keeps accruing. Always means something a keeper can act on: retry with a
-    ///         different `minOut`, or, if it persists, the pool is dead and the round will eventually
-    ///         fall back to paying native.
-    event DividendConversionSkipped(uint32 indexed roundId, address indexed asset);
 
     /// @notice The configured pool became unreachable at any price and the payout asset was permanently
     ///         downgraded to native. Only reachable on a token whose round has gone `STALE_ROUND_WINDOW`
@@ -360,15 +369,17 @@ abstract contract DividendDistribution {
     ///      (returns 0) unless the payout is buffered in TOKEN space, in which case it consumes nothing
     ///      and the caller folds it back to the fund wallets — that share was already peeled upstream,
     ///      in token space, before this ETH existed.
-    /// @dev Refuses to truncate: `uint80` holds ~1.2M ETH, so the overflow branch is a bytecode-level
-    ///      assertion rather than a reachable path.
+    /// @dev Refuses to truncate rather than wrapping. The branch is a bytecode-level assertion, not a
+    ///      reachable path — but it is a REVERT on the earnings path, and on V2 that path runs inside a
+    ///      sell, so a full buffer would brick sells until someone froze. That consequence is why
+    ///      `pendingNative` is sized to fill its slot instead of to the nearest byte boundary.
     function _accrueDividends(uint256 amount) internal returns (uint256 unconsumed) {
         if (amount == 0 || _isTokenSpaceDividendAsset(dividendToken)) return amount;
 
         uint256 updated = uint256(pendingNative) + amount;
-        require(updated <= type(uint80).max, DividendBufferOverflow());
+        require(updated <= type(uint88).max, DividendBufferOverflow());
         // forge-lint: disable-next-line(unsafe-typecast)
-        pendingNative = uint80(updated);
+        pendingNative = uint88(updated);
         return 0;
     }
 
@@ -435,13 +446,6 @@ abstract contract DividendDistribution {
 
     /// @dev `totalSupply` minus the balances of every excluded address, read once per round open.
     function _dividendEligibleSupply() internal view virtual returns (uint256);
-
-    /// @dev Whether further earnings can still arrive for the dividend buffer. Gates the threshold
-    ///      bypass, which exists only so a residual that can never grow again is not stranded. Answering
-    ///      "no" while earnings still flow is what turns the bypass into a griefing tool: anyone could
-    ///      freeze a dust pot whose every per-holder share rounds to zero, and a round that pays nothing
-    ///      cannot settle. A venue whose earnings never stop must answer true forever.
-    function _dividendEarningsMayStillArrive() internal view virtual returns (bool);
 
     /// @dev Whether the payout asset must be buffered in TOKEN space rather than as native. Only the
     ///      Uniswap-V2 self-token payout answers true.

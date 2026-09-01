@@ -142,8 +142,8 @@ interface ILivoFactory {
     error EarningsAllocationRequiresTax();
     /// @notice DEPRECATED and no longer thrown: the dividends module has shipped. Kept so the ABI is not
     ///         rewritten under integrators that already decode it. A misconfigured dividend allocation now
-    ///         reverts inside the token instead, with `DividendDistribution.InvalidDividendConfig` or
-    ///         `UnsupportedDividendAsset`.
+    ///         reverts inside the token instead, with `DividendDistribution.UnsupportedDividendAsset`,
+    ///         `InsufficientDividendPoolLiquidity`, or `LivoTaxableToken.DividendsRequirePayoutConfig`.
     error DividendsNotSupportedYet();
     error TooManyCreatorVaults();
     error InvalidCreatorVault();

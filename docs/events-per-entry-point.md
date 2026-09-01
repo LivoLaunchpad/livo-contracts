@@ -368,15 +368,19 @@ calls in between are pure payout batches.
 1. Only if the round was not already frozen and the buffer cleared `DIVIDEND_THRESHOLD`:
    **`DividendRoundFunded`** (`roundId, asset, nativeIn, assetOut, totalShares`). Whether the round
    freezes is derived, never caller-chosen. `totalShares` is the frozen denominator. The threshold
-   stops applying in two cases, so a residual that can no longer grow is never stranded: the earnings
-   source is provably finished (the V2 tax window has closed), or the open round has aged past
-   `STALE_ROUND_WINDOW` (30 days without a rollover — the only escape on V4, whose LP fees never
-   formally stop).
+   stops applying in exactly one case, so a residual that can no longer grow is never stranded: the
+   open round has aged past `STALE_ROUND_WINDOW` (30 days without a rollover). Nothing else bypasses
+   it — a bypass anyone can reach cheaply is a round-stall grief, because a pot every holder's share
+   rounds to zero out of cannot settle until `PAYOUT_WINDOW` expires.
 1b. Rarely, and only on a token whose round is stale AND whose pool cannot execute a zero-floor swap:
    **`DividendAssetDowngradedToNative`** (`previousAsset`), immediately before that round's
    `DividendRoundFunded`. The configured pool is gone for good and the payout asset becomes native
    permanently — `asset` on every later event is `address(0)`. This replaces what used to be an
    admin-curated route override; nothing about it is privileged or reversible.
+   If an earlier round left a residual in the OLD asset, that residual is frozen and paid FIRST — one
+   ordinary `DividendRoundFunded` / `DividendPaid` / `DividendRoundFinalized` cycle still denominated
+   in the old asset, so a pot never mixes two currencies — and the downgrade lands on the round
+   immediately after it, not another `STALE_ROUND_WINDOW` later.
 2. V4 self-token only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
    (`ethIn`), followed by the pool's own `LivoSwapHook.LivoSwapBuy`. Same contract as
    `BuyBackInitiated`: the precursor must be classified as it arrives, so the keeper's PnL is not

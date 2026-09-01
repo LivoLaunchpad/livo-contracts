@@ -10,12 +10,15 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {stdStorage, StdStorage} from "forge-std/Test.sol";
 import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Integration tests for the V2 liquidity earnings-allocation leg: the liquidity slice is set
 ///         aside as tax TOKENS during the swap-back, then `processLiquidity` sells half for ETH and adds
 ///         a locked LP position (token-native zap).
 contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelpers {
+    using stdStorage for StdStorage;
+
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
     }
@@ -185,5 +188,30 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         address token = _createLiquidityV2Token(400, 5000);
         vm.expectRevert(LivoTaxableTokenUniV2.NotGraduated.selector);
         LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+    }
+
+    /// @dev A buffer so small the half-sell rounds to zero tokens yields no native, so no LP is added —
+    ///      but `liquidityPendingTokens` was already debited by the full amount at the top of the call.
+    ///      Without the re-credit the retained half stops being tracked as liquidity money and rejoins
+    ///      the general tax pool, where the next swap-back re-splits it into the burn / dividend / fund
+    ///      buckets: an allocation the creator earmarked for pool depth, quietly spent elsewhere.
+    function test_v2ProcessLiquidity_reCreditsTheBufferWhenTheHalfSellYieldsNothing() public {
+        address token = _createLiquidityV2Token(400, 5000);
+        testToken = token;
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(token, 0, DEADLINE);
+        _graduateToken();
+
+        // One wei of token: `tokensToSell = 1 / 2 = 0`, so nothing is sold and nothing can be paired.
+        stdstore.target(token).sig("liquidityPendingTokens()").checked_write(uint256(1));
+
+        LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+
+        assertEq(
+            LivoTaxableTokenUniV2(payable(token)).liquidityPendingTokens(),
+            1,
+            "the unpaired token stays earmarked for liquidity instead of leaking into the tax pool"
+        );
     }
 }

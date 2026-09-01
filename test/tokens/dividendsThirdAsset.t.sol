@@ -48,10 +48,6 @@ contract DividendHarness is DividendDistributionLogic {
         return eligibleSupply;
     }
 
-    function _dividendEarningsMayStillArrive() internal pure override returns (bool) {
-        return true;
-    }
-
     receive() external payable {}
 }
 
@@ -276,6 +272,25 @@ contract DividendsThirdAssetTests is Test {
         harness.processRound(0, _noHolders());
     }
 
+    /// @dev A payout asset that returns a non-boolean word from `transfer` must be TOLERATED, not
+    ///      decoded strictly. `abi.decode(_, (bool))` reverts on any word above 1, which is legal for a
+    ///      non-standard ERC20 — and a revert inside `_payDividend` is precisely what the skip-don't-revert
+    ///      contract exists to prevent: it would take down the whole `processRound` batch, `claimRound`
+    ///      for everyone, and the round's ability to settle until `PAYOUT_WINDOW`.
+    function test_aNonBooleanTransferReturnDoesNotBrickTheBatch() public {
+        _fundAndOpen(harness);
+        harness.processRound(0, _noHolders()); // freeze in DAI
+
+        uint256 pot = harness.roundPot();
+        vm.mockCall(DAI, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(uint256(2)));
+
+        vm.expectEmit(true, true, true, true, address(harness));
+        emit DividendDistribution.DividendPaid(harness.currentRound(), holder, DAI, pot);
+        harness.processRound(0, _holders());
+
+        assertEq(harness.roundPot(), 0, "the pot was delivered and the round rolled over");
+    }
+
     //////////////////////// the dead-pool escape //////////////////////
 
     /// @dev The replacement for an admin-curated route override: nobody can repair a dead pool, so the
@@ -339,10 +354,43 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.dividendToken(), DAI, "the asset survives the residual drain");
         assertEq(IERC20(DAI).balanceOf(holder), residual, "the residual reached the holder in DAI");
 
-        // Now the pot is empty, so the next stale round is free to change the asset.
-        skip(harness.STALE_ROUND_WINDOW());
+        // Now the pot is empty, so the NEXT round downgrades — and "next round" means next round, not
+        // another `STALE_ROUND_WINDOW`. The drain rolled the round over, which reset the stale clock;
+        // `dividendPoolDead` is what carries the proof across that rollover. Without it every
+        // `processRound` here would revert `DividendConversionFailed` for another 30 days while the
+        // buffer sat unspendable.
+        assertTrue(harness.dividendPoolDead(), "the drain recorded that the pool is gone");
+        skip(harness.MIN_ROUND_DURATION() + 1);
         harness.processRound(0, _noHolders());
         assertEq(harness.dividendToken(), address(0), "downgraded once nothing was owed in the old asset");
+        assertFalse(harness.dividendPoolDead(), "the flag is consumed by the downgrade it unlocked");
+    }
+
+    /// @dev The short-circuit is not a permanent downgrade licence: a pool that starts converting again
+    ///      clears it, so a later failure has to re-earn a full `STALE_ROUND_WINDOW` like any other.
+    function test_aPoolThatRecoversClearsTheDeadFlag() public {
+        _fundAndOpen(harness);
+        harness.processRound(0, _noHolders());
+        uint256 residual = harness.roundPot();
+
+        skip(harness.PAYOUT_WINDOW() + 1);
+        harness.processRound(0, _noHolders());
+
+        _killTheV2Router();
+        vm.deal(address(this), 2 ether);
+        harness.accrue{value: 1 ether}();
+        skip(harness.STALE_ROUND_WINDOW());
+        harness.processRound(0, _holders()); // drains the residual, sets the flag
+        assertTrue(harness.dividendPoolDead(), "flagged");
+        assertEq(IERC20(DAI).balanceOf(holder), residual, "residual paid in DAI");
+
+        // The pool comes back before the downgrade round runs.
+        vm.clearMockedCalls();
+        skip(harness.MIN_ROUND_DURATION() + 1);
+        harness.processRound(0, _noHolders());
+
+        assertEq(harness.dividendToken(), DAI, "still paying DAI - the conversion worked");
+        assertFalse(harness.dividendPoolDead(), "and the short-circuit is gone with it");
     }
 
     /// @dev Makes every V2 swap revert, whatever the price — the on-chain shape of a pool that is gone.

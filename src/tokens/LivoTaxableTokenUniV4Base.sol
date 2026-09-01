@@ -70,14 +70,4 @@ abstract contract LivoTaxableTokenUniV4Base is LivoTaxableToken, LivoUniv4BuyBac
     function _reservedNative() internal view override returns (uint256) {
         return super._reservedNative() + burnPendingEth + liquidityPendingEth;
     }
-
-    /// @inheritdoc LivoTaxableToken
-    /// @dev V4 earnings never stop: the creator's share of LP fees keeps arriving through `accrueFees`
-    ///      long after the tax window closes, so the tax window is the wrong question here. Letting the
-    ///      `DIVIDEND_THRESHOLD` bypass open would hand anyone a cheap round-stall — freeze a wei-sized
-    ///      pot, every holder's share rounds to zero, and the round cannot settle until `PAYOUT_WINDOW`
-    ///      expires while the real accrual waits in `pendingNative`.
-    function _dividendEarningsMayStillArrive() internal view override returns (bool) {
-        return true;
-    }
 }

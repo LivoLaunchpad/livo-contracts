@@ -165,6 +165,25 @@ contract LivoUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         assertGt(liquidity, 0, "a stranger can deepen a pool at their own expense");
     }
 
+    /// @dev An amount that sizes to ZERO liquidity must come back, not revert: v4-core's
+    ///      `Position.update` rejects a zero `liquidityDelta` with `CannotUpdateEmptyPosition`, which
+    ///      would take down whatever called the adder — the graduation transaction, or a token's
+    ///      `processLiquidity`. Needs a range whose lower sqrt price is far below 1, i.e. a pool where
+    ///      the token has appreciated past parity with native; the guard returns before touching the
+    ///      pool, so the key here never has to exist.
+    function test_dustThatSizesToNoLiquidityIsReturnedInsteadOfReverting() public {
+        CorePoolKey memory key = _key();
+        uint256 dustBefore = dustHolder.balance;
+        uint256 adderBefore = address(adder).balance; // graduation in `setUp` left the usual 1 wei
+        vm.deal(address(this), 1 ether);
+
+        uint128 liquidity = adder.addSingleSidedEth{value: 1 wei}(key, -700_000, 800_000, nftHolder, dustHolder);
+
+        assertEq(liquidity, 0, "one wei sizes to nothing across a range this wide");
+        assertEq(dustHolder.balance - dustBefore, 1 wei, "and the wei went back to the excess receiver");
+        assertEq(address(adder).balance, adderBefore, "the adder kept nothing of it");
+    }
+
     /// @dev A width that would push the top past the highest spacing-aligned tick is clamped rather than
     ///      reverting inside TickMath, so a deeply depreciated pool still gets a (narrower) wall.
     function test_excessiveWidthIsClampedToTheMaxUsableTick() public {

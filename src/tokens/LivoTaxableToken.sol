@@ -134,6 +134,8 @@ abstract contract LivoTaxableToken is
     error NotTokenOwner();
     error CannotRescueSelfToken();
     error TaxBpsCanOnlyDecrease();
+    /// @notice A dividends allocation was configured without the payout asset that makes it payable.
+    error DividendsRequirePayoutConfig();
 
     //////////////////////////////////////////////////////
 
@@ -224,11 +226,18 @@ abstract contract LivoTaxableToken is
     ///         liquidity bps; the fund wallets take the remainder). Callable exactly once, during the
     ///         deploy tx, by the factory that initialized this token — guarded by the transient
     ///         `tokenFactory`, which is zero outside that tx (same pattern as `registerFees`).
+    /// @dev A non-zero `_dividendsBps` is REFUSED here: this overload configures no payout asset and
+    ///      never sets `hasDividends`, so the slice would be carved out of every post-graduation earning
+    ///      and buffered into `pendingNative` with no round to freeze it into and no `processRound` that
+    ///      does not revert `DividendsNotActive`. Worse, `_reservedNative()` returns 0 without
+    ///      `hasDividends`, so the permissionless `sweepStrayEth()` would keep recycling that buffer
+    ///      through the split. A dividends allocation must come in through the 5-argument overload.
     function initializeEarningsAllocation(uint16 _burnBps, uint16 _dividendsBps, uint16 _liquidityBps)
         external
         virtual
     {
         require(msg.sender == tokenFactory, Unauthorized());
+        require(_dividendsBps == 0, DividendsRequirePayoutConfig());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
@@ -316,9 +325,20 @@ abstract contract LivoTaxableToken is
     /// @dev ⚠️ The extension MUST have byte-identical storage layout to this token — it writes round
     ///      state and pots directly. That is guaranteed structurally (both inherit the same venue base,
     ///      neither adds state) and pinned by `just check-dividend-layout`.
+    /// @dev The assembly is the standard proxy forward and it is load-bearing, not an optimisation: the
+    ///      delegated entry points revert with distinct custom errors a keeper decodes
+    ///      (`BelowDividendThreshold` vs `DividendConversionFailed`), so the returndata has to be
+    ///      bubbled verbatim — `(bool ok,) = logic.delegatecall(msg.data); require(ok)` would erase it,
+    ///      and OZ's `Address.functionDelegateCall` buys the same behaviour for bytecode this clone does
+    ///      not have.
+    /// @dev NOT annotated `memory-safe`, deliberately: `calldatacopy(0, 0, calldatasize())` overwrites
+    ///      the free-memory pointer at 0x40 and the zero slot at 0x60, which the annotation forbids.
+    ///      Harmless because the block always ends in `return`/`revert`, but promising the optimizer
+    ///      otherwise is not. OpenZeppelin's `Proxy._delegate` leaves the identical body unannotated for
+    ///      exactly this reason.
     function _delegateToDividendLogic() internal {
         address logic = dividendLogic();
-        assembly ("memory-safe") {
+        assembly {
             calldatacopy(0, 0, calldatasize())
             let ok := delegatecall(gas(), logic, 0, calldatasize(), 0, 0)
             returndatacopy(0, 0, returndatasize())
@@ -341,9 +361,14 @@ abstract contract LivoTaxableToken is
     }
 
     /// @inheritdoc DividendDistribution
-    /// @dev Exactly four addresses, and every one of them is either free to test (`address(this)`, the
-    ///      `DEAD_ADDRESS` constant) or already in the warm slot `_update` loads (`pair`). Nothing here
-    ///      costs a cold read.
+    /// @dev Exactly four addresses. Three are free to test — `address(this)`, the `DEAD_ADDRESS`
+    ///      constant, and `pair`, which is in the slot `_update` has already loaded. `launchpad` is the
+    ///      one that costs: it lives in its own slot (no address fits beside `pair` and the three warm
+    ///      flags), so it is a cold SLOAD on the first of the two calls per transfer and warm on the
+    ///      second. It is ordered last so the pair side of a swap short-circuits before reaching it.
+    /// @dev It is not droppable. The hot tracking path and `_dividendEligibleSupply` must name the SAME
+    ///      set: the denominator already subtracts the launchpad's balance, so a launchpad that earned
+    ///      shares here would be paid out of a pot that never counted it — over-drawing the round.
     /// @dev Nothing else needs listing, and that is the minimum rule paying for itself: the V4 position
     ///      manager, the routers, the liquidity adder and the GRADUATOR all hold a balance only within a
     ///      single transaction, and an address that is empty when a round opens is worth zero for that
@@ -354,20 +379,13 @@ abstract contract LivoTaxableToken is
     ///      continuously across rounds, so they are ordinary holders (and `LivoCreatorVault` accepts and
     ///      can sweep whatever it is paid).
     function _dividendExcluded(address account) internal view override returns (bool) {
-        return account == address(this) || account == pair || account == address(launchpad) || account == DEAD_ADDRESS;
+        return account == address(this) || account == pair || account == DEAD_ADDRESS || account == address(launchpad);
     }
 
     /// @inheritdoc DividendDistribution
     function _dividendEligibleSupply() internal view override returns (uint256) {
         return totalSupply() - balanceOf(pair) - balanceOf(address(this)) - balanceOf(address(launchpad))
             - balanceOf(DEAD_ADDRESS);
-    }
-
-    /// @inheritdoc DividendDistribution
-    /// @dev Swap tax is the one earnings source guaranteed to stop, so the base answer is the tax
-    ///      window. A venue with a second, unending source overrides this.
-    function _dividendEarningsMayStillArrive() internal view virtual override returns (bool) {
-        return _taxWindowActive();
     }
 
     //////////////////////// COMMITTED FUNDS //////////////////////

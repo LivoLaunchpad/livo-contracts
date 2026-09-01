@@ -19,7 +19,6 @@ contract SharesHarness is DividendDistributionLogic {
     address[] public tracked;
     mapping(address account => bool) internal seen;
 
-    bool public earningsMayStillArrive = true;
     address[3] internal excluded;
 
     function configure(address asset) external {
@@ -32,10 +31,6 @@ contract SharesHarness is DividendDistributionLogic {
 
     function accrue() external payable {
         _accrueDividends(msg.value);
-    }
-
-    function setEarningsMayStillArrive(bool value) external {
-        earningsMayStillArrive = value;
     }
 
     function exclude(uint256 index, address account) external {
@@ -86,10 +81,6 @@ contract SharesHarness is DividendDistributionLogic {
 
     function _dividendEligibleSupply() internal view override returns (uint256) {
         return eligibleSupply;
-    }
-
-    function _dividendEarningsMayStillArrive() internal view override returns (bool) {
-        return earningsMayStillArrive;
     }
 
     receive() external payable {}
@@ -329,31 +320,17 @@ contract DividendAccountingTests is Test {
         h.processRound(0, _noHolders());
     }
 
-    /// @dev …but once no further earnings can arrive the threshold must stop applying, or the final
-    ///      sub-threshold residual sits in the buffer forever with no way out.
-    function test_thresholdBypassedOnceEarningsCanNoLongerArrive() public {
-        _nativeRound();
-        uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
-        _fund(dust);
-        skip(h.MIN_ROUND_DURATION() + 1);
-
-        h.setEarningsMayStillArrive(false);
-        h.processRound(0, _noHolders());
-
-        assertEq(h.roundPot(), dust, "the residual froze once it could no longer grow");
-        assertEq(h.pendingNative(), 0, "buffer drained");
-    }
-
-    /// @dev The other escape, and the only one a venue whose earnings never formally stop can use: a
-    ///      round nobody has rolled over for `STALE_ROUND_WINDOW` belongs to a dead token, so the
-    ///      threshold stops applying and the residual can finally be paid instead of stranding.
+    /// @dev Staleness is the ONLY escape from the threshold: a round nobody has rolled over for
+    ///      `STALE_ROUND_WINDOW` belongs to a dead token, so the threshold stops applying and the
+    ///      residual can finally be paid instead of stranding. Reaching it costs 30 days of a
+    ///      completely idle token, which is what stops the bypass being a free round-stall for anyone
+    ///      who can push a wei into the buffer.
     function test_thresholdBypassedOnceTheRoundGoesStale() public {
         _nativeRound();
         uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
         _fund(dust);
         skip(h.MIN_ROUND_DURATION() + 1);
 
-        // The harness answers "earnings may still arrive" forever, exactly like the V4 token does.
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         h.processRound(0, _noHolders());
 

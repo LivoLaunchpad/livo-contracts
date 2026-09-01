@@ -111,7 +111,11 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
         uint256 balance = balanceOf(address(this));
         // Gated on warm-slot flags so a token with no allocation pays for no cold SLOAD here.
         uint256 reserved = liquidityBps != 0 ? liquidityPendingTokens : 0;
-        if (hasDividends) reserved += dividendPendingTokens + committedDividends(address(this));
+        // ONE cold read (`dividendToken`) decides the whole dividend leg. Only a self-token payout has
+        // anything in token space: for a native or third-asset payout both `dividendPendingTokens` and
+        // the pot are structurally zero, and reading them on every sell that reaches the swap-back
+        // branch is a cold SLOAD paid for a value that cannot be non-zero.
+        if (hasDividends && dividendToken == asset) reserved += dividendPendingTokens + (roundPot - roundPaid);
         return balance > reserved ? balance - reserved : 0;
     }
 }

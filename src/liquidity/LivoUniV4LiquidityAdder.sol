@@ -40,6 +40,12 @@ interface ILivoUniV4LiquidityAdder {
 ///      `nftReceiver` and any dust ETH is swept to `excessEthReceiver` within the same call. The position
 ///      NFT is never withdrawable here, so wherever the caller points it the liquidity is permanent pool
 ///      depth.
+/// @dev The `SWEEP` action sends the POSITION MANAGER's whole native balance to `excessEthReceiver`, not
+///      just this call's rounding dust. That is not a drain primitive this contract creates: v4's
+///      `PositionManager.modifyLiquidities` is itself permissionless and `SWEEP` is reachable through it
+///      directly, so anyone can already claim anything the POSM holds — which is nothing, by design: it
+///      settles every delta inside the unlock and holds no native across transactions. Sweeping "all"
+///      rather than "mine" is the only shape v4 offers, and the two are the same amount here.
 contract LivoUniV4LiquidityAdder is ILivoUniV4LiquidityAdder {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -58,6 +64,9 @@ contract LivoUniV4LiquidityAdder is ILivoUniV4LiquidityAdder {
     ///         (token price collapsed to the absolute tick boundary, ~1e-39 native per token) that no
     ///         spacing-aligned range fits above it. Reverting leaves the caller's ETH with the caller.
     error WallOutOfRange();
+    /// @notice Thrown when `msg.value` sized to no liquidity and returning it to `excessEthReceiver`
+    ///         failed. Only reachable from a receiver that rejects native.
+    error EthReturnFailed();
 
     constructor(address positionManager, address poolManager) {
         UNIV4_POSITION_MANAGER = IPositionManager(positionManager);
@@ -119,6 +128,15 @@ contract LivoUniV4LiquidityAdder is ILivoUniV4LiquidityAdder {
         liquidity = LiquidityAmounts.getLiquidityForAmount0(
             TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), msg.value
         );
+
+        // Dust that sizes to nothing goes straight back: v4-core's `Position.update` reverts
+        // `CannotUpdateEmptyPosition` on a zero `liquidityDelta`, and a graduation whose secondary
+        // position is pure rounding remainder must not take the whole graduation down with it.
+        if (liquidity == 0) {
+            (bool returned,) = excessEthReceiver.call{value: msg.value}("");
+            require(returned, EthReturnFailed());
+            return 0;
+        }
 
         bytes memory actions =
             abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP));

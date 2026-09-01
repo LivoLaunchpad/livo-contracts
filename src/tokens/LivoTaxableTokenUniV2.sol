@@ -110,7 +110,7 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     function swapBack(uint256 swapAmount, uint256 amountOutMinWei) external {
         require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
         require(graduated, NotGraduated());
-        _processCollectedTokens(swapAmount, amountOutMinWei);
+        _processCollectedTokens(swapAmount, amountOutMinWei, _sweepableAsset(address(this)));
     }
 
     /// @notice Turns the buffered liquidity TOKENS into a locked V2 LP position: sells half for ETH,
@@ -168,6 +168,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
             (tokensAdded, ethAdded, liquidity) = UniswapV2Venue.supplyLiquidity(
                 UNISWAP_V2_ROUTER, address(this), WETH, tokensForLp, ethFromSell, DEAD_ADDRESS
             );
+        } else if (tokensForLp > 0) {
+            // The half-sell produced no native (a 1-token buffer sells 0), so the retained half was
+            // never paired. `liquidityPendingTokens` was already debited by the full `tokenIn` above:
+            // without this, those tokens silently rejoin the tax pool and get re-split into the burn /
+            // dividend / fund buckets, spending an allocation that was earmarked for liquidity.
+            liquidityPendingTokens += tokensForLp;
         }
 
         _inSwap = false;
@@ -223,14 +229,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
             uint256 contractBalance = _sweepableAsset(address(this));
             if (contractBalance >= SWAP_THRESHOLD) {
                 uint256 swapAmount = contractBalance > 2 * SWAP_THRESHOLD ? 2 * SWAP_THRESHOLD : contractBalance;
-                _processCollectedTokens(swapAmount, 0);
+                _processCollectedTokens(swapAmount, 0, contractBalance);
             } else if (contractBalance > 0 && !_taxWindowActive()) {
                 // Post-window drain: window's closed, no fresh tax will ever flow in, so a residual
                 // stuck below SWAP_THRESHOLD would otherwise sit forever. No 2*SWAP_THRESHOLD cap
                 // needed: this branch only fires when contractBalance < SWAP_THRESHOLD, so the swap
                 // is already small.
                 // This path can only be reached if graduated==true. No risk of calling _processCollectedTokens before graduation
-                _processCollectedTokens(contractBalance, 0);
+                _processCollectedTokens(contractBalance, 0, contractBalance);
             }
         }
 
@@ -264,7 +270,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     ///      auto and manual paths go through here. The gate lives in `_processCollectedTokens` (not in
     ///      `_update`'s sell branch) so `block.number` stays out of the transfer hook — Go+ flags
     ///      such reads as a per-user trading cooldown.
-    function _processCollectedTokens(uint256 tokenAmount, uint256 amountOutMinWei) internal {
+    /// @param avail The caller's already-computed `_sweepableAsset(address(this))`. Passed in rather than
+    ///        re-read: the auto path in `_update` needs it to decide whether to fire at all, and it is
+    ///        the single most expensive read on that path (a `balanceOf` plus the allocation branches).
+    function _processCollectedTokens(uint256 tokenAmount, uint256 amountOutMinWei, uint256 avail) internal {
         if (tokenAmount == 0) return;
 
         // Cache the counter so the post-router writes to `swapbacksThisBlock` and
@@ -279,7 +288,6 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
         // Never process a committed buffer as tax: the liquidity and self-token-dividend buffers share
         // this contract's token balance but are already earmarked. Clamp so the manual `swapBack` can't
         // reach them either.
-        uint256 avail = _sweepableAsset(address(this));
         if (tokenAmount > avail) tokenAmount = avail;
         if (tokenAmount == 0) return;
 

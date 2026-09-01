@@ -77,7 +77,9 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         ConversionFailed,
         /// @dev The conversion is permanently impossible AND an earlier round left a residual in the
         ///      old asset. Freeze on that residual alone so it reaches holders; the asset downgrade
-        ///      then happens on the following round, against an empty pot.
+        ///      then happens on the following round, against an empty pot — the `dividendPoolDead`
+        ///      flag this outcome sets is what keeps that "following round" from meaning "another
+        ///      `STALE_ROUND_WINDOW` from now".
         DrainResidual
     }
 
@@ -297,16 +299,19 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         uint256 buffered = pendingNative;
         if (buffered == 0) return (FreezeOutcome.NotReady, 0, 0);
 
-        // The threshold exists so a distribution only fires when the pot is worth its gas. It has to stop
-        // applying wherever the residual can no longer grow, or the last of it strands — the same drain
-        // rule the V2 swap-back already uses. Two independent ways that happens:
-        //   - the earnings source is provably finished (the V2 tax window closed), or
-        //   - nothing has happened to this token for `STALE_ROUND_WINDOW`. This is the only escape a
-        //     venue whose earnings never formally stop can have: `LivoTaxableTokenUniV4` answers `true`
-        //     forever because LP fees keep arriving while the pool is live, which is right for a live
-        //     token and would otherwise strand every dead one.
+        // The threshold exists so a distribution only fires when the pot is worth its gas, and staleness
+        // is its ONLY bypass: a residual below the threshold on a token nobody has traded or finalized
+        // for `STALE_ROUND_WINDOW` would otherwise strand forever.
+        //
+        // There used to be a second bypass — "the earnings source is provably finished", i.e. the V2 tax
+        // window has closed — and it was a free grief. `accrueFees` and `sweepStrayEth` are both
+        // permissionless, so anyone could push a wei into `pendingNative` after the window, freeze a pot
+        // every holder's share rounds to zero out of, and stall settlement for a whole `PAYOUT_WINDOW`,
+        // repeatably, for gas. Staleness costs 30 days of a completely idle token to reach, which is the
+        // price that makes the bypass safe; nothing else was buying anything the stale clock does not
+        // already deliver, only later.
         bool stale = _roundIsStale();
-        if (buffered < DIVIDEND_THRESHOLD && _dividendEarningsMayStillArrive() && !stale) {
+        if (buffered < DIVIDEND_THRESHOLD && !stale) {
             return (FreezeOutcome.NotReady, 0, 0);
         }
 
@@ -326,27 +331,37 @@ abstract contract DividendDistributionLogic is DividendDistribution {
             // to have gone `STALE_ROUND_WINDOW` without a rollover (a traded token rolls constantly) AND
             // `minOut == 0`, meaning the swap could not execute at ANY price. A caller passing a floor
             // the pool has merely moved past gets `ConversionFailed`, not a downgrade.
-            if (!stale || minOut != 0) return (FreezeOutcome.ConversionFailed, 0, 0);
+            // `dividendPoolDead` short-circuits the clock on the SECOND pass: the first pass already
+            // proved the pool unreachable, and its residual drain rolled the round over — which reset
+            // `roundOpenedAt` and would otherwise make the downgrade wait out another
+            // `STALE_ROUND_WINDOW`, reverting every call in between.
+            if (!(stale || dividendPoolDead) || minOut != 0) return (FreezeOutcome.ConversionFailed, 0, 0);
 
             // An earlier round's residual is denominated in the OLD asset. Pay that out first, under the
             // asset it was bought in; the downgrade below then runs against an empty pot, so a pot never
             // mixes two assets.
-            if (roundPot != 0) return (FreezeOutcome.DrainResidual, 0, 0);
+            if (roundPot != 0) {
+                dividendPoolDead = true;
+                return (FreezeOutcome.DrainResidual, 0, 0);
+            }
 
+            dividendPoolDead = false;
             dividendToken = address(0);
             emit DividendAssetDowngradedToNative(asset);
             // Native needs no conversion, so the whole buffer becomes the pot: the freeze cap only ever
             // existed to bound a swap.
             // forge-lint: disable-next-line(unsafe-typecast)
-            pendingNative = uint80(pendingNative - buffered);
+            pendingNative = uint88(pendingNative - buffered);
             return (FreezeOutcome.Converted, buffered, buffered);
         }
 
         // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
         // during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
-        // Bounded by the value read, which is already a `uint80`.
+        // Bounded by the value read, which is already a `uint88`.
         // forge-lint: disable-next-line(unsafe-typecast)
-        pendingNative = uint80(pendingNative - spend);
+        pendingNative = uint88(pendingNative - spend);
+        // The pool converted again, so it was not dead after all — drop the downgrade short-circuit.
+        if (dividendPoolDead) dividendPoolDead = false;
         return (FreezeOutcome.Converted, spend, out);
     }
 
@@ -445,6 +460,9 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         // `SafeERC20`'s success test minus the revert: empty returndata is success (non-standard ERC20s),
         // and anything too short to decode is failure rather than a panic. `asset` is known to be a
         // contract — its pot could only have been funded through a `balanceOf` call on it.
-        return ok && (ret.length == 0 || (ret.length >= 32 && abi.decode(ret, (bool))));
+        // Decoded as a WORD, not a `bool`: `abi.decode(_, (bool))` reverts on any value above 1, which a
+        // non-standard ERC20 may legally return — and reverting here is precisely what this function
+        // exists not to do (it would brick the batch, `claimRound`, and the round's ability to settle).
+        return ok && (ret.length == 0 || (ret.length >= 32 && abi.decode(ret, (uint256)) != 0));
     }
 }

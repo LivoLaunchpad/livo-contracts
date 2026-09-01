@@ -360,4 +360,26 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
         extension.rescueTokens(DAI);
     }
+
+    ///////////////////////// the threshold /////////////////////////
+
+    /// @dev The threshold used to stop applying the moment the V2 tax window closed, on the theory that
+    ///      no further earnings could arrive. They can: `accrueFees` and `sweepStrayEth` are both
+    ///      permissionless. That made a free grief — send a wei, sweep it into `pendingNative`, freeze a
+    ///      pot every holder's share rounds to zero out of, and the round cannot settle for a whole
+    ///      `PAYOUT_WINDOW`, repeatably, for gas. Staleness is the only bypass now, and reaching it costs
+    ///      30 days of a completely idle token.
+    function test_aWeiPushedInAfterTheTaxWindowCannotForceAFreeze() public {
+        LivoTaxableTokenUniV2 token = _nativeToken();
+        skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
+
+        vm.deal(address(token), address(token).balance + 2 wei);
+        token.sweepStrayEth();
+        assertGt(token.pendingNative(), 0, "the attacker's dust did reach the buffer");
+        skip(token.MIN_ROUND_DURATION() + 1);
+
+        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        token.processRound(0, _noHolders());
+        assertFalse(token.roundFrozen(), "a dust pot cannot stall the round");
+    }
 }

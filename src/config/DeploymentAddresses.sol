@@ -54,9 +54,9 @@ library DeploymentAddressesEthereumMainnet {
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
-    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
-    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         round has gone `STALE_ROUND_WINDOW` without rolling over, so a sub-threshold residual
+    ///         on a dead token can never strand.
     uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
 
     /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
@@ -119,9 +119,9 @@ library DeploymentAddressesEthereumSepolia {
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
-    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
-    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         round has gone `STALE_ROUND_WINDOW` without rolling over, so a sub-threshold residual
+    ///         on a dead token can never strand.
     uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
 
     /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
@@ -184,9 +184,9 @@ library DeploymentAddressesRobinhoodMainnet {
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
-    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
-    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         round has gone `STALE_ROUND_WINDOW` without rolling over, so a sub-threshold residual
+    ///         on a dead token can never strand.
     uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
 
     /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
@@ -253,9 +253,9 @@ library DeploymentAddressesRobinhoodTestnet {
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
-    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
-    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         round has gone `STALE_ROUND_WINDOW` without rolling over, so a sub-threshold residual
+    ///         on a dead token can never strand.
     uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
 
     /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
@@ -333,9 +333,9 @@ library DeploymentAddressesArcMainnet {
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
-    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
-    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         round has gone `STALE_ROUND_WINDOW` without rolling over, so a sub-threshold residual
+    ///         on a dead token can never strand.
     uint256 public constant DIVIDEND_THRESHOLD = 250e18;
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
@@ -400,9 +400,9 @@ library DeploymentAddressesArcTestnet {
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
-    ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
-    ///         sub-threshold residual can never strand on a venue whose earnings do stop.
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         round has gone `STALE_ROUND_WINDOW` without rolling over, so a sub-threshold residual
+    ///         on a dead token can never strand.
     uint256 public constant DIVIDEND_THRESHOLD = 250e18;
 
     /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
