@@ -100,6 +100,20 @@ abstract contract DividendDistribution {
     ///      window only lengthens how long a stuck round blocks the next one.
     uint256 public constant PAYOUT_WINDOW = 1 days;
 
+    /// @notice Age at which an unfrozen round is treated as belonging to a DEAD token, letting a leg
+    ///         freeze below `DIVIDEND_THRESHOLD`. The escape hatch for the residual that can no longer
+    ///         grow: without it, a token whose earnings stop keeps whatever sits under the threshold
+    ///         (0.1 ETH on Ethereum mainnet) buffered for good, owed to holders and unreachable by them.
+    /// @dev Anchored on `roundOpenedAt`, which a healthy token resets on every rollover — so a token
+    ///      that is merely quiet never comes near this, and the threshold keeps behaving exactly as it
+    ///      does today. Only a token nobody is trading OR finalizing ages into it.
+    /// @dev Sized as "unambiguously dead", not "quiet". It is the counterweight to the one thing an open
+    ///      bypass costs: freezing a dust pot stalls settlement for `PAYOUT_WINDOW`, because every
+    ///      holder's share of it rounds to zero and the round cannot settle until that expires. At this
+    ///      window that trade is 30 days of waiting to buy one day of stall, on a token with nothing
+    ///      flowing through it — and `finalizeRound` resets the clock, so it cannot be repeated cheaply.
+    uint256 public constant STALE_ROUND_WINDOW = 30 days;
+
     /// @notice Gas stipend for a native payout inside a KEEPER BATCH. Bounded so one holder with an
     ///         expensive (or reverting) `receive()` cannot brick or grief the rest of the batch; a plain
     ///         `receive()` and the common smart-account fallbacks fit comfortably.

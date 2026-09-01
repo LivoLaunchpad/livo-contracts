@@ -261,6 +261,13 @@ abstract contract DividendDistributionLogic is DividendDistribution {
 
     //////////////////////// internal //////////////////////
 
+    /// @dev Whether the open round has aged past `STALE_ROUND_WINDOW`, i.e. the token has not had a
+    ///      rollover in a month. Only reachable from `processDividends`, which requires an UNFROZEN
+    ///      round, so `roundOpenedAt` is always the right anchor here.
+    function _roundIsStale() private view returns (bool) {
+        return block.timestamp >= uint256(roundOpenedAt) + STALE_ROUND_WINDOW;
+    }
+
     /// @dev Turns one leg's accrued buffer into a payable pot, or reports that it is not ready.
     ///      Overridable so a venue can source a leg from somewhere other than the native buffer (the V2
     ///      self-token leg, which is carved from tax tokens).
@@ -272,10 +279,17 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     {
         uint256 buffered = pendingNative[leg];
         if (buffered == 0) return (0, 0);
-        // The threshold exists so a distribution only fires when the pot is worth its gas. Where no
-        // further earnings can ever arrive it must stop applying, or the last residual strands — the
-        // same drain rule the V2 swap-back already uses.
-        if (buffered < DIVIDEND_THRESHOLD && _dividendEarningsMayStillArrive()) return (0, 0);
+        // The threshold exists so a distribution only fires when the pot is worth its gas. It has to stop
+        // applying wherever the residual can no longer grow, or the last of it strands — the same drain
+        // rule the V2 swap-back already uses. Two independent ways that happens:
+        //   - the earnings source is provably finished (the V2 tax window closed), or
+        //   - nothing has happened to this token for `STALE_ROUND_WINDOW`. This is the only escape a
+        //     venue whose earnings never formally stop can have: `LivoTaxableTokenUniV4` answers `true`
+        //     forever because LP fees keep arriving while the pool is live, which is right for a live
+        //     token and would otherwise strand every dead one.
+        if (buffered < DIVIDEND_THRESHOLD && _dividendEarningsMayStillArrive() && !_roundIsStale()) {
+            return (0, 0);
+        }
 
         // Only a leg that SWAPS is capped. A native leg is already denominated in the payout asset, so
         // it has no swap to sandwich, and throttling it would delay real money for no security gain.

@@ -359,7 +359,10 @@ emits `DividendRoundOpened` on its first earnings instead.
 1. Per leg frozen, in leg order: **`DividendRoundFunded`** (`roundId, asset, nativeIn, assetOut,
    totalShares`). Only legs over `DIVIDEND_THRESHOLD` freeze, and the set is derived, never
    caller-chosen. `totalShares` is the frozen denominator, snapshotted on the round's FIRST freeze
-   and reused by any leg that freezes later in the same round.
+   and reused by any leg that freezes later in the same round. The threshold stops applying in two
+   cases, so a residual that can no longer grow is never stranded: the earnings source is provably
+   finished (the V2 tax window has closed), or the open round has aged past `STALE_ROUND_WINDOW`
+   (30 days without a rollover — the only escape on V4, whose LP fees never formally stop).
 1b. Per leg that held enough but could NOT convert: **`DividendLegConversionFailed`**
    (`roundId, leg, asset`) — the leg stays unfrozen with its buffer intact and retries next round.
    Only this case is announced; an empty or below-threshold buffer is the normal quiet path and

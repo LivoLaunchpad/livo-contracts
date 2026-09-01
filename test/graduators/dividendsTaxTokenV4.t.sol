@@ -216,6 +216,35 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token.processDividends([uint256(0), 0, 0]);
     }
 
+    /// @dev V4 answers `_dividendEarningsMayStillArrive()` `true` FOREVER — correctly, because LP fees
+    ///      keep arriving while the pool is live — so the tax window closing is not an escape here and
+    ///      this is the only one the venue has. Without it a dead V4 token strands everything under
+    ///      `DIVIDEND_THRESHOLD` (0.1 ETH on mainnet), owed to holders and unreachable by them.
+    function test_staleRoundLetsADeadTokenPayItsResidual() public {
+        LivoTaxableTokenUniV4 token = _graduatedDividendToken();
+        _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the threshold
+        uint256 residual = token.pendingNative(0);
+        assertGt(residual, 0, "a residual is buffered");
+
+        skip(token.MIN_ROUND_DURATION() + 1);
+        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
+        token.processDividends([uint256(0), 0, 0]);
+
+        // Nothing happens to the token for a month — no trades, no rollover.
+        skip(token.STALE_ROUND_WINDOW());
+        token.processDividends([uint256(0), 0, 0]);
+
+        assertEq(token.roundPot(0), residual, "the stranded residual finally froze");
+
+        uint256 before = buyer.balance;
+        address[] memory holders = new address[](1);
+        holders[0] = buyer;
+        token.distributeDividends(holders);
+        // Not exact: the graduator's leftover dust is still in the denominator, so the sole holder's
+        // share rounds down by a wei.
+        assertApproxEqAbs(buyer.balance - before, residual, 10, "and reached the holder");
+    }
+
     ///////////////////////// payout /////////////////////////
 
     function test_singleHolder_receivesTheWholePot() public {

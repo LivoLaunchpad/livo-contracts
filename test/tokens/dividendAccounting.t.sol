@@ -345,6 +345,44 @@ contract DividendAccountingTests is Test {
         assertEq(h.pendingNative(0), 0, "buffer drained");
     }
 
+    /// @dev The other escape, and the only one a venue whose earnings never formally stop can use: a
+    ///      round nobody has rolled over for `STALE_ROUND_WINDOW` belongs to a dead token, so the
+    ///      threshold stops applying and the residual can finally be paid instead of stranding.
+    function test_thresholdBypassedOnceTheRoundGoesStale() public {
+        _nativeRound();
+        uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
+        _fund(dust);
+        skip(h.MIN_ROUND_DURATION() + 1);
+
+        // The harness answers "earnings may still arrive" forever, exactly like the V4 token does.
+        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
+        h.processDividends([uint256(0), 0, 0]);
+
+        skip(h.STALE_ROUND_WINDOW());
+        h.processDividends([uint256(0), 0, 0]);
+
+        assertEq(h.roundPot(0), dust, "the residual froze once the round went stale");
+        assertEq(h.pendingNative(0), 0, "buffer drained");
+    }
+
+    /// @dev The bypass must stay shut for a token that is merely QUIET. `roundOpenedAt` resets on every
+    ///      rollover, so a token still turning over rounds never ages into it however small its buffer —
+    ///      otherwise every live token would start freezing dust pots and stalling on them.
+    function test_staleBypassStaysShutWhileRoundsKeepRollingOver() public {
+        _nativeRound();
+        _fund(h.DIVIDEND_THRESHOLD() / 2);
+
+        // Well past the stale window in absolute time, but the round keeps being rolled over.
+        for (uint256 i; i < 3; ++i) {
+            skip(h.STALE_ROUND_WINDOW() / 2);
+            h.finalizeRound();
+        }
+        skip(h.MIN_ROUND_DURATION() + 1);
+
+        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
+        h.processDividends([uint256(0), 0, 0]);
+    }
+
     ///////////////////////// payout-path safety /////////////////////////
 
     /// @dev One holder whose `receive()` reverts must not brick the batch: the others are paid, the
