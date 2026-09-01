@@ -9,7 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Drives every path that can move a V2 dividend token's balances. Unlike the V4 handler, the
 ///         interesting balance here is the token's own ERC20 balance: the tax pool, the liquidity buffer,
@@ -63,8 +63,10 @@ contract DividendSolvencyV2Handler is Test, V2SwapHelpers {
         try TOKEN.processLiquidity(bound(uint256(raw), 0, 1)) {} catch {}
     }
 
+    /// @dev Freeze-only: the single entry point does whichever step the round is due for, so a call with
+    ///      no holders exercises the freeze and the rollover paths on their own.
     function process() public {
-        try TOKEN.processDividends([uint256(0), 0, 0]) {} catch {}
+        try TOKEN.processRound(0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -72,11 +74,7 @@ contract DividendSolvencyV2Handler is Test, V2SwapHelpers {
         for (uint256 i; i < holders.length; ++i) {
             batch[i] = holders[(i + seed) % holders.length];
         }
-        try TOKEN.distributeDividends(batch) {} catch {}
-    }
-
-    function finalize() public {
-        try TOKEN.finalizeRound() {} catch {}
+        try TOKEN.processRound(0, batch) {} catch {}
     }
 
     function transferBetweenHolders(uint256 seed, uint96 raw) public {
@@ -129,9 +127,8 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
                 burnBps: 1_000,
                 dividendsBps: 4_000,
                 liquidityBps: 2_000,
-                dividendTokens: [address(type(uint160).max), address(0), address(0)],
-                dividendWeightsBps: [uint16(6_000), 4_000, 0],
-                dividendRoutes: noDividendRoutes()
+                dividendToken: address(type(uint160).max),
+                dividendRoute: noDividendRoute()
             })
         });
         vm.prank(creator);
@@ -175,16 +172,14 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
     /// @dev The native side, same argument: the native dividend buffers and any undelivered native pot
     ///      must stay backed even as swap-backs push ETH through the split on every qualifying sell.
     function invariant_nativeBalanceCoversEveryCommitment() public view {
-        uint256 committed = divToken.pendingNativeDividends() + divToken.committedDividends(address(0));
+        uint256 committed = divToken.pendingNative() + divToken.committedDividends(address(0));
         assertGe(address(divToken).balance, committed, "native balance must cover the native commitments");
     }
 
     /// @dev Over-distribution is impossible by construction; if this trips, the frozen-denominator
     ///      argument has been broken.
-    function invariant_noLegPaysMoreThanItsPot() public view {
-        for (uint256 i; i < 3; ++i) {
-            assertLe(divToken.roundPaid(i), divToken.roundPot(i), "a leg paid out more than it froze");
-        }
+    function invariant_roundNeverPaysMoreThanItsPot() public view {
+        assertLe(divToken.roundPaid(), divToken.roundPot(), "the round paid out more than it froze");
     }
 
     /// @dev The denominator is a sum of per-account minima, so it can never exceed the supply it was

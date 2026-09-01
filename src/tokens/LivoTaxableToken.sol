@@ -232,9 +232,9 @@ abstract contract LivoTaxableToken is
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @notice Same as the three-bps overload, plus the dividend payout configuration: which assets the
-    ///         dividends slice buys, how it divides across them, and the pool each third asset is bought
-    ///         on. Kept as a separate overload so the original signature stays untouched.
+    /// @notice Same as the three-bps overload, plus the dividend payout configuration: which asset the
+    ///         dividends slice buys, and the pool it is bought on. Kept as a separate overload so the
+    ///         original signature stays untouched.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `LivoToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
     ///      nothing for the feature on any transfer.
@@ -242,9 +242,8 @@ abstract contract LivoTaxableToken is
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
-        address[3] calldata _dividendTokens,
-        uint16[3] calldata _dividendWeightsBps,
-        DividendRoute[3] calldata _dividendRoutes
+        address _dividendToken,
+        DividendRoute calldata _dividendRoute
     ) external virtual {
         // Runs in the extension: the payout configuration is validated once, at creation, and the
         // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
@@ -275,7 +274,7 @@ abstract contract LivoTaxableToken is
     }
 
     /// @dev Dividends accrue as native into the packed per-leg buffer — one SSTORE for all three legs,
-    ///      well inside the router gas budget — and are converted out-of-band by `processDividends`.
+    ///      well inside the router gas budget — and are converted out-of-band by `processRound`.
     ///      A token with no dividend configuration has a zero native weight total, so this consumes
     ///      nothing and the slice folds back to the fund wallets.
     function _handleDividends(uint256 amount) internal override returns (uint256 unconsumed) {
@@ -383,7 +382,7 @@ abstract contract LivoTaxableToken is
     ///      its burn and liquidity slices have to be carved here or not at all. On V4 they land in the
     ///      buy-back and bid-wall buffers. On V2 neither bucket has a native-side handler — a V2 pair
     ///      reverts `INVALID_TO` when asked to deliver a token to its own address, which is the same
-    ///      constraint that forces the self-token dividend leg into token space — so both slices fall
+    ///      constraint that forces a self-token dividend payout into token space — so both slices fall
     ///      through to the fund wallets, exactly as `accrueFees` already does with native on that venue.
     ///      Passing `(0, 0)` here instead would renormalize those slices into the dividend pot, paying
     ///      holders money earmarked for burning.
@@ -424,7 +423,7 @@ abstract contract LivoTaxableToken is
     ///      buffers; the base covers the dividend buffers and the undelivered dividend pots.
     function _reservedNative() internal view virtual returns (uint256) {
         if (!hasDividends) return 0;
-        return pendingNativeDividends() + committedDividends(address(0));
+        return pendingNative + committedDividends(address(0));
     }
 
     //////////////////////// VIEW FUNCTIONS //////////////////////

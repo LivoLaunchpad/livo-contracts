@@ -25,8 +25,8 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 ///      Tax accounting on swaps lives in `LivoSwapHook`; the token exposes the tax config via
 ///      `getTaxConfig()`. The earnings-allocation burn bucket is buffered here as ETH
 ///      (`burnPendingEth`) and processed out-of-band by `processBurn`, which buys back and burns tokens.
-/// @dev The out-of-band dividend entry points (`processDividends`, `distributeDividends`,
-///      `claimRound`, `finalizeRound`) are thin `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
+/// @dev The out-of-band dividend entry points (`processRound`, `claimRound`) are thin
+///      `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
 ///      bodies live elsewhere, and nothing on the swap hot path does. See `DividendDistributionLogic`.
 contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
@@ -190,30 +190,20 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
 
     //////////////////////// DIVIDENDS (delegated) //////////////////////
 
-    /// @notice Converts every leg currently over `DIVIDEND_THRESHOLD` into its payout asset, fixes those
-    ///         pots and the shared denominator, and opens the payout window. Permissionless.
-    /// @param minOut Per-leg slippage floor, in each asset's own decimals. Ignored by native legs.
-    function processDividends(uint256[3] calldata minOut) external {
+    /// @notice Advances the dividend round by everything it is due for: freezes the pot once the buffer
+    ///         has cleared its threshold, pushes payouts to `holders`, and rolls the round over once the
+    ///         pot is drained. Permissionless, and the only entry point a keeper needs.
+    /// @param minOut Slippage floor for the conversion, in the payout asset's own decimals. Ignored when
+    ///        the payout asset is native or the token itself, and by any call that does not freeze.
+    /// @param holders Addresses to push this round's payouts to. May be empty.
+    function processRound(uint256 minOut, address[] calldata holders) external {
         minOut;
-        _delegateToDividendLogic();
-    }
-
-    /// @notice Pushes this round's payouts to `holders`. Permissionless, idempotent and unforgeable: the
-    ///         amounts are computed from each holder's own round minimum, so a duplicate address pays 0,
-    ///         an unknown address pays 0, and an omitted holder is simply paid next round.
-    function distributeDividends(address[] calldata holders) external {
         holders;
         _delegateToDividendLogic();
     }
 
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
     function claimRound() external {
-        _delegateToDividendLogic();
-    }
-
-    /// @notice Rolls the open round over: whatever stayed unpaid seeds the next round's pots, and a fresh
-    ///         denominator is read from live balances. Permissionless.
-    function finalizeRound() external {
         _delegateToDividendLogic();
     }
 

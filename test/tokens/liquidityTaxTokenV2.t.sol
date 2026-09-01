@@ -10,7 +10,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Integration tests for the V2 liquidity earnings-allocation leg: the liquidity slice is set
 ///         aside as tax TOKENS during the swap-back, then `processLiquidity` sells half for ETH and adds
@@ -42,9 +42,8 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
                 burnBps: 0,
                 dividendsBps: 0,
                 liquidityBps: liquidityBps,
-                dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0],
-                dividendRoutes: noDividendRoutes()
+                dividendToken: address(0),
+                dividendRoute: noDividendRoute()
             })
         });
         vm.prank(creator);
@@ -56,40 +55,6 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     function test_liquidityBps_storedAtCreation() public {
         address token = _createLiquidityV2Token(400, 5000);
         assertEq(LivoTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
-    }
-
-    /// @dev A non-zero `dividendsBps` with no payout configuration would leave the slice accruing into
-    ///      legs that can never be funded, forever — tokens are non-upgradeable clones. Reject at creation.
-    function test_createToken_revertsOnDividendsWithoutPayoutConfig() public {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
-            name: "DivV2",
-            symbol: "DV2",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
-        });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
-            buyTaxBps: 0,
-            sellTaxBps: 400,
-            taxDurationSeconds: uint32(14 days),
-            startTaxFromLaunch: true,
-            buyTaxDecayStartBps: 0,
-            sellTaxDecayStartBps: 0,
-            taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0,
-                dividendsBps: 1,
-                liquidityBps: 0,
-                dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0],
-                dividendRoutes: noDividendRoutes()
-            })
-        });
-        vm.prank(creator);
-        vm.expectRevert(DividendDistribution.InvalidDividendConfig.selector);
-        factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
-        );
     }
 
     function test_v2Liquidity_swapBackBuffersThenProcessAddsLp() public {

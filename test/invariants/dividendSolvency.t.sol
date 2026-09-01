@@ -9,7 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Drives every path that can move a dividend-paying token's native balance: fresh earnings, the
 ///         permissionless stray-ETH sweep, the round lifecycle, the payout push, and ordinary transfers
@@ -44,8 +44,10 @@ contract DividendSolvencyHandler is Test {
         try TOKEN.sweepStrayEth() {} catch {}
     }
 
+    /// @dev Freeze-only: the single entry point does whichever step the round is due for, so a call with
+    ///      no holders exercises the freeze and the rollover paths on their own.
     function process() public {
-        try TOKEN.processDividends([uint256(0), 0, 0]) {} catch {}
+        try TOKEN.processRound(0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -53,11 +55,7 @@ contract DividendSolvencyHandler is Test {
         for (uint256 i; i < holders.length; ++i) {
             batch[i] = holders[(i + seed) % holders.length];
         }
-        try TOKEN.distributeDividends(batch) {} catch {}
-    }
-
-    function finalize() public {
-        try TOKEN.finalizeRound() {} catch {}
+        try TOKEN.processRound(0, batch) {} catch {}
     }
 
     function transferBetweenHolders(uint256 seed, uint96 raw) public {
@@ -112,9 +110,8 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
                 burnBps: 2_000,
                 dividendsBps: 4_000,
                 liquidityBps: 1_000,
-                dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(10_000), 0, 0],
-                dividendRoutes: noDividendRoutes()
+                dividendToken: address(0),
+                dividendRoute: noDividendRoute()
             })
         });
         vm.prank(creator);
@@ -152,17 +149,15 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
     /// @dev Everything the token owes somebody must be backed by a real balance. A violation here is not
     ///      a lost balance — it is holders' money already handed to the creator's fee receivers.
     function invariant_nativeBalanceCoversEveryCommitment() public view {
-        uint256 committed = divToken.burnPendingEth() + divToken.liquidityPendingEth()
-            + divToken.pendingNativeDividends() + divToken.committedDividends(address(0));
+        uint256 committed = divToken.burnPendingEth() + divToken.liquidityPendingEth() + divToken.pendingNative()
+            + divToken.committedDividends(address(0));
         assertGe(address(divToken).balance, committed, "native balance must cover every committed bucket");
     }
 
     /// @dev Over-distribution is impossible by construction: the denominator is frozen while individual
     ///      minima can only fall. If this ever trips, that argument has been broken.
-    function invariant_noLegPaysMoreThanItsPot() public view {
-        for (uint256 i; i < 3; ++i) {
-            assertLe(divToken.roundPaid(i), divToken.roundPot(i), "a leg paid out more than it froze");
-        }
+    function invariant_roundNeverPaysMoreThanItsPot() public view {
+        assertLe(divToken.roundPaid(), divToken.roundPot(), "the round paid out more than it froze");
     }
 
     /// @dev The denominator is the sum of tracked minima, so it can never exceed the eligible supply it

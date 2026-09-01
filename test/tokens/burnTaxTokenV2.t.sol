@@ -9,7 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoutes} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Integration tests for the V2 token-space burn earnings-allocation leg (no ETH→token round
 ///         trip: the burn share is burned as tax TOKENS inside the swap-back, before the swap).
@@ -40,9 +40,8 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
                 burnBps: burnBps,
                 dividendsBps: 0,
                 liquidityBps: 0,
-                dividendTokens: [address(0), address(0), address(0)],
-                dividendWeightsBps: [uint16(0), 0, 0],
-                dividendRoutes: noDividendRoutes()
+                dividendToken: address(0),
+                dividendRoute: noDividendRoute()
             })
         });
         vm.prank(creator);

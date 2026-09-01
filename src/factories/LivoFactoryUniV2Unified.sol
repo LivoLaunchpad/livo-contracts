@@ -164,10 +164,10 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
     ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
     ///         token with a LONG-TERM static tax (`taxDurationSeconds != 0`); a decay-only token is
     ///         rejected — its tax window lasts minutes, so there is no earnings stream worth splitting.
-    ///         A non-zero `dividendsBps` must come with a payout configuration in `dividendTokens` /
-    ///         `dividendWeightsBps` / `dividendRoutes`; the token validates it (weights summing to 100%,
-    ///         distinct assets, and a reachable swap venue for any third-party asset) and reverts at
-    ///         creation otherwise.
+    ///         A non-zero `dividendsBps` must come with a payout configuration in `dividendToken` /
+    ///         `dividendRoute`; the token validates it (a reachable swap venue, and a pool that exists
+    ///         and holds `MIN_DIVIDEND_POOL_LIQUIDITY` right now) and reverts at creation otherwise. That
+    ///         liquidity proof is the only eligibility rule — no whitelist, no admin approval.
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithAllocation calldata taxAllocationConfigs,
@@ -197,12 +197,7 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
         if (hasAllocation) {
             ILivoTaxableToken(payable(token))
                 .initializeEarningsAllocation(
-                    alloc.burnBps,
-                    alloc.dividendsBps,
-                    alloc.liquidityBps,
-                    alloc.dividendTokens,
-                    alloc.dividendWeightsBps,
-                    alloc.dividendRoutes
+                    alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps, alloc.dividendToken, alloc.dividendRoute
                 );
         }
         if (referral != address(0)) emit TokenReferral(token, referral);

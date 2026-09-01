@@ -10,7 +10,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoutes, v2DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoute, v2DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 import {DividendRoute} from "src/types/DividendRoute.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {LivoDividendLogicUniV2} from "src/tokens/LivoDividendLogicUniV2.sol";
@@ -30,19 +30,14 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
-    function _createDividendToken(uint16 dividendsBps, address[3] memory assets, uint16[3] memory weights)
+    function _createDividendToken(uint16 dividendsBps, address asset) internal returns (address token) {
+        return _createDividendToken(dividendsBps, asset, noDividendRoute());
+    }
+
+    function _createDividendToken(uint16 dividendsBps, address asset, DividendRoute memory route)
         internal
         returns (address token)
     {
-        return _createDividendToken(dividendsBps, assets, weights, noDividendRoutes());
-    }
-
-    function _createDividendToken(
-        uint16 dividendsBps,
-        address[3] memory assets,
-        uint16[3] memory weights,
-        DividendRoute[3] memory routes
-    ) internal returns (address token) {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivV2",
             symbol: "DV2",
@@ -59,12 +54,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0,
-                dividendsBps: dividendsBps,
-                liquidityBps: 0,
-                dividendTokens: assets,
-                dividendWeightsBps: weights,
-                dividendRoutes: routes
+                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset, dividendRoute: route
             })
         });
         vm.prank(creator);
@@ -74,18 +64,12 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     }
 
     /// @dev A graduated dividend token with `buyer` holding the whole float.
-    function _graduated(address[3] memory assets, uint16[3] memory weights)
-        internal
-        returns (LivoTaxableTokenUniV2 token)
-    {
-        return _graduated(assets, weights, noDividendRoutes());
+    function _graduated(address asset) internal returns (LivoTaxableTokenUniV2 token) {
+        return _graduated(asset, noDividendRoute());
     }
 
-    function _graduated(address[3] memory assets, uint16[3] memory weights, DividendRoute[3] memory routes)
-        internal
-        returns (LivoTaxableTokenUniV2 token)
-    {
-        address addr = _createDividendToken(5_000, assets, weights, routes);
+    function _graduated(address asset, DividendRoute memory route) internal returns (LivoTaxableTokenUniV2 token) {
+        address addr = _createDividendToken(5_000, asset, route);
         testToken = addr;
         _launchpadBuy(addr, 1 ether);
         _graduateToken();
@@ -93,18 +77,20 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     }
 
     function _nativeToken() internal returns (LivoTaxableTokenUniV2) {
-        return _graduated([address(0), address(0), address(0)], [uint16(10_000), 0, 0]);
+        return _graduated(address(0));
     }
 
     function _selfToken() internal returns (LivoTaxableTokenUniV2) {
-        return _graduated([address(type(uint160).max), address(0), address(0)], [uint16(10_000), 0, 0]);
+        return _graduated(address(type(uint160).max));
     }
 
-    /// @dev A leg paying a third ERC20, bought on the direct WETH/DAI Uniswap-V2 pair.
+    /// @dev A token paying a third ERC20, bought on the direct WETH/DAI Uniswap-V2 pair.
     function _thirdAssetToken() internal returns (LivoTaxableTokenUniV2) {
-        DividendRoute[3] memory routes = noDividendRoutes();
-        routes[0] = v2DividendRoute(address(0));
-        return _graduated([DAI, address(0), address(0)], [uint16(10_000), 0, 0], routes);
+        return _graduated(DAI, v2DividendRoute());
+    }
+
+    function _noHolders() internal pure returns (address[] memory list) {
+        list = new address[](0);
     }
 
     function _accrue(LivoTaxableTokenUniV2 token, uint256 amount) internal {
@@ -125,14 +111,14 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         // Past the tax window: no fresh tax can ever accrue, so no swap-back will ever fire again.
         skip(uint256(token.taxDurationSeconds()) + 1);
-        assertEq(token.pendingNative(0), 0, "nothing buffered yet");
+        assertEq(token.pendingNative(), 0, "nothing buffered yet");
 
         vm.deal(address(token), address(token).balance + 1 ether);
         token.sweepStrayEth();
 
         // Half to the dividend buffer, half to the fund wallets: the burn and liquidity shares are zero
         // for this token, so the split is the plain dividends/fund one.
-        assertEq(token.pendingNative(0), 0.5 ether, "stray native became holder earnings");
+        assertEq(token.pendingNative(), 0.5 ether, "stray native became holder earnings");
     }
 
     /// @dev The reason the swap-back stopped sweeping the whole balance. Router refunds from an earlier
@@ -158,7 +144,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         // The swap-back routed its own proceeds — and only those. Under the old whole-balance sweep the
         // 1 ETH would have been split too, depositing half of it to the fund wallets and leaving the
         // balance BELOW what was already there.
-        assertGt(token.pendingNative(0), 0, "the swap-back routed its own proceeds");
+        assertGt(token.pendingNative(), 0, "the swap-back routed its own proceeds");
         assertGe(address(token).balance, strayBefore, "the stray native was not swept into the swap-back");
     }
 
@@ -167,15 +153,15 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     function test_nativeDividends_accrueFreezeAndPay() public {
         LivoTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
-        assertEq(token.pendingNative(0), 0.5 ether, "half the earnings buffered for holders");
+        assertEq(token.pendingNative(), 0.5 ether, "half the earnings buffered for holders");
 
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
         uint256 before = buyer.balance;
         address[] memory holders = new address[](1);
         holders[0] = buyer;
-        token.distributeDividends(holders);
+        token.processRound(0, holders);
         assertEq(buyer.balance - before, 0.5 ether, "sole holder takes the pot");
     }
 
@@ -185,7 +171,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     function test_autoSwapBackDoesNotRecycleTheDividendBuffer() public {
         LivoTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
-        uint256 buffered = token.pendingNative(0);
+        uint256 buffered = token.pendingNative();
         assertGt(buffered, 0, "buffer funded");
 
         // A real sell large enough to trigger the automatic swap-back.
@@ -193,8 +179,8 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         _swapSellV2(buyer, address(token), sellAmount, 0, true);
 
         // The buffer only ever GREW (the sell's own tax adds to it); nothing was swept out of it.
-        assertGe(token.pendingNative(0), buffered, "dividend buffer never shrinks on a swap-back");
-        assertGe(address(token).balance, token.pendingNative(0), "buffer backed by a real balance");
+        assertGe(token.pendingNative(), buffered, "dividend buffer never shrinks on a swap-back");
+        assertGe(address(token).balance, token.pendingNative(), "buffer backed by a real balance");
     }
 
     /// @dev A frozen, undelivered pot is holders' money sitting in the token's balance. The swap-back's
@@ -203,13 +189,13 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         LivoTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
-        assertEq(token.roundPot(0), 0.5 ether, "pot frozen");
+        token.processRound(0, _noHolders());
+        assertEq(token.roundPot(), 0.5 ether, "pot frozen");
 
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 2;
         _swapSellV2(buyer, address(token), sellAmount, 0, true);
 
-        assertEq(token.roundPot(0), 0.5 ether, "pot untouched");
+        assertEq(token.roundPot(), 0.5 ether, "pot untouched");
         assertGe(address(token).balance, 0.5 ether, "and still fully backed");
     }
 
@@ -217,7 +203,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     function test_selfTokenLeg_carvedInTokenSpaceDuringTheSwapBack() public {
         LivoTaxableTokenUniV2 token = _selfToken();
-        assertEq(token.dividendTokens(0), address(token), "self-token leg configured");
+        assertEq(token.dividendToken(), address(token), "self-token payout configured");
 
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 10;
         _swapSellV2(buyer, address(token), sellAmount, 0, true);
@@ -230,7 +216,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         uint256 buffered = token.dividendPendingTokens();
         assertGt(buffered, 0, "dividend tokens set aside in token space");
-        assertEq(token.pendingNative(0), 0, "and nothing buffered as native for this leg");
+        assertEq(token.pendingNative(), 0, "and nothing buffered as native for this leg");
         assertGe(IERC20(address(token)).balanceOf(address(token)), buffered, "buffer backed by real balance");
     }
 
@@ -273,14 +259,14 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         vm.assume(buffered >= token.SWAP_THRESHOLD());
 
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
-        assertEq(token.roundPot(0), buffered, "the token buffer became the pot, with no conversion");
+        token.processRound(0, _noHolders());
+        assertEq(token.roundPot(), buffered, "the token buffer became the pot, with no conversion");
         assertEq(token.dividendPendingTokens(), 0, "buffer consumed");
 
         uint256 before = IERC20(address(token)).balanceOf(buyer);
         address[] memory holders = new address[](1);
         holders[0] = buyer;
-        token.distributeDividends(holders);
+        token.processRound(0, holders);
         assertGt(IERC20(address(token)).balanceOf(buyer), before, "holder paid in the token itself");
     }
 
@@ -304,9 +290,9 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         LivoTaxableTokenUniV2 token = _thirdAssetToken();
         _accrue(token, 1 ether);
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
-        uint256 pot = token.roundPot(0);
+        uint256 pot = token.roundPot();
         assertGt(pot, 0, "DAI pot frozen");
         assertEq(token.committedDividends(DAI), pot, "the whole pot is owed to holders");
         assertEq(IERC20(DAI).balanceOf(address(token)), pot, "backed by a real DAI balance");
@@ -320,16 +306,9 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(IERC20(DAI).balanceOf(address(token)), pot, "the stray left, the owed pot stayed");
     }
 
-    ///////////////////////// config /////////////////////////
-
-    function test_dividendsWithoutPayoutConfigIsRejected() public {
-        vm.expectRevert(DividendDistribution.InvalidDividendConfig.selector);
-        _createDividendToken(5_000, [address(0), address(0), address(0)], [uint16(0), 0, 0]);
-    }
-
     ///////////////////////// the delegatecall extension /////////////////////////
 
-    /// @dev The four dividend entry points are stubs that `delegatecall` into a separate contract,
+    /// @dev The dividend entry points are stubs that `delegatecall` into a separate contract,
     ///      because their bodies do not fit in the clone's implementation alongside everything else.
     ///      What has to hold for that to be safe is that the extension writes the TOKEN's storage and
     ///      keeps none of its own — which is exactly what a completed round lets us observe.
@@ -339,11 +318,11 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         _accrue(token, 1 ether);
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
-        assertGt(token.roundPot(0), 0, "the token's pot was funded through the delegatecall");
-        assertEq(token.frozenLegs(), 1, "the token's round is frozen");
-        assertEq(extension.roundPot(0), 0, "the extension kept nothing of its own");
+        assertGt(token.roundPot(), 0, "the token's pot was funded through the delegatecall");
+        assertTrue(token.roundFrozen(), "the token's round is frozen");
+        assertEq(extension.roundPot(), 0, "the extension kept nothing of its own");
         assertEq(extension.currentRound(), 0, "the extension never opened a round of its own");
         assertEq(address(extension).balance, 0, "the extension holds no money");
     }

@@ -66,8 +66,8 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
     ///         so the token side is kept, not bought back; `processLiquidity` sells only half for the ETH side.
     uint256 public liquidityPendingTokens;
 
-    /// @notice Tax TOKENS set aside for a SELF-TOKEN dividend leg, awaiting a `processDividends` freeze.
-    ///         V2 buffers this leg in token space, not as native, because a V2 pair reverts `INVALID_TO`
+    /// @notice Tax TOKENS set aside for a SELF-TOKEN dividend payout, awaiting a `processRound` freeze.
+    ///         V2 buffers this payout in token space, not as native, because a V2 pair reverts `INVALID_TO`
     ///         when asked to deliver a token to its own address — the ETH round trip every other venue
     ///         uses is simply not available here. Tracked apart from the tax pool for the same reason
     ///         `liquidityPendingTokens` is: it shares this contract's balance but is already committed.
@@ -89,20 +89,17 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
     ///      must use this field and not `ethAmount`. The two are equal for a token with no allocation.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount, uint256 ethToFund);
 
-    /// @dev On V2 a leg paying the token ITSELF must be buffered in token space: `UniswapV2Pair.swap`
+    /// @dev On V2 a payout in the token ITSELF must be buffered in token space: `UniswapV2Pair.swap`
     ///      reverts `INVALID_TO` when the recipient is one of the pair's own tokens, so there is no
     ///      ETH -> self-token route to buy it back with.
     function _isTokenSpaceDividendAsset(address asset) internal view virtual override returns (bool) {
         return asset == address(this);
     }
 
-    /// @dev The share of total earnings the self-token dividend leg takes, in token space. Derived on
-    ///      read from the two configured values rather than cached: it is only needed on the swap-back
-    ///      path, and a cached copy would be a third place for the allocation to disagree with itself.
+    /// @dev The share of total earnings the self-token dividend payout takes, in token space: all of
+    ///      the dividends slice when the payout asset IS this token, none of it otherwise.
     function _tokenSpaceDividendBps() internal view override returns (uint256) {
-        uint8 leg = tokenSpaceLeg;
-        if (leg == NO_TOKEN_SPACE_LEG) return 0;
-        return uint256(dividendsBps) * dividendWeightsBps[leg] / BPS_TOTAL;
+        return dividendToken == address(this) ? dividendsBps : 0;
     }
 
     /// @dev The token's own balance is shared by the tax pool, the liquidity buffer, the self-token

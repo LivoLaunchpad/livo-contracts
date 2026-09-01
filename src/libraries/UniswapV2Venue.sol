@@ -47,9 +47,10 @@ library UniswapV2Venue {
     /// @notice Spends `nativeValue` (18-dec native) buying the asset at the end of `path`, delivering it
     ///         to `address(this)`. On ETH-family chains `path` must start at WETH, which
     ///         `swapExactETHForTokens…` wraps implicitly.
-    /// @dev Low-level so a failed swap REPORTS rather than reverts: the only caller is a dividend leg,
-    ///      and one dead pool must not take the token's other legs down with it (see
-    ///      `DividendDistribution._freezeLeg`). A reverted call keeps the native, so nothing is spent.
+    /// @dev Low-level so a failed swap REPORTS rather than reverts: the only caller is a dividend
+    ///      freeze, and a dead pool must leave the buffer intact rather than reverting the round (see
+    ///      `DividendDistributionLogic._freezeDividends`). A reverted call keeps the native, so nothing
+    ///      is spent.
     /// @param minOut minimum output in the ASSET's own decimals.
     /// @return ok false if the swap reverted (dead pair, slippage floor missed).
     function trySwapNativeToAsset(

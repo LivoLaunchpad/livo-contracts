@@ -47,20 +47,19 @@ struct TaxConfigs {
 /// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
 ///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions. The
 ///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
-/// @dev A non-zero `dividendsBps` also needs the payout fields: `dividendTokens` names up to three
-///      assets holders are paid in, `dividendWeightsBps` says how the dividends slice divides across
-///      them (summing to 10 000, left-packed), and `dividendRoutes` says which pool each THIRD asset is
-///      bought on. An asset may be `address(0)` for native, `DividendDistribution.DIVIDEND_SELF_TOKEN`
-///      for the token itself, or any ERC20 — with its route as the matching `dividendRoutes` entry, since
-///      a clone cannot be patched afterwards. The route entries of the native and self-token legs are
-///      ignored.
+/// @dev A non-zero `dividendsBps` also needs the payout fields. `dividendToken` is the ONE asset holders
+///      are paid in: `address(0)` for native, `DividendDistribution.DIVIDEND_SELF_TOKEN` for the token
+///      itself, or any ERC20. `dividendRoute` names the pool that ERC20 is bought on, and doubles as its
+///      proof of liquidity — the token verifies at creation that the pool exists and is deep enough to
+///      swap against, which is the ONLY thing that makes an asset eligible. There is no whitelist and no
+///      admin approval. Both fields are permanent: a clone cannot be patched afterwards. `dividendRoute`
+///      is ignored for the native and self-token payouts, which have nothing to buy.
 struct EarningsAllocationConfig {
     uint16 burnBps;
     uint16 dividendsBps;
     uint16 liquidityBps;
-    address[3] dividendTokens;
-    uint16[3] dividendWeightsBps;
-    DividendRoute[3] dividendRoutes;
+    address dividendToken;
+    DividendRoute dividendRoute;
 }
 
 /// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split. Consumed
@@ -116,15 +115,14 @@ interface ILivoTaxableToken is ILivoToken {
     ///         so it is only callable during the deploy tx.
     function initializeEarningsAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) external;
 
-    /// @notice Same as above plus the dividend payout configuration (which assets the dividends slice
-    ///         buys, how it divides across them, and the pool each third asset is bought on). Separate
-    ///         overload so the original signature is untouched.
+    /// @notice Same as above plus the dividend payout configuration (which asset the dividends slice
+    ///         buys, and the pool it is bought on). Separate overload so the original signature is
+    ///         untouched.
     function initializeEarningsAllocation(
         uint16 burnBps,
         uint16 dividendsBps,
         uint16 liquidityBps,
-        address[3] calldata dividendTokens,
-        uint16[3] calldata dividendWeightsBps,
-        DividendRoute[3] calldata dividendRoutes
+        address dividendToken,
+        DividendRoute calldata dividendRoute
     ) external;
 }

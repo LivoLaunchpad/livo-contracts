@@ -9,25 +9,25 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @title LivoDividendLogicUniV4
-/// @notice The dividend extension `LivoTaxableTokenUniV4` `delegatecall`s its four out-of-band entry
+/// @notice The dividend extension `LivoTaxableTokenUniV4` `delegatecall`s its out-of-band entry
 ///         points into: the round machinery, the native -> payout-asset conversion, and the per-holder
 ///         push. Deployed once, by the token implementation's own constructor.
 /// @dev It shares `LivoTaxableTokenUniV4Base` with the token and adds NO state of its own, so the
 ///      compiler derives the same storage layout for both — the property the delegatecall depends on.
 ///      Pinned by `just check-dividend-layout`.
 contract LivoDividendLogicUniV4 is LivoTaxableTokenUniV4Base, DividendDistributionLogic {
-    /// @dev Adds the SELF-TOKEN payout shape: V4 is ETH-native, so a leg paying the token itself buys it
-    ///      back on the token's own pool, reusing the same primitive `processBurn` uses. Native and
-    ///      third-token legs fall through to the base.
+    /// @dev Adds the SELF-TOKEN payout shape: V4 is ETH-native, so a token paying dividends in itself
+    ///      buys itself back on its own pool, reusing the same primitive `processBurn` uses. Native and
+    ///      third-asset payouts fall through to the base.
     /// @dev The precursor event must stay BEFORE the swap: an indexer has to classify the resulting
     ///      `LivoSwapHook.LivoSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
     ///      the swap lands once the keeper's PnL has already been updated.
-    function _acquireDividendAsset(address asset, uint256 leg, uint256 nativeIn, uint256 minOut)
+    function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal
         override
         returns (uint256)
     {
-        if (asset != address(this)) return super._acquireDividendAsset(asset, leg, nativeIn, minOut);
+        if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
 
         address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
         uint256 balanceBefore = balanceOf(address(this));
@@ -42,14 +42,13 @@ contract LivoDividendLogicUniV4 is LivoTaxableTokenUniV4Base, DividendDistributi
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
-        address[3] calldata _dividendTokens,
-        uint16[3] calldata _dividendWeightsBps,
-        DividendRoute[3] calldata _dividendRoutes
+        address _dividendToken,
+        DividendRoute calldata _dividendRoute
     ) external override {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            _initializeDividends(_dividendToken, _dividendRoute);
             hasDividends = true;
         }
     }

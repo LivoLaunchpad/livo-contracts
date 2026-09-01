@@ -17,7 +17,7 @@ import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 /// @dev ETH-family only: both helpers pay with `msg.value`. A chain whose native currency is an ERC20
 ///      (Arc) has no counterpart here, which is why `DividendDistribution` refuses a third-asset leg
 ///      there rather than configuring one that could never convert.
-/// @dev Every helper returns `false` instead of reverting when the swap fails. A dividend leg whose pool
+/// @dev Every helper returns `false` instead of reverting when the swap fails. A dividend payout whose pool
 ///      dies must not take the token's other legs down with it — see `DividendDistribution._freezeLeg`.
 /// @dev All functions are `internal` so they inline into the caller's bytecode (no deployed library);
 ///      `address(this)` inside them is therefore the calling token.
@@ -70,7 +70,7 @@ library UniversalRouterVenue {
         uint256 minOut
     ) internal returns (bool ok) {
         // The router's params are `uint128`. `nativeIn` is capped far below that by the freeze cap, but
-        // `minOut` comes from whoever called `processDividends`: truncating it would SILENTLY weaken the
+        // `minOut` comes from whoever called `processRound`: truncating it would SILENTLY weaken the
         // floor they asked for, so an unrepresentable one fails the swap instead.
         if (minOut > type(uint128).max || nativeIn > type(uint128).max) return false;
 

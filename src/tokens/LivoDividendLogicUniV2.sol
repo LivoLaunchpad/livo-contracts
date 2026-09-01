@@ -10,30 +10,30 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @title LivoDividendLogicUniV2
-/// @notice The dividend extension `LivoTaxableTokenUniV2` `delegatecall`s its four out-of-band entry
+/// @notice The dividend extension `LivoTaxableTokenUniV2` `delegatecall`s its out-of-band entry
 ///         points into: the round machinery, the native -> payout-asset conversion, and the per-holder
 ///         push. Deployed once, by the token implementation's own constructor.
 /// @dev It shares `LivoTaxableTokenUniV2Base` with the token and adds NO state of its own, so the
 ///      compiler derives the same storage layout for both — the property the delegatecall depends on.
 ///      Pinned by `just check-dividend-layout`.
 contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributionLogic {
-    /// @dev Freezes the self-token leg straight out of its token buffer — no conversion, no slippage.
-    ///      Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply size the swap-back amortises
-    ///      against) because the buffer is denominated in tokens, not native. Every other leg is native
-    ///      and goes through the base.
-    function _freezeLeg(uint256 leg, address asset, uint256 minOut)
+    /// @dev Freezes a self-token payout straight out of its token buffer — no conversion, no slippage,
+    ///      and so no way for it to fail. Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply
+    ///      size the swap-back amortises against) because the buffer is denominated in tokens, not
+    ///      native. Every other payout asset is native-buffered and goes through the base.
+    function _freezeDividends(uint256 minOut)
         internal
         override
-        returns (uint256 nativeIn, uint256 out)
+        returns (FreezeOutcome outcome, uint256 nativeIn, uint256 out)
     {
-        if (asset != address(this)) return super._freezeLeg(leg, asset, minOut);
+        if (dividendToken != address(this)) return super._freezeDividends(minOut);
 
         uint256 buffered = dividendPendingTokens;
-        if (buffered == 0) return (0, 0);
-        if (buffered < SWAP_THRESHOLD && _taxWindowActive()) return (0, 0);
+        if (buffered == 0) return (FreezeOutcome.NotReady, 0, 0);
+        if (buffered < SWAP_THRESHOLD && _taxWindowActive()) return (FreezeOutcome.NotReady, 0, 0);
 
         dividendPendingTokens = 0;
-        return (0, buffered);
+        return (FreezeOutcome.Converted, 0, buffered);
     }
 
     /// @dev Names the winner between the venue base's override and the `DividendDistribution` default
@@ -54,14 +54,13 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
-        address[3] calldata _dividendTokens,
-        uint16[3] calldata _dividendWeightsBps,
-        DividendRoute[3] calldata _dividendRoutes
+        address _dividendToken,
+        DividendRoute calldata _dividendRoute
     ) external override {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            _initializeDividends(_dividendToken, _dividendRoute);
             hasDividends = true;
         }
     }

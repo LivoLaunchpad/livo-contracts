@@ -136,7 +136,7 @@ abstract contract EarningsAllocation {
 
     /// @dev The share of `dividendsBps` a venue already peeled upstream in TOKEN space, so the ETH split
     ///      neither pays it again nor counts it in its denominator. 0 everywhere except the Uniswap-V2
-    ///      self-token dividend leg (a V2 pair reverts `INVALID_TO` when asked to deliver a token to its
+    ///      self-token dividend payout (a V2 pair reverts `INVALID_TO` when asked to deliver a token to its
     ///      own address, so that leg is carved from the tax tokens instead of bought back).
     function _tokenSpaceDividendBps() internal view virtual returns (uint256) {
         return 0;

@@ -11,7 +11,7 @@ import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {noDividendRoutes, v2DividendRoute, v3DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
+import {noDividendRoute, v3DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: rounds,
@@ -21,20 +21,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     address internal holder2 = makeAddr("holder2");
 
     /// @dev Creates a taxable V4 token routing `dividendsBps` of post-graduation earnings to holders,
-    ///      paid in the assets given. 4%-configurable sell tax, creation-anchored 14-day window.
-    function _createDividendToken(uint16 dividendsBps, address[3] memory assets, uint16[3] memory weights)
+    ///      paid in `asset`. 4%-configurable sell tax, creation-anchored 14-day window.
+    function _createDividendToken(uint16 dividendsBps, address asset) internal returns (address token) {
+        return _createDividendToken(dividendsBps, asset, noDividendRoute());
+    }
+
+    function _createDividendToken(uint16 dividendsBps, address asset, DividendRoute memory route)
         internal
         returns (address token)
     {
-        return _createDividendToken(dividendsBps, assets, weights, noDividendRoutes());
-    }
-
-    function _createDividendToken(
-        uint16 dividendsBps,
-        address[3] memory assets,
-        uint16[3] memory weights,
-        DividendRoute[3] memory routes
-    ) internal returns (address token) {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivToken",
             symbol: "DIV",
@@ -51,12 +46,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0,
-                dividendsBps: dividendsBps,
-                liquidityBps: 0,
-                dividendTokens: assets,
-                dividendWeightsBps: weights,
-                dividendRoutes: routes
+                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset, dividendRoute: route
             })
         });
         vm.prank(creator);
@@ -71,17 +61,20 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    function _nativeOnly() internal pure returns (address[3] memory assets, uint16[3] memory weights) {
-        assets = [address(0), address(0), address(0)];
-        weights = [uint16(10_000), 0, 0];
+    function _noHolders() internal pure returns (address[] memory list) {
+        list = new address[](0);
+    }
+
+    function _batch(address a) internal pure returns (address[] memory list) {
+        list = new address[](1);
+        list[0] = a;
     }
 
     /// @dev A graduated, dividend-paying token with `buyer` as its only holder. Round 1 is NOT open
     ///      yet — it opens on the first earnings the token routes (see `_handleDividends`), which is
     ///      what `_accrue` triggers.
     function _graduatedDividendToken() internal returns (LivoTaxableTokenUniV4 token) {
-        (address[3] memory assets, uint16[3] memory weights) = _nativeOnly();
-        address addr = _createDividendToken(5_000, assets, weights);
+        address addr = _createDividendToken(5_000, address(0));
         testToken = addr;
         _launchpadBuy(addr, 2 ether);
         _graduateToken();
@@ -113,64 +106,26 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///////////////////////// configuration /////////////////////////
 
     function test_dividendConfig_storedAtCreation() public {
-        (address[3] memory assets, uint16[3] memory weights) = _nativeOnly();
-        LivoTaxableTokenUniV4 token = LivoTaxableTokenUniV4(payable(_createDividendToken(5_000, assets, weights)));
+        LivoTaxableTokenUniV4 token = LivoTaxableTokenUniV4(payable(_createDividendToken(5_000, address(0))));
 
         assertEq(token.dividendsBps(), 5_000, "dividendsBps stored");
         assertTrue(token.hasDividends(), "warm-slot gate flipped on");
-        assertEq(token.dividendTokens(0), address(0), "native leg");
-        assertEq(token.dividendWeightsBps(0), 10_000, "full weight on leg 0");
+        assertEq(token.dividendToken(), address(0), "paid in native");
         assertEq(token.currentRound(), 0, "no round before graduation");
     }
 
     /// @dev The self-token sentinel exists because a creator cannot name an address that does not exist
     ///      yet; it must resolve to the token itself at initialization.
     function test_selfTokenSentinel_resolvesToTheToken() public {
-        address[3] memory assets = [token_SELF(), address(0), address(0)];
-        uint16[3] memory weights = [uint16(10_000), 0, 0];
-        LivoTaxableTokenUniV4 token = LivoTaxableTokenUniV4(payable(_createDividendToken(5_000, assets, weights)));
-        assertEq(token.dividendTokens(0), address(token), "sentinel resolved");
+        LivoTaxableTokenUniV4 token = LivoTaxableTokenUniV4(payable(_createDividendToken(5_000, token_SELF())));
+        assertEq(token.dividendToken(), address(token), "sentinel resolved");
     }
 
-    function test_weightsMustSumToOneHundredPercent() public {
-        address[3] memory assets = [address(0), address(0), address(0)];
-        uint16[3] memory weights = [uint16(9_000), 0, 0];
-        vm.expectRevert(DividendDistribution.InvalidDividendConfig.selector);
-        _createDividendToken(5_000, assets, weights);
-    }
-
-    /// @dev Two legs paying the same asset would make each leg's unpaid pot un-reconcilable against that
-    ///      asset's balance, which is what every sweep path subtracts.
-    function test_duplicateAssetsRejected() public {
-        address[3] memory assets = [address(0), address(0), address(0)];
-        uint16[3] memory weights = [uint16(5_000), 5_000, 0];
-        vm.expectRevert(DividendDistribution.InvalidDividendConfig.selector);
-        _createDividendToken(5_000, assets, weights);
-    }
-
-    /// @dev ANY ERC20 is a valid payout asset — there is no whitelist and no curated-route requirement.
-    ///      What the creator must supply is the route that buys it.
-    function test_anyThirdAssetIsAccepted() public {
-        address[3] memory assets = [makeAddr("xStock"), address(0), address(0)];
-        uint16[3] memory weights = [uint16(10_000), 0, 0];
-        DividendRoute[3] memory routes = noDividendRoutes();
-        routes[0] = v2DividendRoute(address(0));
-
-        address token = _createDividendToken(5_000, assets, weights, routes);
-
-        assertEq(LivoTaxableTokenUniV4(payable(token)).dividendTokens(0), assets[0], "the asset was accepted");
-    }
-
-    /// @dev The one route error worth a revert: one this chain could never execute at all. A clone cannot
-    ///      be patched, so the leg would accrue forever.
+    /// @dev A route this chain could never execute at all is refused before any pool is looked up. A
+    ///      clone cannot be patched, so the buffer would accrue forever behind it.
     function test_thirdAssetWithAnUnexecutableRouteRejected() public {
-        address[3] memory assets = [makeAddr("xStock"), address(0), address(0)];
-        uint16[3] memory weights = [uint16(10_000), 0, 0];
-        DividendRoute[3] memory routes = noDividendRoutes();
-        routes[0] = v3DividendRoute(0); // no V3 pool has a zero fee tier
-
         vm.expectRevert(DividendDistribution.UnsupportedDividendAsset.selector);
-        _createDividendToken(5_000, assets, weights, routes);
+        _createDividendToken(5_000, makeAddr("xStock"), v3DividendRoute(0)); // no V3 pool has a zero fee tier
     }
 
     ///////////////////////// rounds /////////////////////////
@@ -199,21 +154,21 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_accrual_bufferedAsNative() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
-        assertEq(token.pendingNative(0), 0.5 ether, "half of the earnings buffered for holders");
+        assertEq(token.pendingNative(), 0.5 ether, "half of the earnings buffered for holders");
     }
 
-    function test_processDividends_revertsBeforeTheRoundIsOldEnough() public {
+    function test_processRound_revertsBeforeTheRoundIsOldEnough() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         vm.expectRevert(DividendDistribution.RoundTooYoung.selector);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
     }
 
-    function test_processDividends_revertsBelowThreshold() public {
+    function test_processRound_revertsBelowThreshold() public {
         LivoTaxableTokenUniV4 token = _graduatedDividendToken();
         _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the 0.1 ETH threshold
         skip(token.MIN_ROUND_DURATION() + 1);
-        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
-        token.processDividends([uint256(0), 0, 0]);
+        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        token.processRound(0, _noHolders());
     }
 
     /// @dev V4 answers `_dividendEarningsMayStillArrive()` `true` FOREVER — correctly, because LP fees
@@ -223,23 +178,23 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_staleRoundLetsADeadTokenPayItsResidual() public {
         LivoTaxableTokenUniV4 token = _graduatedDividendToken();
         _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the threshold
-        uint256 residual = token.pendingNative(0);
+        uint256 residual = token.pendingNative();
         assertGt(residual, 0, "a residual is buffered");
 
         skip(token.MIN_ROUND_DURATION() + 1);
-        vm.expectRevert(DividendDistribution.NoLegAboveThreshold.selector);
-        token.processDividends([uint256(0), 0, 0]);
+        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        token.processRound(0, _noHolders());
 
         // Nothing happens to the token for a month — no trades, no rollover.
         skip(token.STALE_ROUND_WINDOW());
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
-        assertEq(token.roundPot(0), residual, "the stranded residual finally froze");
+        assertEq(token.roundPot(), residual, "the stranded residual finally froze");
 
         uint256 before = buyer.balance;
         address[] memory holders = new address[](1);
         holders[0] = buyer;
-        token.distributeDividends(holders);
+        token.processRound(0, holders);
         // Not exact: the graduator's leftover dust is still in the denominator, so the sole holder's
         // share rounds down by a wei.
         assertApproxEqAbs(buyer.balance - before, residual, 10, "and reached the holder");
@@ -251,45 +206,50 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         skip(token.MIN_ROUND_DURATION() + 1);
 
-        token.processDividends([uint256(0), 0, 0]);
-        assertApproxEqAbs(token.roundPot(0), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "pot frozen");
-        assertEq(token.frozenLegs(), 1, "leg 0 frozen");
+        token.processRound(0, _noHolders());
+        assertApproxEqAbs(token.roundPot(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "pot frozen");
+        assertTrue(token.roundFrozen(), "round frozen");
 
         uint256 balanceBefore = buyer.balance;
-        address[] memory holders = new address[](1);
-        holders[0] = buyer;
-        token.distributeDividends(holders);
+        token.processRound(0, _batch(buyer));
 
         assertApproxEqAbs(
             buyer.balance - balanceBefore, 0.5 ether, GRADUATOR_DUST_TOLERANCE, "sole holder takes the whole pot"
         );
-        assertApproxEqAbs(token.roundPaid(0), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "pot fully accounted as paid");
+        // Draining the pot is what rolls the round over, in the same call: there is no separate finalize
+        // step to forget, and what is left behind is only the rounding dust.
+        assertEq(token.currentRound(), 2, "the drained round rolled over");
+        assertLt(token.roundPot(), GRADUATOR_DUST_TOLERANCE, "nothing meaningful carried forward");
     }
 
+    /// @dev A keeper's list is untrusted input: the same address twice must pay once, because the amount
+    ///      is computed here from the holder's own marker rather than taken from the caller.
     function test_payingTwiceInARoundIsANoOp() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
 
         address[] memory holders = new address[](2);
         holders[0] = buyer;
         holders[1] = buyer; // a duplicate in the keeper's list
 
         uint256 balanceBefore = buyer.balance;
-        token.distributeDividends(holders);
+        token.processRound(0, holders);
         assertApproxEqAbs(
             buyer.balance - balanceBefore, 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the duplicate pays nothing"
         );
 
+        // The round rolled over on settling, so a repeat call finds a fresh, unfundable round rather than
+        // a second helping of the same pot.
         uint256 afterFirstBatch = buyer.balance;
-        token.distributeDividends(holders);
+        vm.expectRevert(DividendDistribution.RoundTooYoung.selector);
+        token.processRound(0, holders);
         assertEq(buyer.balance, afterFirstBatch, "a second batch pays nothing either");
     }
 
     function test_claimRound_isABackstopForAMissedHolder() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
         uint256 balanceBefore = buyer.balance;
         vm.prank(buyer);
@@ -317,13 +277,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.dividendShares(holder2), 0, "mid-round arrival is worth zero");
 
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
         address[] memory holders = new address[](2);
         holders[0] = buyer;
         holders[1] = holder2;
         uint256 buyerBefore = buyer.balance;
-        token.distributeDividends(holders);
+        token.processRound(0, holders);
 
         assertEq(holder2.balance, 0, "the mid-round buyer is paid nothing");
         // buyer's minimum fell to its post-transfer balance, and the denominator fell with it, so the
@@ -371,30 +331,36 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     ///////////////////////// round roll-over /////////////////////////
 
-    function test_finalizeRound_rollsResidualAndOpensTheNextRound() public {
+    /// @dev A round nobody could be paid from rolls over once its payout window expires, carrying the
+    ///      whole undelivered pot into the next round rather than blocking dividends for good.
+    function test_roundRollsOverOnceThePayoutWindowExpires() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
         // Nobody is paid, so the whole pot is residual.
         skip(token.PAYOUT_WINDOW() + 1);
-        token.finalizeRound();
+        token.processRound(0, _noHolders());
 
         assertEq(token.currentRound(), 2, "next round open");
-        assertEq(token.frozenLegs(), 0, "nothing payable until the new round freezes");
+        assertFalse(token.roundFrozen(), "nothing payable until the new round freezes");
         assertApproxEqAbs(
-            token.roundPot(0), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the residual seeds the next round's pot"
+            token.roundPot(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the residual seeds the next round's pot"
         );
-        assertEq(token.roundPaid(0), 0, "paid counter reset");
+        assertEq(token.roundPaid(), 0, "paid counter reset");
     }
 
-    function test_finalizeRound_blockedWhileThePayoutWindowIsOpen() public {
+    /// @dev While the window is open and the pot undrained, a call that pays nobody changes nothing: the
+    ///      round is NOT rolled over under a pot holders can still be paid from.
+    function test_roundDoesNotRollWhileThePayoutWindowIsOpen() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
-        vm.expectRevert(DividendDistribution.PayoutWindowOpen.selector);
-        token.finalizeRound();
+        token.processRound(0, _noHolders());
+
+        assertEq(token.currentRound(), 1, "still the same round");
+        assertTrue(token.roundFrozen(), "still payable");
     }
 
     /// @dev Rounds must not be churnable on demand: opening a round re-snapshots everyone's minimum from
@@ -402,7 +368,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_emptyRoundCannotBeChurned() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         vm.expectRevert(DividendDistribution.RoundTooYoung.selector);
-        token.finalizeRound();
+        token.processRound(0, _noHolders());
     }
 
     /// @dev Before any earnings there is no round at all, so nothing can be frozen or rolled over.
@@ -433,24 +399,24 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      on every call.
     function test_sweepStrayEth_cannotTouchTheDividendBuffer() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
-        uint256 buffered = token.pendingNative(0);
+        uint256 buffered = token.pendingNative();
 
         token.sweepStrayEth();
-        assertEq(token.pendingNative(0), buffered, "buffer untouched by the sweep");
+        assertEq(token.pendingNative(), buffered, "buffer untouched by the sweep");
 
         // Stray ETH on top IS sweepable, and only that.
         vm.deal(address(token), address(token).balance + 0.3 ether);
         token.sweepStrayEth();
-        assertEq(token.pendingNative(0), buffered + 0.15 ether, "only the stray ETH was re-split");
+        assertEq(token.pendingNative(), buffered + 0.15 ether, "only the stray ETH was re-split");
     }
 
     function test_frozenPotSurvivesASweep() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
         token.sweepStrayEth();
-        assertApproxEqAbs(token.roundPot(0), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "an undelivered pot is not stray ETH");
+        assertApproxEqAbs(token.roundPot(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "an undelivered pot is not stray ETH");
         assertGe(address(token).balance, 0.5 ether, "and is still backed by a real balance");
     }
 
@@ -497,7 +463,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      earnings arrive as ETH and `_acquireDividendAsset` buys the token back on its own pool,
     ///      reusing the primitive `processBurn` uses.
     function _graduatedSelfTokenDividendToken() internal returns (LivoTaxableTokenUniV4 token) {
-        address addr = _createDividendToken(5_000, [token_SELF(), address(0), address(0)], [uint16(10_000), 0, 0]);
+        address addr = _createDividendToken(5_000, token_SELF());
         testToken = addr;
         _launchpadBuy(addr, 2 ether);
         _graduateToken();
@@ -510,19 +476,19 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_selfTokenLeg_boughtBackOnFreezeAndPaidInTokens() public {
         LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
-        assertEq(token.pendingNative(0), 0.5 ether, "the self-token leg buffers as ETH on V4");
+        assertEq(token.pendingNative(), 0.5 ether, "the self-token leg buffers as ETH on V4");
 
         uint256 holderBefore = IERC20(address(token)).balanceOf(buyer);
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
-        uint256 pot = token.roundPot(0);
+        uint256 pot = token.roundPot();
         assertGt(pot, 0, "ETH was converted into the token itself");
-        assertEq(token.dividendTokens(0), address(token), "the pot is denominated in the token");
+        assertEq(token.dividendToken(), address(token), "the pot is denominated in the token");
         // A self-token leg swaps, so one freeze converts at most `MAX_DIVIDEND_PER_FREEZE`. What is left
         // is the uncapped remainder plus the buy-back's own tax, which loops back in as fresh earnings.
         assertApproxEqAbs(
-            token.pendingNative(0),
+            token.pendingNative(),
             0.5 ether - token.MAX_DIVIDEND_PER_FREEZE(),
             0.01 ether,
             "the freeze took the cap, the remainder stayed buffered"
@@ -530,7 +496,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         address[] memory holders = new address[](1);
         holders[0] = buyer;
-        token.distributeDividends(holders);
+        token.processRound(0, holders);
 
         assertGt(IERC20(address(token)).balanceOf(buyer), holderBefore, "the holder was paid in tokens");
         assertApproxEqAbs(
@@ -547,7 +513,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         skip(token.MIN_ROUND_DURATION() + 1);
 
         vm.recordLogs();
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 marker = keccak256("DividendBuyBackInitiated(uint256)");
@@ -570,9 +536,9 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
         skip(token.MIN_ROUND_DURATION() + 1);
-        token.processDividends([uint256(0), 0, 0]);
+        token.processRound(0, _noHolders());
 
-        uint256 pot = token.roundPot(0);
+        uint256 pot = token.roundPot();
         assertEq(token.committedDividends(address(token)), pot, "the pot is reported as committed");
 
         // A rescue must not be able to reach it either: it is holders' money, not a stuck balance.

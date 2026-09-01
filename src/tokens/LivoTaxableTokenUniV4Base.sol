@@ -57,7 +57,7 @@ abstract contract LivoTaxableTokenUniV4Base is LivoTaxableToken, LivoUniv4BuyBac
     ///      pre-flagged by the token's transfer to the pair.
     event BuyBackInitiated(uint256 ethIn);
 
-    /// @notice Emitted immediately BEFORE the buy-back swap that funds a SELF-TOKEN dividend leg. Same
+    /// @notice Emitted immediately BEFORE the buy-back swap that funds a SELF-TOKEN dividend pot. Same
     ///         job as `BuyBackInitiated`, for the same reason: the swap is an ordinary pool swap, so
     ///         `LivoSwapHook` emits a `LivoSwapBuy` carrying `tx.origin` — the keeper that called
     ///         `processDividends` — and without a precursor marker an indexer credits that keeper with a

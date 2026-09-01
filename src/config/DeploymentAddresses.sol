@@ -52,17 +52,16 @@ library DeploymentAddressesEthereumMainnet {
     ///      earnings buffers per block; the remainder stays buffered for later calls.
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
-    /// @notice Minimum accrued native amount a single dividend leg must hold before
-    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
     ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
     ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
     ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
 
-    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
-    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
-    ///         which case the factories reject any third-token dividend asset at creation.
-    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+    /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
+    ///         creation time that the asset has liquidity. `address(0)` = canonical Uniswap V3 deployment.
+    address public constant UNIV3_FACTORY = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
@@ -118,17 +117,16 @@ library DeploymentAddressesEthereumSepolia {
     /// @dev See the mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
-    /// @notice Minimum accrued native amount a single dividend leg must hold before
-    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
     ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
     ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
     ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
 
-    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
-    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
-    ///         which case the factories reject any third-token dividend asset at creation.
-    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+    /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
+    ///         creation time that the asset has liquidity. `address(0)` = Uniswap's Sepolia V3 deployment.
+    address public constant UNIV3_FACTORY = 0x0227628f3F023bb0B980b67D528571c95c6DaC1c;
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
@@ -184,17 +182,16 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
-    /// @notice Minimum accrued native amount a single dividend leg must hold before
-    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
     ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
     ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
     ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
 
-    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
-    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
-    ///         which case the factories reject any third-token dividend asset at creation.
-    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+    /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
+    ///         creation time that the asset has liquidity. `address(0)` = not verified on this chain yet, so a UNIV3 dividend route is refused here.
+    address public constant UNIV3_FACTORY = address(0);
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
@@ -254,17 +251,16 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
-    /// @notice Minimum accrued native amount a single dividend leg must hold before
-    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
     ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
     ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
     ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
 
-    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
-    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
-    ///         which case the factories reject any third-token dividend asset at creation.
-    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+    /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
+    ///         creation time that the asset has liquidity. `address(0)` = not verified on this chain yet, so a UNIV3 dividend route is refused here.
+    address public constant UNIV3_FACTORY = address(0);
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
@@ -316,7 +312,9 @@ library DeploymentAddressesArcMainnet {
     bytes32 public constant UNIV2_PAIR_INIT_CODE_HASH =
         0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
 
-    /// @notice Uniswap V3 contracts. Unused by Livo — recorded for reference only.
+    /// @notice Uniswap V3 contracts. The factory is read only to prove a dividend asset's pool has
+    ///          liquidity at creation, which ARC never reaches (native is USDC, so a UNIV3 route is
+    ///          refused before the factory is consulted). The rest is recorded for reference only.
     address public constant UNIV3_FACTORY = 0xf0db7b58379503491d857dB50AC9ece64c653918;
     address public constant UNIV3_QUOTER_V2 = 0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468;
     address public constant UNIV3_POSITION_MANAGER = 0x39654A85A4C05127f5Fd6ED22CAeC077A0fB1377;
@@ -333,17 +331,12 @@ library DeploymentAddressesArcMainnet {
     ///      mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
 
-    /// @notice Minimum accrued native amount a single dividend leg must hold before
-    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
     ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
     ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
     ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 250e18;
-
-    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
-    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
-    ///         which case the factories reject any third-token dividend asset at creation.
-    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
@@ -405,17 +398,16 @@ library DeploymentAddressesArcTestnet {
     ///      mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
 
-    /// @notice Minimum accrued native amount a single dividend leg must hold before
-    ///         `processDividends` may freeze it into a round pot. Per-chain because a wei value
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processRound` may freeze it into a round pot. Per-chain because a wei value
     ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only where no
     ///         further earnings can ever arrive (see `_dividendEarningsMayStillArrive`), so a
     ///         sub-threshold residual can never strand on a venue whose earnings do stop.
     uint256 public constant DIVIDEND_THRESHOLD = 250e18;
 
-    /// @notice Admin-curated `asset -> Uniswap-V2 swap path` registry consulted when a token pays
-    ///         dividends in a THIRD token (xStocks). `address(0)` = not deployed on this chain, in
-    ///         which case the factories reject any third-token dividend asset at creation.
-    address public constant DIVIDEND_ROUTE_REGISTRY = address(0);
+    /// @notice Uniswap V3 factory, used ONLY to resolve a dividend asset's pool when proving at
+    ///         creation time that the asset has liquidity. `address(0)` = not verified on this chain yet, so a UNIV3 dividend route is refused here.
+    address public constant UNIV3_FACTORY = address(0);
 
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
