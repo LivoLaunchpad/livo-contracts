@@ -59,6 +59,30 @@ library UniversalRouterVenue {
         );
     }
 
+    /// @notice Buys the token an encoded V3 `path` ends at, spending `nativeIn` and delivering the
+    ///         proceeds to `address(this)`. The multi-hop counterpart of `swapNativeToAssetV3`.
+    /// @dev `path` is Uniswap V3's own encoding — `token (20) | fee (3) | token (20)`, repeating — so it
+    ///      is handed to the router untouched. It MUST start at the router's WETH: the `WRAP_ETH`
+    ///      command funds the router in WETH, and a path starting anywhere else would spend a balance
+    ///      the router does not have. The registry validates that on write, not here.
+    /// @param minOut minimum output in the FINAL token's own decimals.
+    /// @return ok false if the swap reverted (dead pool anywhere along the path, slippage floor missed).
+    function swapNativeToAssetV3Path(address router, bytes memory path, uint256 nativeIn, uint256 minOut)
+        internal
+        returns (bool ok)
+    {
+        bytes[] memory inputs = new bytes[](2);
+        inputs[0] = abi.encode(ROUTER_ITSELF, nativeIn);
+        // `payerIsUser = false`: the router pays with the WETH the first command just wrapped for it.
+        inputs[1] = abi.encode(address(this), nativeIn, minOut, path, false);
+
+        (ok,) = router.call{value: nativeIn}(
+            abi.encodeCall(
+                IUniversalRouter.execute, (abi.encodePacked(WRAP_ETH, V3_SWAP_EXACT_IN), inputs, block.timestamp)
+            )
+        );
+    }
+
     /// @notice Buys `asset` on the V4 pool keyed by `(native, asset, fee, tickSpacing, hooks)`, delivering
     ///         it to `address(this)`. Native ETH is `address(0)`, which sorts below every asset, so the
     ///         pool is always native -> asset in `currency0 -> currency1` order.

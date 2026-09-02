@@ -434,7 +434,17 @@ token's own `DividendRoundFunded`:
   ineligible: an asset with a route passes `checkSwapSupported` without any depth test, which is how
   Robinhood Chain's xStocks (V4-only, quoted in USDG) qualify at all. Setting a route on an asset that
   already had a V2 pair redirects its conversions to the route.
+- **`V3RouteSet`** (`asset`, `path`) — the same admission on Uniswap V3, as V3's own encoded path
+  (`token | fee | token`, repeating) running from the quote token to `asset`. An empty `path` CLEARS it.
+  One or two hops; a two-hop path routes through a token that is itself on the quote allowlist. This is
+  how Ethereum mainnet's tokenized equities qualify — their liquidity is V3-only, and several of them
+  sit in pools holding almost none of the quote token, so no depth read could admit them.
 
 Eligibility is still not fully replayable from logs: for an asset with no route it is a live liquidity
-read against Uniswap V2, so an indexer must call `isSwapSupported` / `checkSwapSupported`. `RouteSet` is
-the one part of it that IS stored state, and `routeOf(asset)` reads it back.
+read against Uniswap V2, so an indexer must call `isSwapSupported` / `checkSwapSupported`. The two route
+events ARE stored state — `routeOf(asset)` and `v3RouteOf(asset)` read them back — and replaying them is
+how a frontend builds the list of curated payout assets. There is no other discovery mechanism for the
+curated venues, and a hardcoded list must not stand in for one.
+
+Resolution order when more than one applies: V4 route, then V3 route, then the permissionless V2 test.
+`checkSwapSupported` and the swap itself share that order.

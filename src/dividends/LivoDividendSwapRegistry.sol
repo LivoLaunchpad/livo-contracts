@@ -88,6 +88,21 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///      (native -> USDG -> xStock); the headroom is for an intermediate that needs one more.
     uint256 public constant MAX_ROUTE_HOPS = 4;
 
+    /// @notice Router a curated V3 route is executed on. The same universal router the V4 venue uses;
+    ///         only the command it is handed differs.
+    address public constant UNIV3_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
+
+    /// @notice Longest V3 route `setV3Route` accepts, in hops.
+    /// @dev TWO, not four. Every extra hop is another pool that can be drained and another price that
+    ///      can be wrong, and the second hop is only worth having because its FIRST leg is a pool that
+    ///      cannot realistically degrade — see `setV3Route`. A third hop would put a fragile pool in the
+    ///      middle of the path, which is the thing the intermediate allowlist exists to prevent.
+    uint256 public constant MAX_V3_ROUTE_HOPS = 2;
+
+    /// @dev Byte widths of Uniswap V3's path encoding: `token | fee | token | fee | token…`.
+    uint256 private constant V3_ADDR_BYTES = 20;
+    uint256 private constant V3_FEE_BYTES = 3;
+
     //////////////////////// storage //////////////////////
 
     /// @notice Addresses allowed to manage entries (thresholds, trust status, the quote allowlist).
@@ -121,9 +136,18 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///      eligibility state in this contract. Read through `routeOf`.
     mapping(address => Hop[]) internal _routes;
 
+    /// @notice Per-asset Uniswap V3 route, as V3's own encoded path from the quote token to the asset.
+    ///         Empty = no route.
+    /// @dev A SEPARATE store from `_routes`, deliberately. A V3 pool is keyed by a fee tier alone, so it
+    ///      would leave `Hop.tickSpacing` and `Hop.hooks` permanently dead, and the two venues are
+    ///      maintained independently. Stored as the router's own path encoding rather than a decoded
+    ///      struct because both the router and any off-chain quoter consume exactly these bytes — there
+    ///      is no translation step at either call site, and one and two hops are the same shape.
+    mapping(address => bytes) internal _v3Routes;
+
     /// @dev Reserved for future storage. Appending past this on an upgrade is safe; reordering anything
     ///      above it is not.
-    uint256[44] private __gap;
+    uint256[43] private __gap;
 
     //////////////////////// events //////////////////////
 
@@ -133,6 +157,10 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     event DefaultThresholdSet(uint256 threshold);
     event TrustStatusSet(address indexed asset, uint8 status);
     event RouteSet(address indexed asset, Hop[] route);
+    /// @notice A curated V3 route was registered, changed, or (with an empty `path`) removed. Replaying
+    ///         this event is how a frontend discovers which assets are selectable on this venue; there
+    ///         is no other mechanism, and no hardcoded list should stand in for it.
+    event V3RouteSet(address indexed asset, bytes path);
     event DividendAssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
 
     //////////////////////// errors //////////////////////
@@ -150,6 +178,14 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     /// @notice The last hop buys something other than the asset the route is filed under. A route that
     ///         landed elsewhere would leave the swap unable to take what it was told to take.
     error RouteMustEndAtAsset();
+    /// @notice The path is not a whole number of V3 hops, or is longer than `MAX_V3_ROUTE_HOPS`.
+    error InvalidV3Path();
+    /// @notice The path does not start at the quote token the router will fund itself with, or does not
+    ///         end at the asset it is filed under. Either one sends the swap somewhere nobody chose.
+    error V3RouteMustSpanQuoteToAsset();
+    /// @notice A middle token on a multi-hop path is not on the quote-token allowlist. The allowlist is
+    ///         reused here as the set of currencies the protocol trusts to route THROUGH.
+    error V3IntermediateNotAllowed(address token);
 
     modifier onlyAdmin() {
         require(isAdmin[msg.sender] || msg.sender == owner(), NotAdmin());
@@ -203,8 +239,11 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         if (trust == TRUST_BLACKLISTED) return (false, trust, SwapRejection.Blacklisted);
 
         // A curated route short-circuits the liquidity test, and comes FIRST so an asset an admin has
-        // vouched for is never refused for lacking the V2 pair it was admitted for lacking.
+        // vouched for is never refused for lacking the V2 pair it was admitted for lacking. Same
+        // resolution order as `_venueSwap`, and the two must never diverge: an asset judged eligible on
+        // one venue and then swapped on another would convert through a pool nobody vetted.
         if (_routes[asset].length != 0) return (true, trust, SwapRejection.OK);
+        if (_v3Routes[asset].length != 0) return (true, trust, SwapRejection.OK);
 
         (address pair, uint256 quoteDepth) = pairFor(quote, asset);
         if (pair == address(0)) return (false, trust, SwapRejection.NoPair);
@@ -233,6 +272,11 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     /// @inheritdoc ILivoDividendSwapRegistry
     function routeOf(address asset) external view returns (Hop[] memory) {
         return _routes[asset];
+    }
+
+    /// @inheritdoc ILivoDividendSwapRegistry
+    function v3RouteOf(address asset) external view returns (bytes memory) {
+        return _v3Routes[asset];
     }
 
     //////////////////////// the swap //////////////////////
@@ -274,6 +318,12 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     function _venueSwap(address quote, address asset, uint256 minOut) private returns (bool ok) {
         Hop[] storage route = _routes[asset];
         if (route.length == 0) {
+            // V3 before V2, matching `checkSwapSupported`. An asset only carries a V3 route because an
+            // admin found its V3 pool better than whatever V2 offers, so the route wins where both exist.
+            bytes memory v3Path = _v3Routes[asset];
+            if (v3Path.length != 0) {
+                return UniversalRouterVenue.swapNativeToAssetV3Path(UNIV3_UNIVERSAL_ROUTER, v3Path, msg.value, minOut);
+            }
             address[] memory path = new address[](2);
             path[0] = quote;
             path[1] = asset;
@@ -354,6 +404,65 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
             _routes[asset].push(hops[i]);
         }
         emit RouteSet(asset, hops);
+    }
+
+    /// @notice Name the Uniswap V3 pools a conversion into `asset` crosses, as V3's own encoded path.
+    ///         An empty `path` clears the route and sends the asset back to the V2 test.
+    ///
+    /// @dev THE ADMISSION BAR IS OFF-CHAIN, AND THIS FUNCTION IS WHERE IT IS ASSERTED. A contract can
+    ///      see that a pool exists; it cannot see whether the pool is DEEP enough to keep converting, and
+    ///      it cannot see whether the pool's price tracks the asset's real market. Both have to be
+    ///      checked by whoever registers the route:
+    ///        - depth: quote the path at `MAX_DIVIDEND_PER_FREEZE` and at ten times that, and refuse a
+    ///          pool whose output stops growing with the input — an exhausted pool can carry a large
+    ///          reported TVL and still fill nothing.
+    ///        - price: compare the quoted price against a real market reference for the underlying, over
+    ///          a full trading session rather than a single sample, and refuse a persistent premium
+    ///          however deep the pool looks. Nothing on-chain catches this: the swap succeeds, and the
+    ///          keeper's `minOut` comes from the same pool, so holders simply receive less value than the
+    ///          earnings that bought it.
+    ///      Neither gate can be enforced here, which is exactly why registering a route is an admin act.
+    ///
+    /// @dev WHAT IS VALIDATED HERE is only what makes a path executable at all: it spans quote -> asset,
+    ///      it is a whole number of hops, it is at most `MAX_V3_ROUTE_HOPS`, and any middle token is one
+    ///      the protocol already trusts as a routing currency. The intermediate allowlist is the reason a
+    ///      two-hop route is safe to allow: the first leg is then always a major pool that will not
+    ///      quietly die, so all the durability risk stays in the final hop — exactly where a one-hop
+    ///      route already puts it.
+    ///
+    /// @param path `token | fee | token [| fee | token]`, 20 and 3 bytes alternating, starting at
+    ///        `nativeQuoteToken()` and ending at `asset`.
+    function setV3Route(address asset, bytes calldata path) external onlyAdmin {
+        if (path.length != 0) {
+            // A valid path is 20 + n*(3 + 20) bytes. Reject anything else before indexing into it.
+            require(
+                path.length >= V3_ADDR_BYTES + V3_FEE_BYTES + V3_ADDR_BYTES
+                    && (path.length - V3_ADDR_BYTES) % (V3_FEE_BYTES + V3_ADDR_BYTES) == 0
+                    && (path.length - V3_ADDR_BYTES) / (V3_FEE_BYTES + V3_ADDR_BYTES) <= MAX_V3_ROUTE_HOPS,
+                InvalidV3Path()
+            );
+            require(
+                _v3PathToken(path, 0) == nativeQuoteToken() && _v3PathToken(path, path.length - V3_ADDR_BYTES) == asset,
+                V3RouteMustSpanQuoteToAsset()
+            );
+            // Middle tokens only: the ends are already pinned above.
+            for (
+                uint256 o = V3_ADDR_BYTES + V3_FEE_BYTES;
+                o + V3_ADDR_BYTES < path.length;
+                o += V3_FEE_BYTES + V3_ADDR_BYTES
+            ) {
+                address mid = _v3PathToken(path, o);
+                require(isAllowedQuoteToken[mid], V3IntermediateNotAllowed(mid));
+            }
+        }
+
+        _v3Routes[asset] = path;
+        emit V3RouteSet(asset, path);
+    }
+
+    /// @dev The 20-byte address starting at `offset` in a V3 encoded path.
+    function _v3PathToken(bytes calldata path, uint256 offset) private pure returns (address token) {
+        return address(bytes20(path[offset:offset + V3_ADDR_BYTES]));
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

@@ -55,9 +55,11 @@ interface ILivoDividendSwapRegistry {
     ///         Exposed so a caller can ask the registry which `quote` its own checks should name.
     function nativeQuoteToken() external view returns (address);
 
-    /// @notice Whether `asset` can be bought with `quote` right now. Two ways in, and only two: any
+    /// @notice Whether `asset` can be bought with `quote` right now. Three ways in, and only three: any
     ///         ERC20 with a deep enough Uniswap V2 pair qualifies with nobody's permission, and an asset
-    ///         an admin has given a Uniswap V4 route qualifies because that route IS the curation.
+    ///         an admin has given a Uniswap V4 or Uniswap V3 route qualifies because that route IS the
+    ///         curation — an admin registers one only after checking the pool's depth AND its price
+    ///         against the real market, neither of which a contract can judge for itself.
     function isSwapSupported(address quote, address asset) external view returns (bool);
 
     /// @notice `isSwapSupported` with the reason attached, for a frontend that wants to tell a creator
@@ -73,8 +75,9 @@ interface ILivoDividendSwapRegistry {
 
     /// @notice The V2 pair a quote -> asset conversion would cross, and its quote-side depth. Lets a
     ///         keeper price its slippage floor against the exact pool the swap will hit.
-    /// @dev Answers about the PERMISSIONLESS route only. An asset with a curated V4 route has no V2 pair
-    ///      to report and returns `(address(0), 0)` — read `routeOf` and price against those pools.
+    /// @dev Answers about the PERMISSIONLESS route only. An asset with a curated route has no V2 pair to
+    ///      report and returns `(address(0), 0)` — read `routeOf` / `v3RouteOf` and price against those
+    ///      pools instead.
     /// @return pair `address(0)` when no pair exists
     /// @return quoteDepth quote-side reserve, scaled to native 18-dec units
     function pairFor(address quote, address asset) external view returns (address pair, uint256 quoteDepth);
@@ -85,6 +88,14 @@ interface ILivoDividendSwapRegistry {
     /// @dev A keeper needs this to price `minOut`: with a route set, the pools the swap will cross are
     ///      these and not the V2 pair `pairFor` would name.
     function routeOf(address asset) external view returns (Hop[] memory route);
+
+    /// @notice The curated Uniswap V3 route a conversion into `asset` crosses, as V3's own encoded path
+    ///         (`token | fee | token`, repeating). Empty when the asset has none.
+    /// @dev The counterpart of `routeOf` for the V3 venue, and the reason it is a separate accessor: a
+    ///      V3 pool is keyed by a fee tier alone, with no tick spacing and no hooks, so it does not fit
+    ///      a `Hop` without two permanently dead fields.
+    /// @dev A keeper prices `minOut` by quoting THIS path, not the V2 pair `pairFor` would name.
+    function v3RouteOf(address asset) external view returns (bytes memory path);
 
     /// @notice Buys `asset` with the native currency sent, delivering it to `recipient`.
     /// @dev REVERTS on any failure — a dead pair, a missed floor, a disallowed asset. The caller is a
