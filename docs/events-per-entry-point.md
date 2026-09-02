@@ -263,7 +263,7 @@ Indexer-relevant points:
   2. ERC20 transfer from `address(token)` to `pair` for the swap input (the remainder after the burn and liquidity shares).
   3. External Uniswap V2 `Sync` / `Swap` events on the pair, plus `Withdrawal` on WETH.
   4. **`LivoTaxableTokenUniV2.CreatorTaxSwapback`** (`tokenAmountIn, ethAmount, ethToFund`) — `tokenAmountIn` is the amount actually swapped (net of the burn and liquidity shares); `ethAmount` is this swap's ETH proceeds (a balance delta, matching the pair's `Swap`); `ethToFund` is the slice of THAT ETH which reaches the fee handler as creator fees. The swap-back routes its own proceeds and nothing else — stray or refunded ETH sitting in the same balance is left for `sweepStrayEth()`, which splits it with the burn/liquidity shares it is owed rather than renormalizing it into the dividend pot — so `ethToFund <= ethAmount` always, and the two are equal for a token with no earnings allocation.
-  5. Fund deposit of `ethToFund`: **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount = ethToFund`), plus optional **`CreatorClaimed`** per direct forward — always AFTER `CreatorTaxSwapback` (historical order preserved). The dividends bucket is accrue-only and emits nothing on this path — its slice is buffered as native (or, for a V2 self-token payout, set aside as TOKENS alongside the liquidity buffer) and converted out-of-band by `processRound`. So a token still emits exactly one `CreatorFeesDeposited` (the liquidity slice, and any self-token dividend slice, were already set aside as tokens above, not carved from this ETH).
+  5. Fund deposit of `ethToFund`: **`LivoMasterFeeHandler.CreatorFeesDeposited`** (`token, amount = ethToFund`), plus optional **`CreatorClaimed`** per direct forward — always AFTER `CreatorTaxSwapback` (historical order preserved). The dividends bucket is accrue-only and emits nothing on this path — its slice is buffered as native (or, for a V2 self-token payout, set aside as TOKENS alongside the liquidity buffer) and converted out-of-band by `processDividends`. So a token still emits exactly one `CreatorFeesDeposited` (the liquidity slice, and any self-token dividend slice, were already set aside as tokens above, not carved from this ETH).
 - The token's `swapBack(uint256 swapAmount, uint256 amountOutMinWei)` external function is owner/launchpad-owner gated and reverts `NotGraduated` before graduation; it produces the same event sequence as the auto-trigger. Factory-deployed V2 tokens are ownerless, so the launchpad owner is the only reachable manual caller.
 - The token's **`processLiquidity(uint256 amountOutMinWei)`** external function (permissionless; reverts `NotGraduated` / `NothingToAdd` / `ProcessCooldown` when already run this block; processes at most `2 * SWAP_THRESHOLD` tokens per call, remainder stays buffered) turns the set-aside liquidity tokens into a locked LP position: under `inSwap` it sells half through `UniswapV2Venue.swapTaxToNative()`, then adds the retained half plus the proceeds through `UniswapV2Venue.supplyLiquidity()` and sends the LP to `0xdEaD`. The venue lib is import-swapped per chain, so ETH-family builds take the WETH `swapExactTokensForETHSupportingFeeOnTransferTokens` / `addLiquidityETH` path while ARC builds pair `<token, USDC-ERC20>` via `swapExactTokensForTokensSupportingFeeOnTransferTokens` / two-ERC20 `addLiquidity` — the emitted event sequence is the same either way. Emits the external V2 `Sync` / `Swap` / pair `Mint` / `Transfer` events, then **`LivoTaxableToken.LiquidityAdded`** (`ethIn, tokensAdded, liquidity`) — the shared event; here `liquidity` is the V2 LP tokens minted, and `ethIn` / `tokensAdded` are the router's ACTUAL deposited amounts (they match the pair's `Mint`), not the requested ones: V2 adds at whatever ratio the pool is at and the router refunds the excess side back to the token.
 - Past the tax window (`block.timestamp > graduationTimestamp + taxDurationSeconds`), no tax transfer is taken and the swap-back path is not entered.
@@ -339,70 +339,69 @@ On success:
 None of these fire on a trade. The dividend module accrues on the earnings path and does everything
 else in separate, permissionless transactions, so an indexer sees them on their own.
 
-`processRound` and `claimRound` are `delegatecall` stubs on the token into a per-venue extension
-(`LivoDividendLogicUniV2` / `LivoDividendLogicUniV4`), because their bodies do not fit in the clone's
-implementation under EIP-170. This changes nothing observable: the selectors, the argument shapes, the
-event signatures and the emitting ADDRESS are all still the token's. The extension address is never an
-event source and never needs indexing.
+`processDividends` and `claimDividends` are `delegatecall` stubs on the token into a per-venue
+extension (`LivoDividendLogicUniV2` / `LivoDividendLogicUniV4`), because their bodies do not fit in the
+clone's implementation under EIP-170. This changes nothing observable: the selectors, the argument
+shapes, the event signatures and the emitting ADDRESS are all still the token's. The extension address
+is never an event source and never needs indexing.
 
 A token pays dividends in exactly ONE asset, fixed at creation: native, the token itself, or any ERC20
 whose configured pool held liquidity at creation. `asset` on every event below is therefore the same
 address for the life of the token, with one exception — see `DividendAssetDowngradedToNative`.
 
+Dividends are STREAMED, not dropped. Each distribution funds a linear stream over
+`DIVIDEND_DRIP_DURATION` (15 minutes) and every holder accrues against a `balance x time` accumulator.
+There are no rounds, no phases and no snapshots, so there is no round id on any event and nothing for
+an indexer to reconstruct a denominator from: a holder's entitlement is `previewDividend(holder)`, read
+from the chain.
+
 **At graduation**, immediately after `Graduated` and from `markGraduated()` itself:
-**`DividendRoundOpened`** (`roundId, totalShares`) — the first round opens here rather than at
-creation, because at creation the launchpad holds the whole supply and every bonding-curve buyer
-would look like a mid-round arrival worth zero. `totalShares` is the AUTHORITATIVE opening
-denominator; a replica must seed from it and never compute its own — in particular it is emitted
-while the GRADUATOR still holds the graduating supply, and the graduator's transfer into the pool,
-later in that same transaction, decrements the denominator back down through the ordinary
-min-balance rule. There is ONE exception to the timing: a deploy buy large enough to graduate the
-token inside `createToken` runs `markGraduated()` before the allocation is configured, so that token
-emits `DividendRoundOpened` on its first earnings instead.
+**`DividendsActivated`** (no args) — the accumulator starts here rather than at creation, so a holder
+earns from the moment the token is live. It is also the anchor for `STALE_DIVIDEND_WINDOW`. There is
+ONE exception to the timing: a deploy buy large enough to graduate the token inside `createToken` runs
+`markGraduated()` before the allocation is configured, so that token emits `DividendsActivated` on its
+first earnings instead.
 
-**`processRound(uint256 minOut, address[] holders)`** — permissionless, and the ONLY keeper entry
-point. It does whichever of freeze / pay / roll-over the round is due for, in that order, so a single
-call can emit all three groups below. A keeper whose holder list does not fit in one block calls it
-again with the next batch: the freeze happens on the first call, the roll-over on the last, and the
-calls in between are pure payout batches.
+**`processDividends(uint256 minOut, address[] holders)`** — permissionless, and the ONLY keeper entry
+point. It converts the buffer, folds the proceeds into the running stream, and pushes payouts, doing
+whichever of the three there is anything to do. A keeper whose holder list does not fit in one block
+just calls it again; there is no phase to sequence and no state that a second call could disturb.
 
-1. Only if the round was not already frozen and the buffer cleared `DIVIDEND_THRESHOLD`:
-   **`DividendRoundFunded`** (`roundId, asset, nativeIn, assetOut, totalShares`). Whether the round
-   freezes is derived, never caller-chosen. `totalShares` is the frozen denominator. The threshold
-   stops applying in exactly one case, so a residual that can no longer grow is never stranded: the
-   open round has aged past `STALE_ROUND_WINDOW` (30 days without a rollover). Nothing else bypasses
-   it — a bypass anyone can reach cheaply is a round-stall grief, because a pot every holder's share
-   rounds to zero out of cannot settle until `PAYOUT_WINDOW` expires.
-1b. Rarely, and only on a token whose round is stale AND whose pool cannot execute a zero-floor swap:
-   **`DividendAssetDowngradedToNative`** (`previousAsset`), immediately before that round's
-   `DividendRoundFunded`. The configured pool is gone for good and the payout asset becomes native
-   permanently — `asset` on every later event is `address(0)`. This replaces what used to be an
-   admin-curated route override; nothing about it is privileged or reversible.
-   If an earlier round left a residual in the OLD asset, that residual is frozen and paid FIRST — one
-   ordinary `DividendRoundFunded` / `DividendPaid` / `DividendRoundFinalized` cycle still denominated
-   in the old asset, so a pot never mixes two currencies — and the downgrade lands on the round
-   immediately after it, not another `STALE_ROUND_WINDOW` later.
+1. Only if the buffer cleared `DIVIDEND_THRESHOLD`: **`DividendsFunded`**
+   (`asset, nativeIn, assetOut, rate, periodFinish`). `rate` and `periodFinish` describe the stream
+   AFTER the fold-in — a distribution landing mid-stream adds the undelivered remainder to the new
+   money and re-spreads the sum over a fresh full window, so the SLOPE changes and `periodFinish`
+   always moves to `block.timestamp + DIVIDEND_DRIP_DURATION`. The threshold stops applying in exactly
+   one case, so a residual that can no longer grow is never stranded: the token has gone
+   `STALE_DIVIDEND_WINDOW` (30 days) without a distribution.
+1b. Rarely, and only on a stale token whose pool cannot execute a zero-floor swap:
+   **`DividendAssetDowngradedToNative`** (`previousAsset`), immediately before that call's
+   `DividendsFunded`. The configured pool is gone for good and the payout asset becomes native
+   permanently — `asset` on every later event is `address(0)`. It replaces what used to be an
+   admin-curated route override; nothing about it is privileged or reversible. It also WRITES OFF every
+   unclaimed accrual in the old asset and restarts the accumulator: an indexer must treat every
+   holder's entitlement as reset to zero at this event, because a bare `rewards` figure carries no
+   asset and cannot be paid out in a different one.
 2. V4 self-token only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
    (`ethIn`), followed by the pool's own `LivoSwapHook.LivoSwapBuy`. Same contract as
    `BuyBackInitiated`: the precursor must be classified as it arrives, so the keeper's PnL is not
    credited with a bag it never bought.
-3. One **`DividendPaid`** (`roundId, holder, asset, amount`) per holder actually paid, in the order
-   the caller listed them. A holder already paid this round, a holder below the relative dust floor,
-   and a failed send all emit nothing.
-4. Once the pot is drained to within 0.01% — or its `PAYOUT_WINDOW` has expired with the remainder
-   undeliverable — **`DividendRoundFinalized`** (`roundId, residualRolled`) followed immediately by
-   **`DividendRoundOpened`** for the next round, in that order.
+3. One **`DividendPaid`** (`holder, asset, amount`) per holder actually paid, in the order the caller
+   listed them, for everything that holder had accrued at that moment. A holder with nothing accrued,
+   a duplicate later in the same list, and a failed send all emit nothing — and a holder the keeper
+   simply omits loses nothing at all, so a keeper is free to push only above whatever size threshold
+   it likes.
 
-   A call that freezes nothing reverts rather than emitting: `DividendConversionFailed` when the
-   buffer was fundable and the swap failed, `BelowDividendThreshold` when it had not earned enough to
-   try, `RoundTooYoung` before `MIN_ROUND_DURATION`. The one exception is a STALE round with an empty
-   buffer, which rolls over (4 above) instead of reverting.
+   A call that funds nothing AND was given no holders reverts rather than emitting:
+   `DividendConversionFailed` when the buffer was fundable and the swap failed,
+   `BelowDividendThreshold` when it had not earned enough to try. A call carrying holders never reverts
+   for either reason — it pushes the payouts it was asked to push.
 
-**`claimRound()`** — the self-serve backstop, emitting the same single **`DividendPaid`** for
-`msg.sender`. It differs from a batch payout in one respect: a native payout inside `processRound` is
-capped at the chain's `NATIVE_PAYOUT_GAS`, so one expensive `receive()` cannot starve the batch, while
-`claimRound` forwards all remaining gas — a holder skipped by a batch can therefore always be paid by
-claiming. It never freezes and never rolls the round over.
+**`claimDividends()`** — the self-serve backstop, emitting the same single **`DividendPaid`** for
+`msg.sender`. It differs from a batch payout in one respect: a native payout inside `processDividends`
+is capped at the chain's `NATIVE_PAYOUT_GAS`, so one expensive `receive()` cannot starve the batch,
+while `claimDividends` forwards all remaining gas — a holder skipped by a batch can therefore always be
+paid by claiming. It never funds a stream.
 
 
 ### `LivoDividendSwapRegistry` (one per chain)
@@ -410,11 +409,11 @@ claiming. It never freezes and never rolls the round over.
 The eligibility gate and swap venue behind every third-asset dividend. It is a SHARED contract, so its
 events are not attributable to a token by their emitter — index them on their own and join on `asset`.
 
-**Per conversion**, inside the freeze leg of `processRound` (step 1 above), immediately before the
-token's own `DividendRoundFunded`:
+**Per conversion**, inside the funding leg of `processDividends` (step 1 above), immediately before the
+token's own `DividendsFunded`:
 
 - **`DividendAssetPurchased`** (`asset`, `recipient`, `nativeIn`, `assetOut`) — `recipient` IS the token
-  whose round is freezing, which is the only link back to it. Absent when the payout asset is native or
+  whose stream is being funded, which is the only link back to it. Absent when the payout asset is native or
   the token itself (no conversion happens), and absent when the conversion failed (the whole call
   reverted and the token reports `DividendConversionFailed`).
 
