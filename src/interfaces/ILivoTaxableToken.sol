@@ -48,9 +48,9 @@ struct TaxConfigs {
 ///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
 /// @dev A non-zero `dividendsBps` also needs `dividendToken`, the ONE asset holders are paid in:
 ///      `address(0)` for native, `DividendDistribution.DIVIDEND_SELF_TOKEN` for the token itself, or any
-///      ERC20 with a Uniswap V2 pair deep enough to swap against. That liquidity, measured at creation by
-///      `LivoDividendSwapRegistry`, is the ONLY thing that makes an asset eligible — there is no
-///      whitelist and no per-asset approval. Permanent: a clone cannot be patched afterwards.
+///      ERC20 `LivoDividendSwapRegistry` can reach at creation time: one with a Uniswap V2 pair deep
+///      enough to swap against — no whitelist, no per-asset approval — or one an admin has given a
+///      curated Uniswap V4 route. Permanent: a clone cannot be patched afterwards.
 struct EarningsAllocationConfig {
     uint16 burnBps;
     uint16 dividendsBps;

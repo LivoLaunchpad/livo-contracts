@@ -9,6 +9,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 
 /// @title UniversalRouterVenue
@@ -27,6 +28,9 @@ library UniversalRouterVenue {
     uint8 internal constant V3_SWAP_EXACT_IN = 0x00;
     uint8 internal constant WRAP_ETH = 0x0b;
     uint8 internal constant V4_SWAP = 0x10;
+
+    /// @notice Currency the router treats as the chain's native coin. Every route here starts there.
+    address internal constant NATIVE = address(0);
 
     /// @notice The universal router's "the router itself" recipient sentinel (`Constants.ADDRESS_THIS`).
     address internal constant ROUTER_ITSELF = address(2);
@@ -99,6 +103,64 @@ library UniversalRouterVenue {
         inputs[0] = abi.encode(
             abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL)),
             params
+        );
+
+        (ok,) = router.call{value: nativeIn}(
+            abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp))
+        );
+    }
+
+    /// @notice Buys the currency at the END of `path` by spending `nativeIn` of the chain's native coin,
+    ///         delivering it to `address(this)`. One hop or many: `path` is v4's own `PathKey` chain, so
+    ///         `native -> USDG -> xSTOCK` is the same call shape as `native -> asset`.
+    /// @dev The one venue that reaches an asset with no native pool of its own. Uniswap V4 pools are
+    ///      keyed by `(fee, tickSpacing, hooks)`, which cannot be discovered from the two currencies —
+    ///      so unlike the V2 path, somebody has to SUPPLY the route. See `LivoDividendSwapRegistry`.
+    /// @param path each hop's destination currency and the pool key fields that identify its pool. Must
+    ///        be non-empty; the last hop's `intermediateCurrency` is what the caller receives.
+    /// @param minOut minimum output in the FINAL currency's own decimals.
+    /// @return ok false if the swap reverted (uninitialized pool anywhere on the path, slippage floor
+    ///         missed, reverting hook).
+    function swapNativeToAssetV4Path(address router, PathKey[] memory path, uint256 nativeIn, uint256 minOut)
+        internal
+        returns (bool ok)
+    {
+        // Same reason as the single-hop helper: the router's params are `uint128`, and silently
+        // truncating a floor the caller asked for would weaken it rather than fail.
+        if (minOut > type(uint128).max || nativeIn > type(uint128).max) return false;
+
+        // A one-hop path is a single-pool swap, so send it as one. Not just cheaper: universal routers
+        // in the wild disagree about `SWAP_EXACT_IN`'s calldata layout (Robinhood Chain's rejects the
+        // encoding Ethereum mainnet's accepts) while `SWAP_EXACT_IN_SINGLE` is understood everywhere.
+        // Almost every route is one hop, so this is the branch that actually runs.
+        if (path.length == 1) {
+            PathKey memory only = path[0];
+            return swapNativeToAssetV4(
+                router,
+                Currency.unwrap(only.intermediateCurrency),
+                only.fee,
+                only.tickSpacing,
+                address(only.hooks),
+                nativeIn,
+                minOut
+            );
+        }
+
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactInputParams({
+                currencyIn: Currency.wrap(NATIVE),
+                path: path,
+                amountIn: uint128(nativeIn),
+                amountOutMinimum: uint128(minOut)
+            })
+        );
+        params[1] = abi.encode(Currency.wrap(NATIVE), nativeIn); // SETTLE_ALL the native in
+        params[2] = abi.encode(path[path.length - 1].intermediateCurrency, minOut); // TAKE_ALL the asset out
+
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL)), params
         );
 
         (ok,) = router.call{value: nativeIn}(

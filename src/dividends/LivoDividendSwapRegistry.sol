@@ -10,7 +10,7 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
-import {ILivoDividendSwapRegistry, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {ILivoDividendSwapRegistry, SwapRejection, Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
@@ -19,10 +19,15 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 // Aliased so the `chain-arc-*` recipe can import-swap it: on ARC the "native" leg is 18-dec native USDC
 // and the V2 quote token is its 6-dec ERC-20 alias, so the depth check needs a scale factor.
 import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
+import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 /// @title LivoDividendSwapRegistry
 /// @notice Decides which ERC20s a token may pay dividends in, and performs the native -> asset
-///         conversion when it does. Uniswap V2 only.
+///         conversion when it does. Uniswap V2 for anything with a native pair, and admin-curated
+///         Uniswap V4 routes for the assets that only exist there.
 ///
 /// @dev WHY IT EXISTS AT ALL. Taxable tokens are clones of an implementation that can never be patched.
 ///      Both halves of the third-asset payout — "is this asset reachable" and "buy it" — used to be
@@ -31,19 +36,26 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      AFTERWARDS. Behind a proxy at an address the token holds as a constant, a fix reaches every
 ///      token that already exists. Nothing else here would justify a separate contract.
 ///
-/// @dev ELIGIBILITY IS PERMISSIONLESS. `isSwapSupported` is a liquidity test, not a list: any ERC20 with
-///      a Uniswap V2 pair against the quote token holding at least the configured depth passes, with no
-///      admin action of any kind. The admin levers are a blacklist (a veto, for an asset that turns out
-///      hostile), the quote-token allowlist (the `from` side, which is protocol configuration rather
-///      than a creator's choice) and the thresholds. `whitelisted` is a UI badge and gates nothing —
-///      it deliberately has no effect on `isSwapSupported`, so it can never quietly become a gate.
+/// @dev ELIGIBILITY IS PERMISSIONLESS BY DEFAULT. `isSwapSupported` is a liquidity test, not a list: any
+///      ERC20 with a Uniswap V2 pair against the quote token holding at least the configured depth
+///      passes, with no admin action of any kind. Admins can only ever REFUSE on that path — the veto is
+///      the blacklist, plus the quote-token allowlist (the `from` side, protocol configuration rather
+///      than a creator's choice) and the thresholds. `whitelisted` is a UI badge and gates nothing — it
+///      deliberately has no effect on `isSwapSupported`, so it can never quietly become a gate. A V4
+///      route (below) is the one lever that points the other way, and it can only ADD an asset that
+///      would otherwise be refused; it can never take one away.
 ///
-/// @dev V2 ONLY, ON PURPOSE. A V2 pair is a contract that holds its own reserves, so the eligibility
-///      test is a `balanceOf` on a known address and the swap is one router call. V3 and V4 need a fee
-///      tier / tick spacing / hooks tuple the creator would have to supply and the registry would have
-///      to trust, and V4's singleton makes the depth test a much weaker "is there any active liquidity".
-///      Almost every long-tail ERC20 worth paying dividends in has a V2 pair; the ones that only have
-///      V3/V4 liquidity are refused with `NoPair` and can be admitted later by upgrading this contract.
+/// @dev TWO WAYS IN, AND THEY ARE NOT SYMMETRIC. The V2 test above is permissionless because a V2 pair
+///      is a contract holding its own reserves: the address is derivable from the two tokens and the
+///      depth is a `getReserves` away, so the registry can measure an asset nobody told it about. V4
+///      gives it neither. A pair there can have any number of pools, distinguished only by a
+///      `(fee, tickSpacing, hooks)` tuple that cannot be derived from the currencies, and the reserves
+///      live in a singleton where "is there depth" is a much weaker question. Whole token universes
+///      exist only on V4 — Robinhood Chain's ~190 xStocks, quoted in USDG rather than in the native coin
+///      — so refusing them was refusing the chain. They get in through `setRoute`: an admin names the
+///      exact pools, one hop at a time, and THAT naming is the curation. No depth threshold is applied
+///      to a routed asset, because a threshold would be pretending to measure something the admin has
+///      already asserted. V3 is still not supported; nothing needs it.
 ///
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
 ///      no balance between calls. There is deliberately no `receive()`, so the only native that can
@@ -64,6 +76,17 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
 
     /// @notice Factory the quote/asset pair is resolved through.
     address public constant UNIV2_FACTORY = DeploymentAddresses.UNIV2_FACTORY;
+
+    /// @notice Router a curated V4 route is executed on.
+    /// @dev ETH-family chains only: the route pays the router in the native coin. On a chain whose
+    ///      native currency is an ERC20 (ARC) no route can convert, so none is ever set there and every
+    ///      asset goes through the V2 path.
+    address public constant UNIV4_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
+
+    /// @notice Longest route `setRoute` accepts.
+    /// @dev Bounds the loop the swap path walks. Two hops already covers the case this exists for
+    ///      (native -> USDG -> xStock); the headroom is for an intermediate that needs one more.
+    uint256 public constant MAX_ROUTE_HOPS = 4;
 
     //////////////////////// storage //////////////////////
 
@@ -92,9 +115,15 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///         has no override.
     uint256 public defaultThreshold;
 
+    /// @notice Per-asset Uniswap V4 route, from the native coin to the asset. Empty = no route, which
+    ///         sends the asset through the permissionless V2 test instead.
+    /// @dev The one admin lever that ADMITS an asset rather than refusing one, and the only stored
+    ///      eligibility state in this contract. Read through `routeOf`.
+    mapping(address => Hop[]) internal _routes;
+
     /// @dev Reserved for future storage. Appending past this on an upgrade is safe; reordering anything
     ///      above it is not.
-    uint256[45] private __gap;
+    uint256[44] private __gap;
 
     //////////////////////// events //////////////////////
 
@@ -103,6 +132,7 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     event QuoteTokenThresholdSet(address indexed quote, uint256 threshold);
     event DefaultThresholdSet(uint256 threshold);
     event TrustStatusSet(address indexed asset, uint8 status);
+    event RouteSet(address indexed asset, Hop[] route);
     event DividendAssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
 
     //////////////////////// errors //////////////////////
@@ -116,6 +146,10 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///         Reported as a revert because the caller (a dividend freeze) must keep its native.
     error SwapFailed();
     error InsufficientOutput();
+    error RouteTooLong();
+    /// @notice The last hop buys something other than the asset the route is filed under. A route that
+    ///         landed elsewhere would leave the swap unable to take what it was told to take.
+    error RouteMustEndAtAsset();
 
     modifier onlyAdmin() {
         require(isAdmin[msg.sender] || msg.sender == owner(), NotAdmin());
@@ -168,6 +202,10 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         if (!isAllowedQuoteToken[quote]) return (false, trust, SwapRejection.QuoteNotAllowed);
         if (trust == TRUST_BLACKLISTED) return (false, trust, SwapRejection.Blacklisted);
 
+        // A curated route short-circuits the liquidity test, and comes FIRST so an asset an admin has
+        // vouched for is never refused for lacking the V2 pair it was admitted for lacking.
+        if (_routes[asset].length != 0) return (true, trust, SwapRejection.OK);
+
         (address pair, uint256 quoteDepth) = pairFor(quote, asset);
         if (pair == address(0)) return (false, trust, SwapRejection.NoPair);
 
@@ -192,6 +230,11 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         quoteDepth = reserve * UniswapV2Venue.QUOTE_TO_NATIVE_SCALE;
     }
 
+    /// @inheritdoc ILivoDividendSwapRegistry
+    function routeOf(address asset) external view returns (Hop[] memory) {
+        return _routes[asset];
+    }
+
     //////////////////////// the swap //////////////////////
 
     /// @inheritdoc ILivoDividendSwapRegistry
@@ -209,18 +252,10 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         (bool supported,, SwapRejection rejection) = checkSwapSupported(quote, asset);
         require(supported, SwapNotSupported(rejection));
 
-        address[] memory path = new address[](2);
-        path[0] = quote;
-        path[1] = asset;
-
-        // Through the venue lib, not the router directly: the `chain-arc-*` recipe import-swaps it, and
-        // ARC has no WETH — its native USDC shares a balance with the 6-dec ERC-20 the pair is quoted
-        // in, so the same `msg.value` becomes a two-ERC20 swap there rather than an ETH-in one.
         // Buy to THIS contract, not straight to `recipient`: the amount forwarded has to be a balance
         // delta measured here, because a fee-on-transfer asset delivers less than the router reports.
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        bool swapped =
-            UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, path, msg.value, minOut);
+        bool swapped = _venueSwap(quote, asset, minOut);
         require(swapped, SwapFailed());
         out = IERC20(asset).balanceOf(address(this)) - balanceBefore;
 
@@ -230,6 +265,38 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
 
         IERC20(asset).safeTransfer(recipient, out);
         emit DividendAssetPurchased(asset, recipient, msg.value, out);
+    }
+
+    /// @dev Picks the venue for `asset` and spends `msg.value` on it. A curated route wins when there is
+    ///      one — an asset only has a route BECAUSE it could not be reached on V2.
+    /// @return ok false if the venue reverted; the caller turns that into `SwapFailed` and keeps the
+    ///         native it was sent.
+    function _venueSwap(address quote, address asset, uint256 minOut) private returns (bool ok) {
+        Hop[] storage route = _routes[asset];
+        if (route.length == 0) {
+            address[] memory path = new address[](2);
+            path[0] = quote;
+            path[1] = asset;
+            // Through the venue lib, not the router directly: the `chain-arc-*` recipe import-swaps it,
+            // and ARC has no WETH — its native USDC shares a balance with the 6-dec ERC-20 the pair is
+            // quoted in, so the same `msg.value` becomes a two-ERC20 swap there rather than an ETH-in one.
+            return UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, path, msg.value, minOut);
+        }
+
+        PathKey[] memory hops = new PathKey[](route.length);
+        for (uint256 i; i < route.length; ++i) {
+            Hop storage hop = route[i];
+            hops[i] = PathKey({
+                intermediateCurrency: Currency.wrap(hop.currency),
+                fee: hop.fee,
+                tickSpacing: hop.tickSpacing,
+                hooks: IHooks(hop.hooks),
+                // Never populated: a route is protocol configuration, not a channel for handing
+                // arbitrary calldata to somebody else's hook.
+                hookData: ""
+            });
+        }
+        return UniversalRouterVenue.swapNativeToAssetV4Path(UNIV4_UNIVERSAL_ROUTER, hops, msg.value, minOut);
     }
 
     //////////////////////// admin //////////////////////
@@ -265,6 +332,28 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         require(status <= TRUST_BLACKLISTED, InvalidTrustStatus());
         trustStatus[asset] = status;
         emit TrustStatusSet(asset, status);
+    }
+
+    /// @notice Name the Uniswap V4 pools a conversion into `asset` crosses, starting from the native
+    ///         coin. An empty `hops` clears the route and sends the asset back to the V2 test.
+    /// @dev THE ONE LEVER THAT ADMITS. Every other admin function here can only refuse; this one lets an
+    ///      admin vouch for an asset the permissionless test cannot see, because V4 pools are not
+    ///      discoverable from their currencies. What is being asserted is that these specific pools are
+    ///      the liquid ones — the registry cannot check that, and does not pretend to.
+    /// @dev Setting a route on an asset that already passes the V2 test REDIRECTS it: the route wins.
+    ///      Clearing one on an asset a live token is configured for does not brick that token if the
+    ///      asset still has a deep V2 pair, and does brick its conversions if it does not — the same
+    ///      exposure the blacklist already has, and the reason routes are removed only to fix them.
+    /// @param hops each pool on the way, in order. The last hop must buy `asset` itself.
+    function setRoute(address asset, Hop[] calldata hops) external onlyAdmin {
+        require(hops.length <= MAX_ROUTE_HOPS, RouteTooLong());
+        require(hops.length == 0 || hops[hops.length - 1].currency == asset, RouteMustEndAtAsset());
+
+        delete _routes[asset];
+        for (uint256 i; i < hops.length; ++i) {
+            _routes[asset].push(hops[i]);
+        }
+        emit RouteSet(asset, hops);
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

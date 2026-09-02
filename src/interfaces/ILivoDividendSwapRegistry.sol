@@ -17,6 +17,24 @@ enum SwapRejection {
     InsufficientLiquidity
 }
 
+/// @notice One leg of a curated Uniswap V4 route: where the leg lands, and the three fields that —
+///         together with the two currencies — identify the pool it crosses.
+/// @dev V4 pools are keyed by `(currency0, currency1, fee, tickSpacing, hooks)`. The two currencies are
+///      implied by the route's position, but the other three CANNOT be derived from them: one pair can
+///      have any number of pools, and only one of them is the liquid one. That is the whole reason a V4
+///      asset needs a stored route while a V2 asset needs nothing — see `ILivoDividendSwapRegistry`.
+/// @dev Mirrors v4-periphery's `PathKey` minus `hookData`, which is always empty here: a route is
+///      protocol configuration, not a place to hand arbitrary calldata to somebody's hook.
+struct Hop {
+    /// @dev Currency this leg buys. The LAST hop's currency is the dividend asset itself.
+    address currency;
+    /// @dev LP fee of the pool, in pips. `0x800000` for a dynamic-fee pool.
+    uint24 fee;
+    int24 tickSpacing;
+    /// @dev `address(0)` for a hookless pool.
+    address hooks;
+}
+
 /// @title ILivoDividendSwapRegistry
 /// @notice The dividend feature's eligibility oracle AND its swap venue, behind one upgradeable proxy.
 ///
@@ -37,9 +55,9 @@ interface ILivoDividendSwapRegistry {
     ///         Exposed so a caller can ask the registry which `quote` its own checks should name.
     function nativeQuoteToken() external view returns (address);
 
-    /// @notice Whether `asset` can be bought with `quote` right now. THE eligibility rule, and the only
-    ///         one: no curated path list, no per-asset approval — any ERC20 with a deep enough V2 pair
-    ///         qualifies, with nobody's permission.
+    /// @notice Whether `asset` can be bought with `quote` right now. Two ways in, and only two: any
+    ///         ERC20 with a deep enough Uniswap V2 pair qualifies with nobody's permission, and an asset
+    ///         an admin has given a Uniswap V4 route qualifies because that route IS the curation.
     function isSwapSupported(address quote, address asset) external view returns (bool);
 
     /// @notice `isSwapSupported` with the reason attached, for a frontend that wants to tell a creator
@@ -55,9 +73,18 @@ interface ILivoDividendSwapRegistry {
 
     /// @notice The V2 pair a quote -> asset conversion would cross, and its quote-side depth. Lets a
     ///         keeper price its slippage floor against the exact pool the swap will hit.
+    /// @dev Answers about the PERMISSIONLESS route only. An asset with a curated V4 route has no V2 pair
+    ///      to report and returns `(address(0), 0)` — read `routeOf` and price against those pools.
     /// @return pair `address(0)` when no pair exists
     /// @return quoteDepth quote-side reserve, scaled to native 18-dec units
     function pairFor(address quote, address asset) external view returns (address pair, uint256 quoteDepth);
+
+    /// @notice The curated Uniswap V4 route a conversion into `asset` crosses, hop by hop, starting from
+    ///         the chain's native coin. Empty when the asset has none, which means it goes through the
+    ///         permissionless V2 path instead.
+    /// @dev A keeper needs this to price `minOut`: with a route set, the pools the swap will cross are
+    ///      these and not the V2 pair `pairFor` would name.
+    function routeOf(address asset) external view returns (Hop[] memory route);
 
     /// @notice Buys `asset` with the native currency sent, delivering it to `recipient`.
     /// @dev REVERTS on any failure — a dead pair, a missed floor, a disallowed asset. The caller is a

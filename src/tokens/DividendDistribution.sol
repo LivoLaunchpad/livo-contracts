@@ -122,13 +122,15 @@ abstract contract DividendDistribution {
     address public constant DIVIDEND_SELF_TOKEN = address(type(uint160).max);
 
     /// @notice The registry that decides whether a third payout asset is eligible, and that performs
-    ///         the native -> asset conversion when a round freezes. Uniswap V2 only.
+    ///         the native -> asset conversion when a round freezes. Uniswap V2 by default, plus the
+    ///         curated Uniswap V4 routes it holds for assets that only exist there.
     /// @dev A PROXY, deliberately reached through a compile-time constant rather than a stored address:
     ///      tokens are unpatchable clones, so this is the only seam through which an eligibility rule or
     ///      a swap route can be fixed for tokens that are ALREADY live. Nothing about the asset choice
-    ///      is curated behind it — see `ILivoDividendSwapRegistry`.
-    /// @dev Exposed so an off-chain keeper can price its slippage floor against the exact pool the swap
-    ///      will cross (`registry.pairFor`), which is what `minOut` has to be computed from.
+    ///      is curated behind it for the V2 path — see `ILivoDividendSwapRegistry`.
+    /// @dev Exposed so an off-chain keeper can price its slippage floor against the exact pools the swap
+    ///      will cross (`registry.pairFor`, or `registry.routeOf` when the asset has a V4 route), which
+    ///      is what `minOut` has to be computed from.
     address public constant DIVIDEND_SWAP_REGISTRY = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY;
 
     /// @notice Per-account dividend state. One slot, and the only per-account storage the feature has.

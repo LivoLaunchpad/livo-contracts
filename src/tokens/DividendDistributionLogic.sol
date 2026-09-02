@@ -65,11 +65,12 @@ abstract contract DividendDistributionLogic is DividendDistribution {
 
     /// @dev Stores the creation-time payout configuration. Called once, by the token, only when the
     ///      earnings allocation routes a non-zero share to dividends.
-    /// @dev THE ONLY ELIGIBILITY RULE IS LIQUIDITY, and the registry is the one that measures it: any
-    ///      ERC20 with a Uniswap V2 pair deep enough to swap against is accepted, with no whitelist, no
-    ///      per-asset approval and no route for the creator to name. Asking here is what stops a creator
-    ///      from configuring a payout their own token could never convert into — the failure mode a
-    ///      clone cannot be patched out of.
+    /// @dev THE REGISTRY IS THE ONLY JUDGE, and the creator never names a route: any ERC20 with a
+    ///      Uniswap V2 pair deep enough to swap against is accepted with no whitelist and no per-asset
+    ///      approval, and so is one a registry admin has given a curated Uniswap V4 route (the only way
+    ///      an asset with no V2 pair at all — Robinhood Chain's xStocks — can be reached). Asking here
+    ///      is what stops a creator from configuring a payout their own token could never convert into
+    ///      — the failure mode a clone cannot be patched out of.
     /// @dev The registry is a proxy behind a constant address, so a token created today is bound to the
     ///      RULE rather than to today's version of it: raising the threshold, blacklisting an asset or
     ///      adding a venue reaches this token too, for every conversion it has not made yet.

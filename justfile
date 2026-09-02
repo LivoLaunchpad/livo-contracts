@@ -244,6 +244,19 @@ export-deployments:
 unfunded-creators:
     uv run script/operations/unfunded-accounts/check_unfunded_creators.py
 
+# Rebuild the curated Uniswap V4 dividend routes for Robinhood Chain's xStocks by scanning the
+# pool manager on-chain. Writes script/operations/dividend-routes/routes.robinhood.mainnet.json.
+# Review the diff before writing it on-chain — a wrong pool routes a token's dividends elsewhere.
+discover-dividend-routes:
+    uv run script/operations/dividend-routes/discover_xstock_routes.py
+
+# Write those routes into the registry. Probes every route with a real swap in simulation first and
+# skips the ones that fail. Needs DIVIDEND_SWAP_REGISTRY exported and an admin/owner signer.
+# Dry run first (no --broadcast); add --broadcast yourself when the summary looks right.
+set-dividend-routes:
+    just chain-robinhood
+    forge script SetDividendRoutes --rpc-url robinhood-mainnet --account livo.dev
+
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, i.e. Etherscan's

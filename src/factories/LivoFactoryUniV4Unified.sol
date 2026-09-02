@@ -182,9 +182,10 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ///         token with a LONG-TERM static tax (`taxDurationSeconds != 0`); a decay-only token is
     ///         rejected — its tax window lasts minutes, so there is no earnings stream worth splitting.
     ///         A non-zero `dividendsBps` must name a payout asset in `dividendToken`; the token asks
-    ///         `LivoDividendSwapRegistry` whether it can be bought (a Uniswap V2 pair that exists and is
-    ///         deep enough right now) and reverts at creation otherwise. That liquidity test is the only
-    ///         eligibility rule — no whitelist, no per-asset approval.
+    ///         `LivoDividendSwapRegistry` whether it can be bought and reverts at creation otherwise. The
+    ///         registry answers yes either because the asset has a Uniswap V2 pair that is deep enough
+    ///         right now — the permissionless rule, no whitelist and no per-asset approval — or because
+    ///         an admin has given it a curated Uniswap V4 route, which is how V4-only assets qualify.
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithAllocation calldata taxAllocationConfigs,
