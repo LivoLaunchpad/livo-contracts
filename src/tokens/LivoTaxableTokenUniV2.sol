@@ -126,8 +126,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     /// @dev Token-native: the token side is KEPT (not bought back — a V2 pair reverts INVALID_TO when
     ///      asked to send a token to its own address), only half is sold for the ETH side. Post-graduation
     ///      only. The sell + add run under `_inSwap` so the intrinsic tax / auto-swap-back don't fire on
-    ///      the router's transfers. Any unused ETH/tokens the router refunds fold back into the next
-    ///      swap-back (ETH) / the tax pool (tokens).
+    ///      the router's transfers. Unused ETH the router refunds folds back into the next swap-back;
+    ///      unused tokens go back to the liquidity buffer they were carved from.
     function processLiquidity(uint256 amountOutMinWei) external {
         require(graduated, NotGraduated());
         // Once per block + capped at the swap-back's own per-sell size: bounds what a sandwich of the
@@ -168,13 +168,15 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
             (tokensAdded, ethAdded, liquidity) = UniswapV2Venue.supplyLiquidity(
                 UNISWAP_V2_ROUTER, address(this), WETH, tokensForLp, ethFromSell, DEAD_ADDRESS
             );
-        } else if (tokensForLp > 0) {
-            // The half-sell produced no native (a 1-token buffer sells 0), so the retained half was
-            // never paired. `liquidityPendingTokens` was already debited by the full `tokenIn` above:
-            // without this, those tokens silently rejoin the tax pool and get re-split into the burn /
-            // dividend / fund buckets, spending an allocation that was earmarked for liquidity.
-            liquidityPendingTokens += tokensForLp;
         }
+
+        // Whatever the router did not take stays earmarked for liquidity. `liquidityPendingTokens` was
+        // debited by the full `tokenIn` above, so without this the unpaired remainder silently rejoins
+        // the tax pool and gets re-split into the burn / dividend / fund buckets, spending an allocation
+        // meant for liquidity. Two ways to get one: the half-sell produced no native (a 1-token buffer
+        // sells 0) so nothing was paired at all, or the pool moved since the sell and `addLiquidity`
+        // refunded the token side down to the live ratio.
+        if (tokensForLp > tokensAdded) liquidityPendingTokens += tokensForLp - tokensAdded;
 
         _inSwap = false;
 

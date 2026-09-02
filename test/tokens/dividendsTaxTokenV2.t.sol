@@ -369,4 +369,62 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         token.processRound(0, _noHolders());
         assertFalse(token.roundFrozen(), "a dust pot cannot stall the round");
     }
+
+    /// @dev The SELF-TOKEN counterpart of the grief above, which the native fix did not reach: the
+    ///      token-space freeze kept "the tax window has closed" as its bypass, and that hands the same
+    ///      free stall to anyone. Donate dust TOKENS to the contract, let the post-window drain in
+    ///      `_update` carve the dividend slice out of them, freeze a pot every holder's share rounds to
+    ///      zero out of, and the round cannot settle for a whole `PAYOUT_WINDOW`. Staleness is the only
+    ///      bypass here too.
+    function test_dustDonatedAfterTheTaxWindowCannotForceASelfTokenFreeze() public {
+        LivoTaxableTokenUniV2 token = _selfToken();
+        skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
+
+        // The griefer's dust, donated straight to the contract...
+        vm.prank(buyer);
+        IERC20(address(token)).transfer(address(token), 1e12);
+        // ...and any sell drains it through the split, dividend slice included.
+        _swapSellV2(buyer, address(token), IERC20(address(token)).balanceOf(buyer) / 100, 0, true);
+
+        uint256 buffered = token.dividendPendingTokens();
+        assertGt(buffered, 0, "the dust did reach the dividend buffer");
+        assertLt(buffered, token.SWAP_THRESHOLD(), "and it is far below the threshold");
+
+        skip(token.MIN_ROUND_DURATION() + 1);
+        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        token.processRound(0, _noHolders());
+        assertFalse(token.roundFrozen(), "a dust pot cannot stall the self-token round either");
+    }
+
+    ///////////////////////// creation-time guard /////////////////////////
+
+    /// @dev A payout asset with a zero share used to sail through creation: `hasAllocation` reads the
+    ///      three bps only, so `initializeEarningsAllocation` never ran and the clone could never pay
+    ///      dividends — silently, and with no way back, since that initializer only runs at creation.
+    function test_createToken_rejectsAPayoutAssetWithNoDividendShare() public {
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "DivV2",
+            symbol: "DV2",
+            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 400,
+            taxDurationSeconds: uint32(14 days),
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: 0, dividendsBps: 0, liquidityBps: 0, dividendToken: DAI
+            })
+        });
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.DividendAssetWithoutShare.selector);
+        factoryV2Unified.createToken(
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+        );
+    }
 }

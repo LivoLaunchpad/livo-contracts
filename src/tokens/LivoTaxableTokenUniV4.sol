@@ -60,6 +60,9 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     address public immutable DIVIDEND_LOGIC;
 
     error NothingToBurn();
+
+    /// @notice The buy-back router call reverted — a missed `minTokensOut`, or an unswappable pool.
+    error BuyBackFailed();
     error NothingToAdd();
     error ProcessCooldown();
 
@@ -115,7 +118,7 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
         // Precursor marker: must stay BEFORE the swap so indexers can classify the resulting
         // `LivoSwapHook.LivoSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
         emit BuyBackInitiated(ethIn);
-        _buyBackTokensWithEth(hook, ethIn, minTokensOut);
+        require(_buyBackTokensWithEth(hook, ethIn, minTokensOut), BuyBackFailed());
         uint256 tokensBought = balanceOf(address(this)) - balanceBefore;
 
         if (tokensBought > 0) _burn(address(this), tokensBought);

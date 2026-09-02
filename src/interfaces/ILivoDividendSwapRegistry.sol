@@ -75,9 +75,10 @@ interface ILivoDividendSwapRegistry {
 
     /// @notice The V2 pair a quote -> asset conversion would cross, and its quote-side depth. Lets a
     ///         keeper price its slippage floor against the exact pool the swap will hit.
-    /// @dev Answers about the PERMISSIONLESS route only. An asset with a curated route has no V2 pair to
-    ///      report and returns `(address(0), 0)` — read `routeOf` / `v3RouteOf` and price against those
-    ///      pools instead.
+    /// @dev Answers about the V2 pair ONLY, and answers unconditionally: a curated route BEATS an
+    ///      existing pair (`setRoute` / `setV3Route` redirect an asset that already passed the V2 test),
+    ///      so a non-zero pair here is not proof the swap will cross it. Read `routeOf` / `v3RouteOf`
+    ///      FIRST and price against those pools whenever either is non-empty.
     /// @return pair `address(0)` when no pair exists
     /// @return quoteDepth quote-side reserve, scaled to native 18-dec units
     function pairFor(address quote, address asset) external view returns (address pair, uint256 quoteDepth);

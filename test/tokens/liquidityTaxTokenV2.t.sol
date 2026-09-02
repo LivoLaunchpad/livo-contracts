@@ -82,20 +82,28 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         address pair = liqToken.pair();
         uint256 deadLpBefore = IERC20(pair).balanceOf(DEAD_ADDRESS);
 
+        vm.recordLogs();
         liqToken.processLiquidity(0);
+        (, uint256 tokensAdded) = _liquidityAddedAmounts(vm.getRecordedLogs());
 
-        // Per-call cap: at most 2*SWAP_THRESHOLD processed; the remainder stays buffered (this
-        // buffer exceeds the cap) and a same-block retry hits the cooldown.
+        // Per-call cap: at most 2*SWAP_THRESHOLD processed; the remainder stays buffered (this buffer
+        // exceeds the cap) and a same-block retry hits the cooldown. Only what LEFT the bucket is
+        // debited: the half sold for the ETH side, plus the tokens the add actually deposited. The
+        // token side the router refunds at the pool's live ratio stays earmarked for liquidity.
         uint256 cap = 2 * liqToken.SWAP_THRESHOLD();
-        assertEq(liqToken.liquidityPendingTokens(), pendingTokens - cap, "remainder stays buffered");
+        assertEq(liqToken.liquidityPendingTokens(), pendingTokens - cap / 2 - tokensAdded, "remainder stays buffered");
         assertGt(IERC20(pair).balanceOf(DEAD_ADDRESS), deadLpBefore, "LP minted and locked at the dead address");
 
         vm.expectRevert(LivoTaxableTokenUniV2.ProcessCooldown.selector);
         liqToken.processLiquidity(0);
 
         vm.roll(block.number + 1);
+        uint256 buffered = liqToken.liquidityPendingTokens();
+        vm.recordLogs();
         liqToken.processLiquidity(0);
-        assertEq(liqToken.liquidityPendingTokens(), 0, "liquidity buffer drained");
+        (, uint256 tokensAdded2) = _liquidityAddedAmounts(vm.getRecordedLogs());
+        // Nothing left but that call's own ratio refund, which is still earmarked for the next one.
+        assertEq(liqToken.liquidityPendingTokens(), buffered - buffered / 2 - tokensAdded2, "only the refund stays");
     }
 
     /// @dev `LiquidityAdded` must report the router's ACTUAL amounts, not the requested ones. The

@@ -33,10 +33,16 @@ abstract contract LivoUniv4BuyBacks {
 
     /// @dev Buys this token with `ethIn` native ETH on its canonical graduated pool
     ///      (`UniswapV4PoolConstants.livoPoolKey` — the same key the graduator initialized), requiring at
-    ///      least `minTokensOut` (reverts on slippage). Tokens are TAKEn to this contract.
+    ///      least `minTokensOut`. Tokens are TAKEn to this contract.
     /// @dev The swap routes through `LivoSwapHook`, which charges the usual LP fee (and, inside the tax
     ///      window, tax). Callers must guard against reentrancy from those hooks themselves.
-    function _buyBackTokensWithEth(address hook, uint256 ethIn, uint256 minTokensOut) internal {
+    /// @dev A LOW-LEVEL call, on purpose, so a router revert becomes `false` here instead of taking down
+    ///      the caller. The dividend freeze needs exactly that: it reads "no tokens bought" as "the
+    ///      conversion did not happen" and keeps its buffer, and its escape hatch for a pool that has
+    ///      stopped swapping altogether is only reachable if the call returns rather than reverts. A
+    ///      caller that does want to revert says so itself.
+    /// @return ok false if the router reverted; the ETH stays with this contract.
+    function _buyBackTokensWithEth(address hook, uint256 ethIn, uint256 minTokensOut) internal returns (bool ok) {
         // abi round-trip converts the canonical lib/v4-core key into v4-periphery's identical PoolKey.
         PoolKey memory key = abi.decode(abi.encode(UniswapV4PoolConstants.livoPoolKey(address(this), hook)), (PoolKey));
 
@@ -58,8 +64,8 @@ abstract contract LivoUniv4BuyBacks {
         bytes[] memory inputs = new bytes[](1);
         inputs[0] = abi.encode(actions, params);
 
-        IUniversalRouter(UNIV4_UNIVERSAL_ROUTER).execute{value: ethIn}(
-            abi.encodePacked(V4_SWAP_COMMAND), inputs, block.timestamp
+        (ok,) = UNIV4_UNIVERSAL_ROUTER.call{value: ethIn}(
+            abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP_COMMAND), inputs, block.timestamp))
         );
     }
 }

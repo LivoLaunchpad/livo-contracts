@@ -20,6 +20,10 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
     ///      and so no way for it to fail. Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply
     ///      size the swap-back amortises against) because the buffer is denominated in tokens, not
     ///      native. Every other payout asset is native-buffered and goes through the base.
+    /// @dev Staleness is the threshold's ONLY bypass, for the reason the base spells out: "the tax
+    ///      window has closed" was a free grief, because anyone can donate tokens to this contract and
+    ///      have the post-window drain carve them into the dividend buffer, then freeze a pot every
+    ///      holder's share rounds to zero out of and stall settlement for a whole `PAYOUT_WINDOW`.
     function _freezeDividends(uint256 minOut)
         internal
         override
@@ -29,7 +33,7 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
 
         uint256 buffered = dividendPendingTokens;
         if (buffered == 0) return (FreezeOutcome.NotReady, 0, 0);
-        if (buffered < SWAP_THRESHOLD && _taxWindowActive()) return (FreezeOutcome.NotReady, 0, 0);
+        if (buffered < SWAP_THRESHOLD && !_roundIsStale()) return (FreezeOutcome.NotReady, 0, 0);
 
         dividendPendingTokens = 0;
         return (FreezeOutcome.Converted, 0, buffered);

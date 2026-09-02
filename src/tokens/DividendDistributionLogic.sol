@@ -198,7 +198,7 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     /// @dev Whether the open round has aged past `STALE_ROUND_WINDOW`, i.e. the token has not had a
     ///      rollover in a month. Only read while the round is UNFROZEN, so `roundOpenedAt` is always the
     ///      right anchor here.
-    function _roundIsStale() private view returns (bool) {
+    function _roundIsStale() internal view returns (bool) {
         return block.timestamp >= uint256(roundOpenedAt) + STALE_ROUND_WINDOW;
     }
 

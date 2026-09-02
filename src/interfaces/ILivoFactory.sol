@@ -140,6 +140,9 @@ interface ILivoFactory {
     ///         (`taxDurationSeconds == 0`). Decay-only tokens are excluded on purpose: the decay window
     ///         is capped at 20 minutes, so there is no post-graduation tax stream worth splitting.
     error EarningsAllocationRequiresTax();
+
+    /// @notice A payout asset was named but no share was allocated to dividends.
+    error DividendAssetWithoutShare();
     /// @notice DEPRECATED and no longer thrown: the dividends module has shipped. Kept so the ABI is not
     ///         rewritten under integrators that already decode it. A misconfigured dividend allocation now
     ///         reverts inside the token instead, with `DividendDistribution.UnsupportedDividendAsset`,

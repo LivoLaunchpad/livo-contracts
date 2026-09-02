@@ -305,7 +305,10 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
 
         // The router enforces `minOut` against what IT received; a fee-on-transfer asset can take a cut
         // on the transfer to us afterwards, so the floor is re-checked against what actually landed.
-        require(out >= minOut, InsufficientOutput());
+        // Zero is refused even when `minOut` is 0: the caller reads "0 out" as "the conversion never
+        // happened" and keeps its native buffer, so a swap that DID spend the native and delivered
+        // nothing would strand that buffer forever. Reverting leaves the caller the state it assumes.
+        require(out != 0 && out >= minOut, InsufficientOutput());
 
         IERC20(asset).safeTransfer(recipient, out);
         emit DividendAssetPurchased(asset, recipient, msg.value, out);

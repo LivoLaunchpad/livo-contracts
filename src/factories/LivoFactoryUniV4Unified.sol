@@ -197,6 +197,9 @@ contract LivoFactoryUniV4Unified is LivoFactoryAbstract {
     ) external payable returns (address token) {
         EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+        // Naming a payout asset with a zero share would leave dividends silently OFF, forever: clones
+        // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
+        require(alloc.dividendToken == address(0) || alloc.dividendsBps != 0, DividendAssetWithoutShare());
 
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
         if (hasAllocation) require(_hasStaticTax(taxConfigs), EarningsAllocationRequiresTax());
