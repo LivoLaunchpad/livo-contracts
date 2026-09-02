@@ -38,11 +38,44 @@ export DIVIDEND_SWAP_REGISTRY=0x…      # the registry proxy on the target chai
 just set-dividend-routes               # dry run; add --broadcast when the summary looks right
 ```
 
-`SetDividendRoutes.s.sol` sets every route and buys a little of every asset against forked state
-first, in simulation only, and skips any route whose probe swap reverts. Only the proved ones are
-broadcast. Re-running it updates routes in place; it never duplicates them.
+`SetDividendRoutes.s.sol` buys a little of every asset through every candidate against forked state
+first, in simulation only, and keeps whichever actually delivers most. Only routes that both work and
+differ from what is already live get broadcast, so re-running is cheap and idempotent.
 
 The broadcaster must be a registry admin (or its owner).
+
+## Adding one asset later
+
+Do not regenerate the whole file — narrow the scan and point the script at the result:
+
+```
+uv run script/operations/dividend-routes/discover_xstock_routes.py --only NVDA -o /tmp/nvda.json
+DIVIDEND_SWAP_REGISTRY=0x… ROUTES_JSON=/tmp/nvda.json just set-dividend-routes
+```
+
+`--only` takes ticker symbols or token addresses, comma-separated. The dry run tells you whether the
+route it found actually buys the asset before you broadcast anything; that probe — a real swap through
+the real registry against forked state — IS the validation. Do not try to reimplement it in Python: an
+approximation of the swap can disagree with the contract it is meant to be validating.
+
+## Keeping routes valid
+
+A route is not self-maintaining. Nothing on-chain re-checks that the pool it names still holds depth,
+so a pool that gets drained, or liquidity that migrates to a different fee tier, leaves a route that
+fails every future conversion for every token configured to be paid in that asset.
+
+The dry run is the health check. It probes the route each asset is ALREADY configured with alongside
+the fresh candidates and reports one of:
+
+| line | meaning |
+| --- | --- |
+| `ok` | the live route still beats every candidate — nothing to do |
+| `better route found` | a candidate now delivers more; broadcasting switches to it |
+| `BROKEN` | the live route AND every candidate fail — the asset's dividends cannot convert |
+| `no candidate route could buy it` | never had a route, still cannot get one |
+
+So the maintenance loop is: re-run discovery, dry-run this script, and act on anything that is not
+`ok`. Worth doing on a schedule once routes are live on a chain.
 
 ## Known caveat: two-hop routes on Robinhood Chain
 

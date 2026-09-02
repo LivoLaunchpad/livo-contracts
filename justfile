@@ -250,9 +250,11 @@ unfunded-creators:
 discover-dividend-routes:
     uv run script/operations/dividend-routes/discover_xstock_routes.py
 
-# Write those routes into the registry. Probes every route with a real swap in simulation first and
-# skips the ones that fail. Needs DIVIDEND_SWAP_REGISTRY exported and an admin/owner signer.
-# Dry run first (no --broadcast); add --broadcast yourself when the summary looks right.
+# Write those routes into the registry, and — without --broadcast — the health check for the ones
+# already live: it probes each asset's CURRENT route next to the fresh candidates and flags any that
+# has stopped working. Only routes that differ from what is live get written, so re-running is a no-op.
+# Needs DIVIDEND_SWAP_REGISTRY exported and an admin/owner signer. Set ROUTES_JSON to a narrowed file
+# (discover_xstock_routes.py --only SYMBOL -o …) to add a single asset without touching the rest.
 set-dividend-routes:
     just chain-robinhood
     forge script SetDividendRoutes --rpc-url robinhood-mainnet --account livo.dev

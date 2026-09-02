@@ -242,21 +242,41 @@ def main() -> int:
         help="where the raw pool scan is kept; delete it (or pass --rescan) to walk the chain again",
     )
     parser.add_argument("--rescan", action="store_true")
+    parser.add_argument(
+        "--only",
+        default="",
+        help="comma-separated ticker symbols or token addresses to route; everything else is left "
+        "out of the output. Use it to add ONE new asset without regenerating the whole file -- "
+        "write it somewhere of its own with -o and point ROUTES_JSON at that.",
+    )
     args = parser.parse_args()
 
     tokens = stock_tokens()
     print(f"{len(tokens)} stock tokens on chain {CHAIN_ID}", file=sys.stderr)
 
+    if args.only:
+        picked = {w.strip().lower() for w in args.only.split(",") if w.strip()}
+        tokens = [t for t in tokens if t[0].lower() in picked or t[1] in picked]
+        missing = picked - {t[0].lower() for t in tokens} - {t[1] for t in tokens}
+        if missing:
+            print(f"not a stock token on this chain: {', '.join(sorted(missing))}", file=sys.stderr)
+            return 1
+        print(f"--only: {', '.join(t[0] for t in tokens)}", file=sys.stderr)
+
     print("collecting V4 pools…", file=sys.stderr)
     stocks = {a for _, a in tokens}
+    # The scan's topic filter narrows with `--only`, so adding one asset does not replay the pools of
+    # the other 190. The cache is keyed to the whole chain, though, so a narrowed scan must not
+    # overwrite it -- an `--only` run always walks the chain fresh and keeps its findings to itself.
     # The scan is several minutes of public-RPC time and its answer only grows, so it is cached. The
     # LIQUIDITY read below is never cached — that is the number that moves.
-    if args.cache.exists() and not args.rescan:
+    if args.cache.exists() and not args.rescan and not args.only:
         pools = json.loads(args.cache.read_text())
         print(f"{len(pools)} pools from {args.cache} (--rescan to walk the chain again)", file=sys.stderr)
     else:
         pools = scan_pools(stocks | {USDG}, stocks | {NATIVE, WETH, USDG})
-        args.cache.write_text(json.dumps(pools))
+        if not args.only:
+            args.cache.write_text(json.dumps(pools))
     print(f"{len(pools)} candidate pools; reading liquidity…", file=sys.stderr)
     read_liquidity(pools)
 

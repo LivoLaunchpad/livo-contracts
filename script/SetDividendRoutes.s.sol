@@ -23,6 +23,17 @@ import {Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 ///      A route naming the wrong pool does not fail loudly — it fails at some future `processRound`,
 ///      on a clone nobody can patch, for a creator who picked that asset in good faith.
 ///
+/// @dev IT IS ALSO THE HEALTH CHECK. Run WITHOUT `--broadcast` and it probes the route each asset is
+///      already configured with alongside the fresh candidates, and says which of four things is true:
+///      the live route still wins (`ok`), a candidate now beats it (`better`), the live route has
+///      stopped working entirely (`BROKEN` — the pool it names was drained or liquidity moved), or the
+///      asset has no route yet (`new`). A route is not self-maintaining: nothing on-chain re-checks
+///      that the pool it names still has depth, and a rotted one fails every future conversion for
+///      every token configured for that asset. This is what catches that.
+///
+/// @dev Only assets whose chosen route DIFFERS from the live one are broadcast, so re-running costs
+///      nothing and adding one asset does not rewrite the other 190.
+///
 /// @dev The broadcaster must be an admin of the registry (or its owner). Routes are the one admin
 ///      lever that ADMITS an asset; nothing here can refuse one.
 ///
@@ -31,7 +42,8 @@ import {Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 ///
 /// Env:
 ///   DIVIDEND_SWAP_REGISTRY  the registry proxy on this chain
-///   ROUTES_JSON             (optional) path to the discovery output
+///   ROUTES_JSON             (optional) path to the discovery output. Point it at a narrowed file
+///                           (`discover_xstock_routes.py --only SYMBOL -o …`) to add one asset.
 contract SetDividendRoutes is Script {
     /// @dev Native spent by the probe swap. Small enough that any pool worth routing through can
     ///      absorb it, large enough that a pool holding dust fails rather than passes.
@@ -57,15 +69,25 @@ contract SetDividendRoutes is Script {
         Hop[][] memory chosen = _probe(registry, assets, encoded);
 
         uint256 written;
+        uint256 unchanged;
         vm.startBroadcast();
         for (uint256 i; i < assets.length; ++i) {
             if (chosen[i].length == 0) continue;
+            if (_sameRoute(chosen[i], registry.routeOf(assets[i]))) {
+                ++unchanged;
+                continue;
+            }
             registry.setRoute(assets[i], chosen[i]);
             ++written;
         }
         vm.stopBroadcast();
 
-        console.log("=== Done: %d routes written, %d skipped ===", written, assets.length - written);
+        console.log(
+            "=== Done: %d written, %d already current, %d unroutable ===",
+            written,
+            unchanged,
+            assets.length - written - unchanged
+        );
     }
 
     /// @dev Buys a little of every asset through every candidate route, all inside the simulation EVM,
@@ -84,6 +106,11 @@ contract SetDividendRoutes is Script {
         address owner = registry.owner();
 
         for (uint256 i; i < assets.length; ++i) {
+            Hop[] memory live = registry.routeOf(assets[i]);
+            // The live route is measured on the same footing as the candidates: it is the incumbent,
+            // not a given. A route that has stopped working has to lose.
+            uint256 liveOut = live.length == 0 ? 0 : _bought(registry, owner, assets[i], live);
+
             Hop[][] memory candidates = abi.decode(encoded[i], (Hop[][]));
             uint256 best;
             for (uint256 j; j < candidates.length; ++j) {
@@ -93,7 +120,18 @@ contract SetDividendRoutes is Script {
                     chosen[i] = candidates[j];
                 }
             }
-            if (best == 0) console.log("  ! %s : no candidate route could buy it - skipped", assets[i]);
+
+            if (best == 0 && liveOut == 0) {
+                if (live.length == 0) console.log("  %s : no candidate route could buy it - skipped", assets[i]);
+                else console.log("  %s : BROKEN - its live route AND every candidate fail", assets[i]);
+                delete chosen[i];
+            } else if (liveOut >= best) {
+                // The incumbent still wins. Keeping it verbatim is what makes a re-run a no-op.
+                chosen[i] = live;
+                console.log("  %s : ok", assets[i]);
+            } else if (live.length != 0) {
+                console.log("  %s : better route found (live bought %d, new buys %d)", assets[i], liveOut, best);
+            }
         }
 
         vm.revertToState(snapshot);
@@ -121,6 +159,12 @@ contract SetDividendRoutes is Script {
         }
 
         vm.revertToState(snapshot);
+    }
+
+    /// @dev Whether two routes name the same pools in the same order. Compared by encoding rather than
+    ///      field by field: `Hop` is fixed-shape, so equal encodings mean equal routes.
+    function _sameRoute(Hop[] memory a, Hop[] memory b) internal pure returns (bool) {
+        return keccak256(abi.encode(a)) == keccak256(abi.encode(b));
     }
 
     receive() external payable {}
