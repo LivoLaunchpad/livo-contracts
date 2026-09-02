@@ -7,7 +7,6 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {DividendRoute} from "src/types/DividendRoute.sol";
 
 /// @title LivoDividendLogicUniV2
 /// @notice The dividend extension `LivoTaxableTokenUniV2` `delegatecall`s its out-of-band entry
@@ -54,13 +53,12 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
-        address _dividendToken,
-        DividendRoute calldata _dividendRoute
+        address _dividendToken
     ) external override {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            _initializeDividends(_dividendToken, _dividendRoute);
+            _initializeDividends(_dividendToken);
             hasDividends = true;
         }
     }

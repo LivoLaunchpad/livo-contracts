@@ -37,6 +37,7 @@ Unified factories register fee config automatically during token creation:
 - `LivoGraduatorUniswapV2` / `LivoGraduatorUniswapV4` — the ARC variant `LivoGraduatorUniswapV2Arc` shares `LivoGraduatorUniswapV2Base` and emits the identical events in the identical order; every `LivoGraduatorUniswapV2` mention below applies to it unchanged.
 - `LivoMasterFeeHandler`
 - `LivoSwapHook`
+- `LivoDividendSwapRegistry` — one shared upgradeable proxy per chain, not a per-token contract
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Livo-owned events and notes the main external-operation points.
 
@@ -61,7 +62,7 @@ Each unified factory exposes four `createToken` overloads with different selecto
 - **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults. Takes the legacy `TaxConfigInit` (static tax only) and always uses `LiquidityTier.DEFAULT`.
 - **Struct-based, tiered** (backwards-compat): `(TokenSetupTiered, TaxConfigs, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults. `TokenSetupTiered` carries the `liquidityTier` field selecting the post-graduation pool depth. Takes the full `TaxConfigs` (static tax + the three launch-tax-decay fields).
 - **Struct-based, tiered + referral** (current/recommended): the same shape plus a trailing `address referral` for relayers that forward the creation and are entitled to a cut of the fees. When `referral != address(0)` it additionally emits `LivoFactory.TokenReferral` (see §1.1 step 7). No token storage or on-chain payout is wired to the referral yet — it is purely an off-chain signal for now.
-- **Struct-based, tiered + referral + earnings allocation**: the referral overload's shape but with `TaxConfigsWithAllocation` in place of `TaxConfigs` — the flat `TaxConfigs` fields plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendToken, dividendRoute}` (post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity; the fund wallets take the remainder). The split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — `DividendsInitialized` (see §1.1 step 6b). A non-zero split requires a taxable token (the split machinery lives on the taxable impl); otherwise the overload reverts `EarningsAllocationRequiresTax`. A token pays dividends in exactly ONE asset: `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (paid in the token itself), or ANY ERC20. There is no asset whitelist and no admin approval — an ERC20 is eligible if and only if `dividendRoute` (`{venue, fee, tickSpacing, hooks}`, venue = `UNIV2` | `UNIV3` | `UNIV4`) names a pool that exists and holds at least `MIN_DIVIDEND_POOL_LIQUIDITY` of the chain's quote asset at creation time. Otherwise the token reverts `InsufficientDividendPoolLiquidity` (no pool, or too thin) or `UnsupportedDividendAsset` (a venue this chain cannot reach) at creation, because a clone cannot be patched afterwards. The route is ignored for the native and self-token payouts. An all-zero `earningsAllocation` behaves exactly like the referral overload (no extra call, no event).
+- **Struct-based, tiered + referral + earnings allocation**: the referral overload's shape but with `TaxConfigsWithAllocation` in place of `TaxConfigs` — the flat `TaxConfigs` fields plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendToken}` (post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity; the fund wallets take the remainder). The split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — `DividendsInitialized` (see §1.1 step 6b). A non-zero split requires a taxable token (the split machinery lives on the taxable impl); otherwise the overload reverts `EarningsAllocationRequiresTax`. A token pays dividends in exactly ONE asset: `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (paid in the token itself), or ANY ERC20. There is no asset whitelist and no per-asset approval — an ERC20 is eligible if and only if `LivoDividendSwapRegistry.isSwapSupported(quote, asset)` holds at creation time, i.e. a Uniswap **V2** pair for `quote`/`asset` exists and its quote-side reserve clears the registry's threshold for that quote token. Otherwise the token reverts `DividendAssetNotSupported(rejection)` at creation, where `rejection` is `NoPair` | `InsufficientLiquidity` | `Blacklisted` | `QuoteNotAllowed`, because a clone cannot be patched afterwards. The registry is never consulted for the native and self-token payouts, which buy nothing. An all-zero `earningsAllocation` behaves exactly like the referral overload (no extra call, no event).
 
 The legacy positional overload internally lifts its `TaxConfigInit` into a `TaxConfigs` (decay fields zeroed) before dispatch, so all three share the same internal flow and emit the events listed below in the same order; only the two struct-based overloads can emit the creator-vault events in §1 step 4b.
 
@@ -402,3 +403,31 @@ calls in between are pure payout batches.
 capped at the chain's `NATIVE_PAYOUT_GAS`, so one expensive `receive()` cannot starve the batch, while
 `claimRound` forwards all remaining gas — a holder skipped by a batch can therefore always be paid by
 claiming. It never freezes and never rolls the round over.
+
+
+### `LivoDividendSwapRegistry` (one per chain)
+
+The eligibility gate and swap venue behind every third-asset dividend. It is a SHARED contract, so its
+events are not attributable to a token by their emitter — index them on their own and join on `asset`.
+
+**Per conversion**, inside the freeze leg of `processRound` (step 1 above), immediately before the
+token's own `DividendRoundFunded`:
+
+- **`DividendAssetPurchased`** (`asset`, `recipient`, `nativeIn`, `assetOut`) — `recipient` IS the token
+  whose round is freezing, which is the only link back to it. Absent when the payout asset is native or
+  the token itself (no conversion happens), and absent when the conversion failed (the whole call
+  reverted and the token reports `DividendConversionFailed`).
+
+**Configuration** (admin, rare, never inside a token's transaction):
+
+- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the four below.
+- **`TrustStatusSet`** (`asset`, `status`) — `2` (blacklisted) is the only value that changes
+  eligibility; `1` (whitelisted) is a UI badge and gates nothing.
+- **`DefaultThresholdSet`** (`threshold`) / **`QuoteTokenThresholdSet`** (`quote`, `threshold`) — the
+  quote-side depth an asset's V2 pair must hold. A change applies to tokens that ALREADY exist, for
+  every conversion they have not made yet.
+- **`QuoteTokenAllowed`** (`quote`, `allowed`) — the `from` side of a conversion. Emitted once at
+  deployment for the chain's canonical quote token.
+
+No event marks an asset as eligible: eligibility is a live liquidity read, not stored state, so an
+indexer that needs it must call `isSwapSupported` / `checkSwapSupported` rather than replay a log.

@@ -9,7 +9,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
 ///
@@ -41,11 +40,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0,
-                dividendsBps: dividendsBps,
-                liquidityBps: 0,
-                dividendToken: address(0),
-                dividendRoute: noDividendRoute()
+                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: address(0)
             })
         });
         vm.prank(creator);

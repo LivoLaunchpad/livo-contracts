@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
 import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -36,6 +38,10 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 
 contract LaunchpadBaseTests is Test {
+    /// @notice Eligibility gate + swap venue for third-asset dividends, installed at the constant
+    ///         address every taxable token implementation compiles against.
+    LivoDividendSwapRegistry internal dividendSwapRegistry;
+
     LivoLaunchpad public launchpad;
 
     LivoToken public livoToken;
@@ -420,6 +426,10 @@ contract LaunchpadBaseTests is Test {
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
+
+        // Must precede the token implementations: they bake the registry's address in as a constant,
+        // and a third-asset dividend configuration calls it at creation.
+        dividendSwapRegistry = installDividendSwapRegistry(admin);
 
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);

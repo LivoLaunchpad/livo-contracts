@@ -2,27 +2,8 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
-import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
-import {IUniswapV3Factory} from "src/interfaces/IUniswapV3Factory.sol";
-import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
-import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
-import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
-import {Currency} from "lib/v4-core/src/types/Currency.sol";
-import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
-import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
-import {DividendRoute, DividendVenue} from "src/types/DividendRoute.sol";
+import {ILivoDividendSwapRegistry, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-
-/// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet}.
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-// Aliased so the `chain-arc-*` recipe can import-swap it: on ARC the "native" leg is 18-dec native USDC
-// and the V2 quote token is its 6-dec ERC-20 alias, so buying a third asset is a two-ERC20 hop.
-import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 
 /// @title DividendDistributionLogic
 /// @notice The COLD half of `DividendDistribution`: the round machinery, the native -> payout-asset
@@ -55,9 +36,6 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      The same applies to TRANSIENT slots, which is why `dividendLocked` stays declared in
 ///      `DividendDistribution` rather than moving here with the modifier's users.
 abstract contract DividendDistributionLogic is DividendDistribution {
-    using StateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
-
     /// @notice Thrown by every TOKEN entry point on an extension. An extension is an execution body for
     ///         a token, not a token: deployed once, never cloned, holding no balance, and its own
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
@@ -87,86 +65,27 @@ abstract contract DividendDistributionLogic is DividendDistribution {
 
     /// @dev Stores the creation-time payout configuration. Called once, by the token, only when the
     ///      earnings allocation routes a non-zero share to dividends.
-    /// @dev THE ONLY ELIGIBILITY RULE IS LIQUIDITY. There is no whitelist, no admin approval and no
-    ///      curated route list anywhere in this feature: any ERC20 a creator names is accepted, provided
-    ///      the pool they name for it exists and holds `MIN_DIVIDEND_POOL_LIQUIDITY` of the quote asset
-    ///      right now. That check is what stops a creator from configuring a payout their own token can
-    ///      never convert into — the failure mode a clone cannot be patched out of.
-    function _initializeDividends(address token, DividendRoute memory route) internal {
+    /// @dev THE ONLY ELIGIBILITY RULE IS LIQUIDITY, and the registry is the one that measures it: any
+    ///      ERC20 with a Uniswap V2 pair deep enough to swap against is accepted, with no whitelist, no
+    ///      per-asset approval and no route for the creator to name. Asking here is what stops a creator
+    ///      from configuring a payout their own token could never convert into — the failure mode a
+    ///      clone cannot be patched out of.
+    /// @dev The registry is a proxy behind a constant address, so a token created today is bound to the
+    ///      RULE rather than to today's version of it: raising the threshold, blacklisting an asset or
+    ///      adding a venue reaches this token too, for every conversion it has not made yet.
+    function _initializeDividends(address token) internal {
         // Resolve the "pay in the token itself" sentinel now, so every later read is a plain address.
         if (token == DIVIDEND_SELF_TOKEN) token = address(this);
 
-        // Native and the token itself have nothing to buy: no route, no pool, nothing to prove.
+        // Native and the token itself have nothing to buy: no pool, nothing to prove.
         if (token != address(0) && token != address(this)) {
-            _requireDividendPoolLiquidity(token, route);
-            dividendRoute = route;
+            ILivoDividendSwapRegistry registry = ILivoDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
+            (bool supported,, SwapRejection rejection) = registry.checkSwapSupported(registry.nativeQuoteToken(), token);
+            require(supported, DividendAssetNotSupported(rejection));
         }
 
         dividendToken = token;
         emit DividendsInitialized(token);
-    }
-
-    /// @dev Proves, at creation time, that the payout asset can actually be bought — the whole of the
-    ///      eligibility rule. Refuses a venue this chain cannot reach, then requires the named pool to
-    ///      exist and to be worth swapping against.
-    /// @dev The V2 and V3 checks are exact: both pool shapes hold their own tokens, so the quote-side
-    ///      balance IS the depth the swap will cross. V4 is a singleton and holds every pool's funds
-    ///      together, so the check there is the pool's ACTIVE liquidity being non-zero — weaker, but it
-    ///      still separates "this pool exists and is swappable" from "this pool is a typo". In all three
-    ///      cases what protects an individual swap is the caller's `minOut`, not this.
-    function _requireDividendPoolLiquidity(address asset, DividendRoute memory route) private view {
-        if (route.venue == DividendVenue.UNIV2) {
-            require(
-                DIVIDEND_SWAP_ROUTER != address(0) && DIVIDEND_UNIV2_FACTORY != address(0), UnsupportedDividendAsset()
-            );
-            address quote = UniswapV2Venue.pairToken(IUniswapV2Router(DIVIDEND_SWAP_ROUTER));
-            address pair = IUniswapV2Factory(DIVIDEND_UNIV2_FACTORY).getPair(quote, asset);
-            require(pair != address(0), InsufficientDividendPoolLiquidity());
-
-            (uint112 reserve0, uint112 reserve1,) = IUniswapV2Pair(pair).getReserves();
-            uint256 quoteReserve = IUniswapV2Pair(pair).token0() == quote ? reserve0 : reserve1;
-            // `QUOTE_TO_NATIVE_SCALE` lifts the pool's quote units to native 18-dec, which is what the
-            // threshold is denominated in. It is 1 on ETH-family chains and 1e12 on ARC.
-            require(
-                quoteReserve * UniswapV2Venue.QUOTE_TO_NATIVE_SCALE >= MIN_DIVIDEND_POOL_LIQUIDITY,
-                InsufficientDividendPoolLiquidity()
-            );
-            return;
-        }
-
-        // Both universal-router venues pay with native ETH, which ARC does not have.
-        require(NATIVE_IS_ETH && DIVIDEND_UNIVERSAL_ROUTER != address(0), UnsupportedDividendAsset());
-
-        if (route.venue == DividendVenue.UNIV3) {
-            // A V3 pool is keyed by its fee tier, which is never zero.
-            require(route.fee != 0 && DIVIDEND_UNIV3_FACTORY != address(0), UnsupportedDividendAsset());
-            address pool = IUniswapV3Factory(DIVIDEND_UNIV3_FACTORY).getPool(DeploymentAddresses.WETH, asset, route.fee);
-            require(pool != address(0), InsufficientDividendPoolLiquidity());
-            require(
-                IERC20(DeploymentAddresses.WETH).balanceOf(pool) >= MIN_DIVIDEND_POOL_LIQUIDITY,
-                InsufficientDividendPoolLiquidity()
-            );
-            return;
-        }
-
-        // A V4 pool is keyed by its tick spacing, which is never zero.
-        require(route.tickSpacing != 0 && DIVIDEND_UNIV4_POOL_MANAGER != address(0), UnsupportedDividendAsset());
-        require(
-            IPoolManager(DIVIDEND_UNIV4_POOL_MANAGER).getLiquidity(_dividendPoolKey(asset, route).toId()) != 0,
-            InsufficientDividendPoolLiquidity()
-        );
-    }
-
-    /// @dev The V4 pool a native -> asset conversion crosses. Native is `address(0)`, which sorts below
-    ///      every real address, so the pool is always `currency0 -> currency1`.
-    function _dividendPoolKey(address asset, DividendRoute memory route) private pure returns (PoolKey memory) {
-        return PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(asset),
-            fee: route.fee,
-            tickSpacing: route.tickSpacing,
-            hooks: IHooks(route.hooks)
-        });
     }
 
     //////////////////////// the round //////////////////////
@@ -385,28 +304,16 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         return IERC20(asset).balanceOf(address(this)) - balanceBefore;
     }
 
-    /// @dev The venue dispatch of `_acquireDividendAsset`, split out only to keep that function's stack
-    ///      shallow. Reports failure instead of reverting; see `_freezeDividends`.
-    function _swapNativeToDividendAsset(address asset, uint256 nativeIn, uint256 minOut) private returns (bool) {
-        DividendRoute memory route = dividendRoute;
-        if (route.venue == DividendVenue.UNIV2) {
-            // The pool proven at creation is the canonical quote/asset pair, so the path is fixed. No
-            // intermediate hop: an asset that cannot be reached directly from the quote token could not
-            // have proven its liquidity in the first place.
-            address[] memory path = new address[](2);
-            path[0] = DeploymentAddresses.WETH;
-            path[1] = asset;
-            return UniswapV2Venue.trySwapNativeToAsset(
-                IUniswapV2Router(DIVIDEND_SWAP_ROUTER), DeploymentAddresses.WETH, path, nativeIn, minOut
-            );
-        }
-        if (route.venue == DividendVenue.UNIV3) {
-            return UniversalRouterVenue.swapNativeToAssetV3(
-                DIVIDEND_UNIVERSAL_ROUTER, DeploymentAddresses.WETH, asset, route.fee, nativeIn, minOut
-            );
-        }
-        return UniversalRouterVenue.swapNativeToAssetV4(
-            DIVIDEND_UNIVERSAL_ROUTER, asset, route.fee, route.tickSpacing, route.hooks, nativeIn, minOut
+    /// @dev Hands the conversion to the registry, which re-checks eligibility, swaps and forwards the
+    ///      asset back here in one call. Nothing about the route is stored on the token any more: the
+    ///      registry resolves it, so a token created before a venue existed can still use it.
+    /// @dev A LOW-LEVEL call, on purpose. The registry reverts on a dead pair, a missed floor or an
+    ///      asset blacklisted since creation, and this caller is a dividend freeze that must not lose
+    ///      its buffer to any of those — a reverted call leaves the native exactly where it was, and
+    ///      `false` here becomes `ConversionFailed` rather than a reverted round.
+    function _swapNativeToDividendAsset(address asset, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
+        (ok,) = DIVIDEND_SWAP_REGISTRY.call{value: nativeIn}(
+            abi.encodeCall(ILivoDividendSwapRegistry.swapNativeToAsset, (asset, minOut, address(this)))
         );
     }
 

@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {DividendRoute} from "src/types/DividendRoute.sol";
-
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet}.
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-// Aliased so the `chain-arc-*` recipe can import-swap it: on ARC the "native" leg is 18-dec native USDC
-// and the V2 quote token is its 6-dec ERC-20 alias, so buying a third asset is a two-ERC20 hop.
-import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 
 /// @title DividendDistribution
 /// @notice Trustless, push-based holder dividends for a Livo token: ONE payout asset, paid out of
@@ -27,9 +23,9 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      attacking transaction when it is repaid.
 ///
 /// @dev ONE ASSET PER TOKEN, chosen at creation and permanent: native (`address(0)`), the token itself
-///      (`DIVIDEND_SELF_TOKEN`), or any ERC20 whose route names a pool with liquidity. There is no
-///      whitelist and no admin approval anywhere in this feature — what makes an ERC20 eligible is the
-///      creation-time liquidity proof on the creator's own route, nothing else.
+///      (`DIVIDEND_SELF_TOKEN`), or any ERC20 with a deep enough Uniswap V2 pair. There is no whitelist
+///      and no per-asset approval — what makes an ERC20 eligible is the liquidity `DIVIDEND_SWAP_REGISTRY`
+///      measures at creation, nothing else.
 ///
 /// @dev NO HOLDER SET. The contract never enumerates holders. `processRound(minOut, address[])` takes
 ///      the list from the caller and computes each amount itself, so the call is idempotent and
@@ -64,15 +60,6 @@ abstract contract DividendDistribution {
     ///      this clears ~24x the cap per day, orders of magnitude above what any graduated pool can
     ///      generate in earnings.
     uint256 public constant MAX_DIVIDEND_PER_FREEZE = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
-
-    /// @notice Quote-side depth a third asset's pool must hold at creation for that asset to be
-    ///         eligible. THE ELIGIBILITY GATE, and the only one: any ERC20 whose pool clears this is a
-    ///         valid payout asset, with nobody's approval.
-    /// @dev Sized off the freeze cap rather than picked: at 10x, the largest swap this token will ever
-    ///      send through the pool is ~10% of its quote side. Lower would admit pools where a single
-    ///      freeze is most of the liquidity; higher would exclude perfectly usable long-tail assets for
-    ///      no safety gain, since the caller's `minOut` is what actually protects each individual swap.
-    uint256 public constant MIN_DIVIDEND_POOL_LIQUIDITY = 10 * MAX_DIVIDEND_PER_FREEZE;
 
     /// @notice Minimum age of a round before it may be frozen.
     /// @dev This exists for exactly one reason: rolling a round over is permissionless, so an attacker
@@ -134,28 +121,15 @@ abstract contract DividendDistribution {
     ///         written — so the sentinel is resolved to `address(this)` during initialization.
     address public constant DIVIDEND_SELF_TOKEN = address(type(uint160).max);
 
-    /// @notice Router a `UNIV2` third-asset conversion goes through. Exposed so the off-chain keeper can
-    ///         price its slippage floor against the same pool the swap will cross, on BOTH venues (the
-    ///         V4 token has no Uniswap-V2 constant of its own).
-    address public constant DIVIDEND_SWAP_ROUTER = DeploymentAddresses.UNIV2_ROUTER;
-
-    /// @notice Factory the `UNIV2` pool-liquidity proof resolves the quote/asset pair through.
-    address public constant DIVIDEND_UNIV2_FACTORY = DeploymentAddresses.UNIV2_FACTORY;
-
-    /// @notice Factory the `UNIV3` pool-liquidity proof resolves the pool through. `address(0)` where
-    ///         Uniswap V3 is not deployed, which makes a `UNIV3` route unsupported on that chain.
-    address public constant DIVIDEND_UNIV3_FACTORY = DeploymentAddresses.UNIV3_FACTORY;
-
-    /// @notice Singleton the `UNIV4` pool-liquidity proof reads pool state from.
-    address public constant DIVIDEND_UNIV4_POOL_MANAGER = DeploymentAddresses.UNIV4_POOL_MANAGER;
-
-    /// @notice Router a `UNIV3` / `UNIV4` third-asset conversion goes through.
-    address public constant DIVIDEND_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
-
-    /// @notice Whether this chain's native currency is 18-dec ETH. False on ARC, where "native" is USDC
-    ///         and the universal router's native-in swaps therefore do not apply — the reason a `UNIV3` /
-    ///         `UNIV4` route is refused there while `UNIV2` (whose venue lib IS chain-swapped) is not.
-    bool internal constant NATIVE_IS_ETH = UniswapV2Venue.QUOTE_TO_NATIVE_SCALE == 1;
+    /// @notice The registry that decides whether a third payout asset is eligible, and that performs
+    ///         the native -> asset conversion when a round freezes. Uniswap V2 only.
+    /// @dev A PROXY, deliberately reached through a compile-time constant rather than a stored address:
+    ///      tokens are unpatchable clones, so this is the only seam through which an eligibility rule or
+    ///      a swap route can be fixed for tokens that are ALREADY live. Nothing about the asset choice
+    ///      is curated behind it — see `ILivoDividendSwapRegistry`.
+    /// @dev Exposed so an off-chain keeper can price its slippage floor against the exact pool the swap
+    ///      will cross (`registry.pairFor`), which is what `minOut` has to be computed from.
+    address public constant DIVIDEND_SWAP_REGISTRY = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY;
 
     /// @notice Per-account dividend state. One slot, and the only per-account storage the feature has.
     /// @dev `minShares` is the running minimum for `roundId`. It is only meaningful while
@@ -188,7 +162,7 @@ abstract contract DividendDistribution {
     uint32 public currentRound;
 
     /// @notice The payout asset. `address(0)` = native, `address(this)` = the token itself, anything
-    ///         else = a third ERC20 bought through `dividendRoute`.
+    ///         else = a third ERC20 bought through `DIVIDEND_SWAP_REGISTRY`.
     /// @dev Not immutable and not a constant: tokens are clones. It is written once at creation and
     ///      only ever rewritten by the dead-pool fallback, which downgrades a third asset to native
     ///      when its pool has become unreachable (see `DividendDistributionLogic._freezeDividends`).
@@ -221,11 +195,6 @@ abstract contract DividendDistribution {
     ///      Cleared by whichever outcome ends the sequence: the downgrade, or a conversion that starts
     ///      working again.
     bool public dividendPoolDead;
-
-    /// @notice Which pool a third-asset payout is bought on, and the creation-time proof that the asset
-    ///         had liquidity at all. Written once at creation; ignored by the native and self-token
-    ///         payouts, which have nothing to buy.
-    DividendRoute public dividendRoute;
 
     /// @notice The frozen pot for the open round, plus whatever earlier rounds left unpaid.
     uint256 public roundPot;
@@ -289,10 +258,10 @@ abstract contract DividendDistribution {
     /// @notice The buffer was fundable and the conversion failed, so the round froze nothing.
     error DividendConversionFailed();
     error DividendBufferOverflow();
-    error UnsupportedDividendAsset();
-    /// @notice The configured pool does not exist, or holds less than `MIN_DIVIDEND_POOL_LIQUIDITY` of
-    ///         the quote asset. The whole of the payout-asset eligibility rule.
-    error InsufficientDividendPoolLiquidity();
+    /// @notice The named payout asset is not eligible. Carries the registry's own reason — no V2 pair,
+    ///         not enough depth, blacklisted — so a creator learns which gate they failed rather than
+    ///         just that they failed one. The whole of the payout-asset eligibility rule.
+    error DividendAssetNotSupported(SwapRejection rejection);
     error DividendReentrancy();
 
     //////////////////////// hot path //////////////////////

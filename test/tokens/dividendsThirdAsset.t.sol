@@ -8,8 +8,9 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {DividendRoute} from "src/types/DividendRoute.sol";
-import {v2DividendRoute, v3DividendRoute, v4DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
+import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
 
 /// @notice A bare `DividendDistributionLogic` with the token's hooks stubbed out. It exists so the
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
@@ -19,8 +20,8 @@ contract DividendHarness is DividendDistributionLogic {
     mapping(address => uint256) public balances;
     uint256 public eligibleSupply;
 
-    function configure(address asset, DividendRoute memory route) external {
-        _initializeDividends(asset, route);
+    function configure(address asset) external {
+        _initializeDividends(asset);
     }
 
     function openRound() external {
@@ -59,30 +60,33 @@ contract GhostToken is ERC20 {
 }
 
 /// @notice The third-token payout shape: an accrued native buffer is converted into an arbitrary ERC20
-///         on the pool the creator named at creation, and pushed to holders in that asset. Any ERC20
-///         with a deep enough pool qualifies — there is no asset whitelist and no admin approval, only
-///         the creation-time liquidity proof.
+///         through `LivoDividendSwapRegistry`, and pushed to holders in that asset. Any ERC20 with a
+///         deep enough Uniswap V2 pair qualifies — there is no asset whitelist and no per-asset
+///         approval, only the liquidity the registry measures.
 contract DividendsThirdAssetTests is Test {
     uint256 internal constant BLOCKNUMBER = 23327777;
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     DividendHarness internal harness;
+    LivoDividendSwapRegistry internal registry;
 
     address internal holder = makeAddr("holder");
+    address internal registryOwner = makeAddr("registryOwner");
 
     /// @dev `addLiquidityETH` refunds the unused ETH side to the caller.
     receive() external payable {}
 
     function setUp() public {
         vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), BLOCKNUMBER);
-        harness = _harness(DAI, v2DividendRoute());
+        registry = installDividendSwapRegistry(registryOwner);
+        harness = _harness(DAI);
     }
 
-    /// @dev A harness paying `asset` through `route`, configured and ready to have its round opened.
-    function _harness(address asset, DividendRoute memory route) internal returns (DividendHarness h) {
+    /// @dev A harness paying `asset`, configured and ready to have its round opened.
+    function _harness(address asset) internal returns (DividendHarness h) {
         h = new DividendHarness();
-        h.configure(asset, route);
+        h.configure(asset);
     }
 
     function _fundAndOpen(DividendHarness h) internal {
@@ -126,29 +130,6 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.committedDividends(DAI), 0, "nothing left owed");
     }
 
-    /// @dev A Uniswap-V3-only asset is a first-class dividend asset: the route names the pool's fee tier
-    ///      and the swap goes through the universal router.
-    function test_thirdAsset_v3Route() public {
-        DividendHarness v3 = _harness(USDC, v3DividendRoute(500));
-        _fundAndOpen(v3);
-
-        v3.processRound(0, _noHolders());
-
-        assertGt(v3.roundPot(), 0, "the V3 pool funded the round");
-        assertEq(IERC20(USDC).balanceOf(address(v3)), v3.roundPot(), "the pot is a real USDC balance");
-    }
-
-    /// @dev Same for a Uniswap-V4 pool, keyed by fee + tick spacing + hooks rather than a fee tier alone.
-    function test_thirdAsset_v4Route() public {
-        DividendHarness v4 = _harness(USDC, v4DividendRoute(500, 10, address(0)));
-        _fundAndOpen(v4);
-
-        v4.processRound(0, _noHolders());
-
-        assertGt(v4.roundPot(), 0, "the V4 pool funded the round");
-        assertEq(IERC20(USDC).balanceOf(address(v4)), v4.roundPot(), "the pot is a real USDC balance");
-    }
-
     /// @dev The per-freeze cap bounds one sandwich, it does not cap what a token can ever pay: whatever
     ///      it leaves behind stays buffered and converts in a later round, so nothing strands.
     function test_thirdAsset_cappedFreezeLeavesTheRemainderForTheNextRound() public {
@@ -169,9 +150,8 @@ contract DividendsThirdAssetTests is Test {
     /// @dev THE eligibility rule, and the only one. Any ERC20 is fair game as long as the pool the
     ///      creator names for it actually exists and is worth swapping against — no whitelist, no admin.
     function test_anyErc20WithADeepPoolIsConfigurable() public {
-        assertEq(_harness(DAI, v2DividendRoute()).dividendToken(), DAI, "a V2 asset");
-        assertEq(_harness(USDC, v3DividendRoute(500)).dividendToken(), USDC, "a V3 asset");
-        assertEq(_harness(USDC, v4DividendRoute(500, 10, address(0))).dividendToken(), USDC, "a V4 asset");
+        assertEq(_harness(DAI).dividendToken(), DAI, "DAI");
+        assertEq(_harness(USDC).dividendToken(), USDC, "USDC");
     }
 
     /// @dev An asset nobody has ever made a market for is refused at creation, not left to accrue into a
@@ -180,16 +160,10 @@ contract DividendsThirdAssetTests is Test {
         address ghost = address(new GhostToken());
 
         DividendHarness h = new DividendHarness();
-        vm.expectRevert(DividendDistribution.InsufficientDividendPoolLiquidity.selector);
-        h.configure(ghost, v2DividendRoute());
-
-        DividendHarness v3 = new DividendHarness();
-        vm.expectRevert(DividendDistribution.InsufficientDividendPoolLiquidity.selector);
-        v3.configure(ghost, v3DividendRoute(3000));
-
-        DividendHarness v4 = new DividendHarness();
-        vm.expectRevert(DividendDistribution.InsufficientDividendPoolLiquidity.selector);
-        v4.configure(ghost, v4DividendRoute(3000, 60, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.NoPair)
+        );
+        h.configure(ghost);
     }
 
     /// @dev A pool that EXISTS but is too thin is refused just the same. The floor is denominated in the
@@ -199,14 +173,18 @@ contract DividendsThirdAssetTests is Test {
         IUniswapV2Router router = IUniswapV2Router(DeploymentAddresses.UNIV2_ROUTER);
 
         // A real pair on the real factory, seeded with less than the floor.
-        uint256 seeded = harness.MIN_DIVIDEND_POOL_LIQUIDITY() / 2;
+        uint256 seeded = DEFAULT_DIVIDEND_POOL_LIQUIDITY / 2;
         vm.deal(address(this), seeded);
         thin.approve(address(router), type(uint256).max);
         router.addLiquidityETH{value: seeded}(address(thin), 500_000e18, 0, 0, address(this), block.timestamp);
 
         DividendHarness h = new DividendHarness();
-        vm.expectRevert(DividendDistribution.InsufficientDividendPoolLiquidity.selector);
-        h.configure(address(thin), v2DividendRoute());
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.InsufficientLiquidity
+            )
+        );
+        h.configure(address(thin));
 
         // Top the same pair up over the floor and the very same asset becomes eligible. Nothing about
         // the ASSET changed — only its liquidity, which is the whole rule.
@@ -214,31 +192,81 @@ contract DividendsThirdAssetTests is Test {
         router.addLiquidityETH{value: seeded + 1}(address(thin), 500_000e18, 0, 0, address(this), block.timestamp);
 
         DividendHarness ok = new DividendHarness();
-        ok.configure(address(thin), v2DividendRoute());
+        ok.configure(address(thin));
         assertEq(ok.dividendToken(), address(thin), "eligible once the pool is deep enough");
     }
 
-    /// @dev Route validation still refuses what this chain could never execute at all. A V3 pool is keyed
-    ///      by its fee tier and a V4 pool by its tick spacing; zero is not a pool, it is a typo.
-    function test_routesThatCouldNeverExecuteAreRejectedAtConfiguration() public {
-        DividendHarness a = new DividendHarness();
-        vm.expectRevert(DividendDistribution.UnsupportedDividendAsset.selector);
-        a.configure(DAI, v3DividendRoute(0));
-
-        DividendHarness b = new DividendHarness();
-        vm.expectRevert(DividendDistribution.UnsupportedDividendAsset.selector);
-        b.configure(DAI, v4DividendRoute(500, 0, address(0)));
+    /// @dev An asset whose only liquidity lives on V3 or V4 has no V2 pair, so it is refused — the
+    ///      deliberate cost of a V2-only registry, and the reason the registry is upgradeable.
+    function test_anAssetWithoutAV2PairIsRejectedEvenIfItTradesElsewhere() public {
+        DividendHarness h = new DividendHarness();
+        vm.expectRevert(
+            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.NoPair)
+        );
+        h.configure(makeAddr("v4OnlyToken"));
     }
 
-    /// @dev Native and the token itself buy nothing, so they need no route and prove no liquidity.
+    /// @dev Native and the token itself buy nothing, so they never touch the registry.
     function test_nativeAndSelfTokenNeedNoProof() public {
         DividendHarness nativeH = new DividendHarness();
-        nativeH.configure(address(0), v3DividendRoute(0)); // a route that would be refused for an ERC20
+        nativeH.configure(address(0));
         assertEq(nativeH.dividendToken(), address(0), "native configured");
 
         DividendHarness selfH = new DividendHarness();
-        selfH.configure(selfH.DIVIDEND_SELF_TOKEN(), v3DividendRoute(0));
+        selfH.configure(selfH.DIVIDEND_SELF_TOKEN());
         assertEq(selfH.dividendToken(), address(selfH), "the sentinel resolved to the token itself");
+    }
+
+    //////////////////////// what the registry buys //////////////////////
+
+    /// @dev The point of putting the rule behind a proxy: a threshold raised AFTER a token was created
+    ///      still governs it. A creation-time check compiled into an unpatchable clone could not.
+    function test_aRaisedThresholdRefusesAssetsThatUsedToQualify() public {
+        assertTrue(registry.isSwapSupported(registry.nativeQuoteToken(), DAI), "DAI qualifies today");
+
+        vm.prank(registryOwner);
+        registry.setDefaultThreshold(type(uint128).max);
+
+        DividendHarness h = new DividendHarness();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.InsufficientLiquidity
+            )
+        );
+        h.configure(DAI);
+    }
+
+    /// @dev The one admin veto, and it reaches tokens that ALREADY exist: an asset blacklisted after a
+    ///      token was configured for it stops converting on the next freeze. The buffer is not lost —
+    ///      it stays put, and the dead-pool escape eventually downgrades the token to native.
+    function test_blacklistingAnAssetStopsAnExistingTokenFromConverting() public {
+        _fundAndOpen(harness);
+
+        // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
+        uint8 blacklisted = registry.TRUST_BLACKLISTED();
+        vm.prank(registryOwner);
+        registry.setTrustStatus(DAI, blacklisted);
+
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        harness.processRound(0, _noHolders());
+        assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched, not seized");
+
+        uint8 unknown = registry.TRUST_UNKNOWN();
+        vm.prank(registryOwner);
+        registry.setTrustStatus(DAI, unknown);
+        harness.processRound(0, _noHolders());
+        assertGt(harness.roundPot(), 0, "and it converts again once the veto is lifted");
+    }
+
+    /// @dev The registry is a swap venue, not a vault: it forwards everything it buys inside the same
+    ///      call and is empty before and after.
+    function test_theRegistryHoldsNothing() public {
+        _fundAndOpen(harness);
+        harness.processRound(0, _noHolders());
+
+        assertEq(address(registry).balance, 0, "no native retained");
+        assertEq(IERC20(DAI).balanceOf(address(registry)), 0, "no asset retained");
+        assertEq(IERC20(DAI).balanceOf(address(harness)), harness.roundPot(), "it all reached the token");
     }
 
     //////////////////////// conversion failures //////////////////////

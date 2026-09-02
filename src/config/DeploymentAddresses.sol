@@ -69,6 +69,14 @@ library DeploymentAddressesEthereumMainnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimRound()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER until the registry proxy is deployed on this chain. The registry must be
+    ///      deployed BEFORE the taxable token implementations, which bake this address in. A token
+    ///      implementation compiled against an address with no code fails closed: every third-asset
+    ///      configuration reverts at creation, while native and self-token payouts are unaffected.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -134,6 +142,14 @@ library DeploymentAddressesEthereumSepolia {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimRound()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER until the registry proxy is deployed on this chain. The registry must be
+    ///      deployed BEFORE the taxable token implementations, which bake this address in. A token
+    ///      implementation compiled against an address with no code fails closed: every third-asset
+    ///      configuration reverts at creation, while native and self-token payouts are unaffected.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -199,6 +215,14 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimRound()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER until the registry proxy is deployed on this chain. The registry must be
+    ///      deployed BEFORE the taxable token implementations, which bake this address in. A token
+    ///      implementation compiled against an address with no code fails closed: every third-asset
+    ///      configuration reverts at creation, while native and self-token payouts are unaffected.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
     /// @notice Livo Treasury (same address as Ethereum mainnet)
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -268,6 +292,14 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimRound()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER until the registry proxy is deployed on this chain. The registry must be
+    ///      deployed BEFORE the taxable token implementations, which bake this address in. A token
+    ///      implementation compiled against an address with no code fails closed: every third-asset
+    ///      configuration reverts at creation, while native and self-token payouts are unaffected.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -344,6 +376,14 @@ library DeploymentAddressesArcMainnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimRound()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER until the registry proxy is deployed on this chain. The registry must be
+    ///      deployed BEFORE the taxable token implementations, which bake this address in. A token
+    ///      implementation compiled against an address with no code fails closed: every third-asset
+    ///      configuration reverts at creation, while native and self-token payouts are unaffected.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -415,6 +455,14 @@ library DeploymentAddressesArcTestnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimRound()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER until the registry proxy is deployed on this chain. The registry must be
+    ///      deployed BEFORE the taxable token implementations, which bake this address in. A token
+    ///      implementation compiled against an address with no code fails closed: every third-asset
+    ///      configuration reverts at creation, while native and self-token payouts are unaffected.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }

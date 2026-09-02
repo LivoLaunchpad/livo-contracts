@@ -6,7 +6,6 @@ import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableToken, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
-import {DividendRoute} from "src/types/DividendRoute.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -241,9 +240,8 @@ abstract contract LivoTaxableToken is
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @notice Same as the three-bps overload, plus the dividend payout configuration: which asset the
-    ///         dividends slice buys, and the pool it is bought on. Kept as a separate overload so the
-    ///         original signature stays untouched.
+    /// @notice Same as the three-bps overload, plus the asset the dividends slice buys. Kept as a
+    ///         separate overload so the original signature stays untouched.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `LivoToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
     ///      nothing for the feature on any transfer.
@@ -251,8 +249,7 @@ abstract contract LivoTaxableToken is
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
-        address _dividendToken,
-        DividendRoute calldata _dividendRoute
+        address _dividendToken
     ) external virtual {
         // Runs in the extension: the payout configuration is validated once, at creation, and the
         // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated

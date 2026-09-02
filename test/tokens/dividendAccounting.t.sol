@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice A bare `DividendDistributionLogic` whose balances move through `_trackDividendShares`, the way a
 ///         real token's `_update` moves them. `DividendHarness` in `dividendsThirdAsset.t.sol` sets
@@ -22,7 +21,7 @@ contract SharesHarness is DividendDistributionLogic {
     address[3] internal excluded;
 
     function configure(address asset) external {
-        _initializeDividends(asset, noDividendRoute());
+        _initializeDividends(asset);
     }
 
     function openRound() external {

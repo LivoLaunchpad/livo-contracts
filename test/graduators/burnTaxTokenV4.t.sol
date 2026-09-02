@@ -8,7 +8,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Integration tests for the V4 buy-back-and-burn earnings-allocation leg.
 contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
@@ -31,11 +30,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps,
-                dividendsBps: 0,
-                liquidityBps: 0,
-                dividendToken: address(0),
-                dividendRoute: noDividendRoute()
+                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
             })
         });
         vm.prank(creator);
@@ -154,11 +149,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 1000,
             taxDecayDuration: 20 minutes,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 5000,
-                dividendsBps: 0,
-                liquidityBps: 0,
-                dividendToken: address(0),
-                dividendRoute: noDividendRoute()
+                burnBps: 5000, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
             })
         });
         vm.prank(creator);

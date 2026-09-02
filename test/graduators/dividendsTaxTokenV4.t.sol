@@ -11,25 +11,19 @@ import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {noDividendRoute, v3DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
-import {DividendRoute} from "src/types/DividendRoute.sol";
+import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: rounds,
 ///         the minimum-balance share rule, threshold-gated freezing, the push payout, and the
 ///         committed-funds guards that keep an undistributed pot away from every sweep path.
 contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
+    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
     address internal holder2 = makeAddr("holder2");
 
     /// @dev Creates a taxable V4 token routing `dividendsBps` of post-graduation earnings to holders,
     ///      paid in `asset`. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createDividendToken(uint16 dividendsBps, address asset) internal returns (address token) {
-        return _createDividendToken(dividendsBps, asset, noDividendRoute());
-    }
-
-    function _createDividendToken(uint16 dividendsBps, address asset, DividendRoute memory route)
-        internal
-        returns (address token)
-    {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivToken",
             symbol: "DIV",
@@ -46,7 +40,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset, dividendRoute: route
+                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset
             })
         });
         vm.prank(creator);
@@ -121,11 +115,27 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.dividendToken(), address(token), "sentinel resolved");
     }
 
-    /// @dev A route this chain could never execute at all is refused before any pool is looked up. A
-    ///      clone cannot be patched, so the buffer would accrue forever behind it.
-    function test_thirdAssetWithAnUnexecutableRouteRejected() public {
-        vm.expectRevert(DividendDistribution.UnsupportedDividendAsset.selector);
-        _createDividendToken(5_000, makeAddr("xStock"), v3DividendRoute(0)); // no V3 pool has a zero fee tier
+    /// @dev An asset with no Uniswap V2 pair at all is refused at creation. A clone cannot be patched,
+    ///      so the buffer would accrue forever behind it.
+    function test_thirdAssetWithNoPairRejected() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.NoPair)
+        );
+        _createDividendToken(5_000, makeAddr("xStock"));
+    }
+
+    /// @dev An asset the registry has blacklisted since is refused the same way. This is the ONE admin
+    ///      veto in the path — and it applies to tokens that already exist, not just new ones.
+    function test_blacklistedThirdAssetRejected() public {
+        // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
+        uint8 blacklisted = dividendSwapRegistry.TRUST_BLACKLISTED();
+        vm.prank(admin);
+        dividendSwapRegistry.setTrustStatus(DAI, blacklisted);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.Blacklisted)
+        );
+        _createDividendToken(5_000, DAI);
     }
 
     ///////////////////////// rounds /////////////////////////

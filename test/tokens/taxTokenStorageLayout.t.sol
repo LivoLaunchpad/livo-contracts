@@ -11,7 +11,6 @@ import {
     EarningsAllocationConfig,
     ILivoTaxableToken
 } from "src/interfaces/ILivoTaxableToken.sol";
-import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Pins the storage packing the taxable tokens depend on for gas, and the creation-time-only
 ///         nature of the earnings allocation.
@@ -33,10 +32,10 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     /// @dev The three `EarningsAllocation` bps + the eight tax fields: 240 bits, one slot. The per-trade
     ///      tax read and the earnings-split read must hit the SAME warm slot.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 22;
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 21;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 23;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 22;
 
     LivoTaxableTokenUniV2 internal tok;
 
@@ -69,11 +68,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             sellTaxDecayStartBps: 1_100,
             taxDecayDuration: 600,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 1_000,
-                dividendsBps: 2_000,
-                liquidityBps: 1_500,
-                dividendToken: address(0),
-                dividendRoute: noDividendRoute()
+                burnBps: 1_000, dividendsBps: 2_000, liquidityBps: 1_500, dividendToken: address(0)
             })
         });
         vm.prank(creator);
@@ -172,8 +167,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert();
-        ILivoTaxableToken(payable(address(token)))
-            .initializeEarningsAllocation(0, 10_000, 0, address(0), noDividendRoute());
+        ILivoTaxableToken(payable(address(token))).initializeEarningsAllocation(0, 10_000, 0, address(0));
 
         assertEq(token.dividendsBps(), 2_000, "the creation-time dividend share is unchanged");
     }

@@ -7,7 +7,6 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {TaxConfigs, TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Factory-layer tests for the linear tax-decay add-on: validation (caps + sentinel
 ///         consistency) and dispatch (a decay-only token — no long-term static tax — still routes to
@@ -213,11 +212,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
             sellTaxDecayStartBps: t.sellTaxDecayStartBps,
             taxDecayDuration: t.taxDecayDuration,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps,
-                dividendsBps: 0,
-                liquidityBps: 0,
-                dividendToken: address(0),
-                dividendRoute: noDividendRoute()
+                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
             })
         });
     }

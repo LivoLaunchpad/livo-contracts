@@ -10,8 +10,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoute, v2DividendRoute} from "test/helpers/DividendRouteHelpers.sol";
-import {DividendRoute} from "src/types/DividendRoute.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {LivoDividendLogicUniV2} from "src/tokens/LivoDividendLogicUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
@@ -31,13 +29,6 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
     function _createDividendToken(uint16 dividendsBps, address asset) internal returns (address token) {
-        return _createDividendToken(dividendsBps, asset, noDividendRoute());
-    }
-
-    function _createDividendToken(uint16 dividendsBps, address asset, DividendRoute memory route)
-        internal
-        returns (address token)
-    {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "DivV2",
             symbol: "DV2",
@@ -54,7 +45,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset, dividendRoute: route
+                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset
             })
         });
         vm.prank(creator);
@@ -65,11 +56,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     /// @dev A graduated dividend token with `buyer` holding the whole float.
     function _graduated(address asset) internal returns (LivoTaxableTokenUniV2 token) {
-        return _graduated(asset, noDividendRoute());
-    }
-
-    function _graduated(address asset, DividendRoute memory route) internal returns (LivoTaxableTokenUniV2 token) {
-        address addr = _createDividendToken(5_000, asset, route);
+        address addr = _createDividendToken(5_000, asset);
         testToken = addr;
         _launchpadBuy(addr, 1 ether);
         _graduateToken();
@@ -86,7 +73,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     /// @dev A token paying a third ERC20, bought on the direct WETH/DAI Uniswap-V2 pair.
     function _thirdAssetToken() internal returns (LivoTaxableTokenUniV2) {
-        return _graduated(DAI, v2DividendRoute());
+        return _graduated(DAI);
     }
 
     function _noHolders() internal pure returns (address[] memory list) {

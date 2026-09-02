@@ -9,7 +9,6 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {noDividendRoute} from "test/helpers/DividendRouteHelpers.sol";
 
 /// @notice Drives every path that can move a dividend-paying token's native balance: fresh earnings, the
 ///         permissionless stray-ETH sweep, the round lifecycle, the payout push, and ordinary transfers
@@ -107,11 +106,7 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationConfig({
-                burnBps: 2_000,
-                dividendsBps: 4_000,
-                liquidityBps: 1_000,
-                dividendToken: address(0),
-                dividendRoute: noDividendRoute()
+                burnBps: 2_000, dividendsBps: 4_000, liquidityBps: 1_000, dividendToken: address(0)
             })
         });
         vm.prank(creator);
