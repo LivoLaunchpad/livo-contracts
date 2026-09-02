@@ -57,10 +57,8 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         _launchpadBuy(token, 2 ether);
         _graduateToken();
 
-        // Route one lot of earnings through both tokens, identically. On the dividend token this is
-        // what opens round 1 (rounds open on first earnings, not at graduation), so what follows is
-        // measured with the feature actually live; on the plain token it is a no-op that keeps the two
-        // set-ups symmetric.
+        // Route one lot of earnings through both tokens, identically, so both set-ups are symmetric
+        // and the dividend token has a buffer big enough to fund a stream when a measurement wants one.
         vm.deal(address(this), 1 ether);
         LivoTaxableTokenUniV4(payable(token)).accrueFees{value: 1 ether}();
         return LivoTaxableTokenUniV4(payable(token));
@@ -68,74 +66,79 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
 
     receive() external payable {}
 
-    /// @dev Three wallet-to-wallet transfers, chosen to isolate the three cases the design cares
-    ///      about: the ONE-OFF first-ever touch of an account slot, a steady-state transfer whose
-    ///      sender sets a new minimum, and a steady-state transfer that writes nothing at all.
-    function _measure(LivoTaxableTokenUniV4 token)
+    /// @dev Three wallet-to-wallet transfers, chosen to isolate the three cases the accumulator design
+    ///      cares about: the ONE-OFF first-ever touch of an account slot, a steady-state transfer while
+    ///      the stream is running, and a second transfer in the SAME block, where the accumulator cannot
+    ///      have moved and nothing is written.
+    /// @param streaming whether to fund a live stream first. IDLE is the common case by a wide margin —
+    ///        a 15-minute drip fires only after a distribution — and it is the case where the feature
+    ///        costs almost nothing, because `lastDividendUpdate == dividendPeriodFinish` short-circuits
+    ///        the whole hook on one warm SLOAD.
+    function _measure(LivoTaxableTokenUniV4 token, bool streaming)
         internal
-        returns (uint256 firstEver, uint256 warmDecrease, uint256 warmNoWrite)
+        returns (uint256 firstEver, uint256 warm, uint256 sameBlock)
     {
         IERC20 erc = IERC20(address(token));
         uint256 unit = erc.balanceOf(buyer) / 100;
 
-        // 1. Both account slots are zero, so both pay the zero->non-zero SSTORE. Once per account
-        //    per token, forever — not a recurring cost.
+        if (streaming && token.hasDividends()) token.processDividends(0, new address[](0));
+
+        // 1. Both account slots are zero, so both pay the zero->non-zero SSTORE if the accumulator has
+        //    moved. Once per account per token, forever — not a recurring cost.
+        skip(1);
         vm.startPrank(buyer);
         uint256 g = gasleft();
         erc.transfer(holderA, unit);
         firstEver = g - gasleft();
 
-        // 2. Both slots are now warm and non-zero. The sender's balance falls below its running
-        //    minimum, so it writes its account slot AND the denominator; the receiver writes
-        //    nothing, because a minimum never rises.
+        // 2. Steady state: both slots are warm and non-zero, and a second of the stream has elapsed.
+        skip(1);
         g = gasleft();
         erc.transfer(holderA, unit);
-        warmDecrease = g - gasleft();
-        vm.stopPrank();
+        warm = g - gasleft();
 
-        // 3. Warm the receiver's slot, then measure a transfer where NOTHING is written: holderA
-        //    arrived mid-round so its minimum is 0 and cannot fall further, and holderB is only
-        //    increasing.
-        vm.startPrank(holderA);
-        erc.transfer(holderB, unit / 4);
+        // 3. Same block as the transfer above: the accumulator cannot have advanced, so every account
+        //    is already checkpointed at the current value and nothing is written at all.
         g = gasleft();
-        erc.transfer(holderB, unit / 4);
-        warmNoWrite = g - gasleft();
+        erc.transfer(holderA, unit);
+        sameBlock = g - gasleft();
         vm.stopPrank();
     }
 
     function test_gas_hotPathOverheadOfDividends() public {
-        LivoTaxableTokenUniV4 plain = _create(0);
-        (uint256 pFirst, uint256 pDecrease, uint256 pNoWrite) = _measure(plain);
+        LivoTaxableTokenUniV4 plainIdle = _create(0);
+        (uint256 pFirst, uint256 pWarm, uint256 pSame) = _measure(plainIdle, false);
 
-        LivoTaxableTokenUniV4 div = _create(5_000);
-        (uint256 dFirst, uint256 dDecrease, uint256 dNoWrite) = _measure(div);
+        LivoTaxableTokenUniV4 divIdle = _create(5_000);
+        (uint256 iFirst, uint256 iWarm, uint256 iSame) = _measure(divIdle, false);
+
+        LivoTaxableTokenUniV4 divLive = _create(5_000);
+        (uint256 sFirst, uint256 sWarm, uint256 sSame) = _measure(divLive, true);
 
         console.log("--- wallet-to-wallet transfer, execution gas ---");
-        console.log("no dividends : firstEver / warmDecrease / warmNoWrite", pFirst, pDecrease, pNoWrite);
-        console.log("dividends    : firstEver / warmDecrease / warmNoWrite", dFirst, dDecrease, dNoWrite);
-        console.log(
-            "delta        : firstEver / warmDecrease / warmNoWrite",
-            dFirst - pFirst,
-            dDecrease - pDecrease,
-            dNoWrite - pNoWrite
-        );
+        console.log("no dividends       : firstEver / warm / sameBlock", pFirst, pWarm, pSame);
+        console.log("dividends, idle    : firstEver / warm / sameBlock", iFirst, iWarm, iSame);
+        console.log("dividends, streaming: firstEver / warm / sameBlock", sFirst, sWarm, sSame);
 
         // A token WITHOUT dividends must stay in its old envelope: the gate is a bit in the `pair`
         // slot `_update` already loads, so the only cost is a JUMP into an empty virtual hook.
         assertLt(pFirst, 60_000, "a non-dividend token's transfer must not have regressed");
 
-        // ONE-OFF. Two accounts, each paying a 20k zero->non-zero SSTORE the first time they are
-        // ever tracked, plus the round reads. It never recurs for those accounts.
-        assertLt(dFirst - pFirst, 55_000, "first-ever touch of two account slots");
+        // IDLE — the case that dominates. Between streams the accumulator cannot move, so the hook
+        // short-circuits on the global slot and writes nothing, ever.
+        assertLt(iFirst - pFirst, 6_000, "an idle dividend token barely costs anything");
+        assertLt(iWarm - pWarm, 4_000, "and keeps costing barely anything on every later transfer");
 
-        // STEADY STATE, the number that actually matters. The sender writes its (warm, non-zero)
-        // account slot and the denominator; the receiver writes nothing.
-        assertLt(dDecrease - pDecrease, 12_000, "a steady-state transfer that lowers a minimum");
+        // STREAMING, ONE-OFF. Two accounts each paying a zero->non-zero SSTORE the first time they are
+        // ever settled, plus the global slot and the eligible-supply reads.
+        assertLt(sFirst - pFirst, 60_000, "first-ever settle of two account slots mid-stream");
 
-        // STEADY STATE, cheapest case: a minimum never rises, so an increase after the first touch
-        // is reads only.
-        assertLt(dNoWrite - pNoWrite, 6_000, "a transfer that sets no new minimum writes nothing");
+        // STREAMING, STEADY STATE: warm account slots plus the global one.
+        assertLt(sWarm - pWarm, 12_000, "a steady-state transfer while the stream is running");
+
+        // STREAMING, SAME BLOCK: the accumulator cannot have advanced, so `paid == rpt` on both sides
+        // and the hook falls through without a single write.
+        assertLt(sSame - pSame, 4_000, "a same-block repeat writes nothing");
     }
 
     /// @dev The numbers above are deltas on `_update` alone. What a USER pays is the whole
@@ -155,13 +158,20 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         console.log("V4 sell   no-div / div / +bps", pSell, dSell, _bps(pSell, dSell));
 
         // A pool trade is the operation that competes with other launchpads on gas. Only ONE side of
-        // it is ever tracked — the `pair` is excluded — so the overhead lands on a single account slot.
+        // it is ever settled — the `pair` is excluded — so the overhead lands on a single account slot
+        // plus the shared accumulator slot.
         assertLt(_bps(pBuy, dBuy), 1_000, "a V4 buy must stay under +10%");
         assertLt(_bps(pSell, dSell), 1_000, "a V4 sell must stay under +10%");
+        // A bare transfer has no pool cost to amortise against, so the same absolute overhead is a much
+        // larger fraction of it. Still bounded, and only while a stream is actually running.
+        assertLt(_bps(pTransfer, dTransfer), 4_000, "a wallet-to-wallet transfer must stay under +40%");
     }
 
     /// @dev Steady-state cost of the three operations a user actually performs, each measured as a
     ///      whole transaction (21k intrinsic included).
+    /// @dev Measured with a LIVE STREAM and a second of elapsed time before each measured call, i.e.
+    ///      the worst case rather than the common one: between distributions the accumulator cannot
+    ///      move and the hook writes nothing at all.
     function _measureOperations(LivoTaxableTokenUniV4 token)
         internal
         returns (uint256 transferGas, uint256 buyGas, uint256 sellGas)
@@ -170,11 +180,17 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         testToken = address(token);
         uint256 unit = erc.balanceOf(buyer) / 1000;
 
+        if (token.hasDividends()) token.processDividends(0, new address[](0));
+
         // Warm every account slot first, so what is left is the recurring cost rather than the
-        // one-off zero->non-zero write.
+        // one-off zero->non-zero write. The `skip` before the warm-up matters: with the accumulator
+        // unmoved the hook writes nothing, so a same-block warm-up would not warm the account slots at
+        // all and every "steady state" number below would really be a first-touch one.
+        skip(1);
         vm.startPrank(buyer);
         erc.transfer(holderA, unit);
         erc.transfer(holderA, unit);
+        skip(1);
         uint256 g = gasleft();
         erc.transfer(holderA, unit);
         transferGas = g - gasleft() + 21_000;
@@ -182,12 +198,18 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
 
         vm.deal(holderB, 1 ether);
         _swapBuy(holderB, 0.01 ether, 0, true); // warm holderB's slot
+        skip(1);
+        _swapBuy(holderB, 0.01 ether, 0, true); // and settle it once the accumulator has moved
+        skip(1);
         g = gasleft();
         _swapBuy(holderB, 0.01 ether, 0, true);
         buyGas = g - gasleft() + 21_000;
 
-        uint256 sellAmount = erc.balanceOf(holderB) / 4;
+        uint256 sellAmount = erc.balanceOf(holderB) / 8;
         _swapSell(holderB, sellAmount, 0, true); // warm the sell path
+        skip(1);
+        _swapSell(holderB, sellAmount, 0, true); // and settle it once the accumulator has moved
+        skip(1);
         g = gasleft();
         _swapSell(holderB, sellAmount, 0, true);
         sellGas = g - gasleft() + 21_000;

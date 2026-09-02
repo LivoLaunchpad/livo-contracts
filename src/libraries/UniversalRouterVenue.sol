@@ -35,32 +35,8 @@ library UniversalRouterVenue {
     /// @notice The universal router's "the router itself" recipient sentinel (`Constants.ADDRESS_THIS`).
     address internal constant ROUTER_ITSELF = address(2);
 
-    /// @notice Buys `asset` on the V3 pool of the `quote`/`asset` pair with fee tier `fee`, delivering it
-    ///         to `address(this)`.
-    /// @param minOut minimum output in the ASSET's own decimals.
-    /// @return ok false if the swap reverted (dead pool, slippage floor missed, unknown fee tier).
-    function swapNativeToAssetV3(
-        address router,
-        address quote,
-        address asset,
-        uint24 fee,
-        uint256 nativeIn,
-        uint256 minOut
-    ) internal returns (bool ok) {
-        bytes[] memory inputs = new bytes[](2);
-        inputs[0] = abi.encode(ROUTER_ITSELF, nativeIn);
-        // `payerIsUser = false`: the router pays with the WETH the first command just wrapped for it.
-        inputs[1] = abi.encode(address(this), nativeIn, minOut, abi.encodePacked(quote, fee, asset), false);
-
-        (ok,) = router.call{value: nativeIn}(
-            abi.encodeCall(
-                IUniversalRouter.execute, (abi.encodePacked(WRAP_ETH, V3_SWAP_EXACT_IN), inputs, block.timestamp)
-            )
-        );
-    }
-
     /// @notice Buys the token an encoded V3 `path` ends at, spending `nativeIn` and delivering the
-    ///         proceeds to `address(this)`. The multi-hop counterpart of `swapNativeToAssetV3`.
+    ///         proceeds to `address(this)`. A single-hop route is just a two-token `path`.
     /// @dev `path` is Uniswap V3's own encoding — `token (20) | fee (3) | token (20)`, repeating — so it
     ///      is handed to the router untouched. It MUST start at the router's WETH: the `WRAP_ETH`
     ///      command funds the router in WETH, and a path starting anywhere else would spend a balance
@@ -98,7 +74,7 @@ library UniversalRouterVenue {
         uint256 minOut
     ) internal returns (bool ok) {
         // The router's params are `uint128`. `nativeIn` is capped far below that by the freeze cap, but
-        // `minOut` comes from whoever called `processRound`: truncating it would SILENTLY weaken the
+        // `minOut` comes from whoever called `processDividends`: truncating it would SILENTLY weaken the
         // floor they asked for, so an unrepresentable one fails the swap instead.
         if (minOut > type(uint128).max || nativeIn > type(uint128).max) return false;
 

@@ -416,7 +416,7 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///      see that a pool exists; it cannot see whether the pool is DEEP enough to keep converting, and
     ///      it cannot see whether the pool's price tracks the asset's real market. Both have to be
     ///      checked by whoever registers the route:
-    ///        - depth: quote the path at `MAX_DIVIDEND_PER_FREEZE` and at ten times that, and refuse a
+    ///        - depth: quote the path at `MAX_DIVIDEND_PER_CONVERSION` and at ten times that, and refuse a
     ///          pool whose output stops growing with the input — an exhausted pool can carry a large
     ///          reported TVL and still fill nothing.
     ///        - price: compare the quoted price against a real market reference for the underlying, over

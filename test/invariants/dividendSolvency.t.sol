@@ -11,9 +11,9 @@ import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Drives every path that can move a dividend-paying token's native balance: fresh earnings, the
-///         permissionless stray-ETH sweep, the round lifecycle, the payout push, and ordinary transfers
+///         permissionless stray-ETH sweep, the distribution, the payout push, and ordinary transfers
 ///         between holders. Every call is wrapped in `try` so a legitimately-reverting call (threshold not
-///         reached, payout window still open, cooldown) does not end the run — the point is to reach as
+///         reached, cooldown) does not end the run — the point is to reach as
 ///         many interleavings as possible, not to assert on any single one.
 contract DividendSolvencyHandler is Test {
     LivoTaxableTokenUniV4 public immutable TOKEN;
@@ -43,10 +43,10 @@ contract DividendSolvencyHandler is Test {
         try TOKEN.sweepStrayEth() {} catch {}
     }
 
-    /// @dev Freeze-only: the single entry point does whichever step the round is due for, so a call with
-    ///      no holders exercises the freeze and the rollover paths on their own.
+    /// @dev Fund-only: the single entry point does whichever of conversion / funding / pushing there is
+    ///      anything to do, so a call with no holders exercises the conversion path on its own.
     function process() public {
-        try TOKEN.processRound(0, new address[](0)) {} catch {}
+        try TOKEN.processDividends(0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -54,7 +54,7 @@ contract DividendSolvencyHandler is Test {
         for (uint256 i; i < holders.length; ++i) {
             batch[i] = holders[(i + seed) % holders.length];
         }
-        try TOKEN.processRound(0, batch) {} catch {}
+        try TOKEN.processDividends(0, batch) {} catch {}
     }
 
     function transferBetweenHolders(uint256 seed, uint96 raw) public {
@@ -149,15 +149,18 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         assertGe(address(divToken).balance, committed, "native balance must cover every committed bucket");
     }
 
-    /// @dev Over-distribution is impossible by construction: the denominator is frozen while individual
-    ///      minima can only fall. If this ever trips, that argument has been broken.
-    function invariant_roundNeverPaysMoreThanItsPot() public view {
-        assertLe(divToken.roundPaid(), divToken.roundPot(), "the round paid out more than it froze");
+    /// @dev Over-distribution is impossible by construction: the accumulator truncates in the holders'
+    ///      favour at every step, so what has been promised can never exceed what was funded. If this
+    ///      ever trips, that argument has been broken.
+    function invariant_promisedNeverExceedsFunded() public view {
+        uint256 promised =
+            divToken.previewDividend(buyer) + divToken.previewDividend(holderA) + divToken.previewDividend(holderB);
+        assertLe(promised, divToken.dividendsOwed(), "more promised to holders than was ever funded");
     }
 
-    /// @dev The denominator is the sum of tracked minima, so it can never exceed the eligible supply it
-    ///      was seeded from.
-    function invariant_denominatorNeverExceedsSupply() public view {
-        assertLe(uint256(divToken.roundTotalShares()), IERC20(address(divToken)).totalSupply(), "denominator sane");
+    /// @dev The stream can never run past its own end, so the accumulator's clock is always clamped to
+    ///      `dividendPeriodFinish`. A `lastDividendUpdate` beyond it would double-count the tail.
+    function invariant_accumulatorClockNeverOutrunsTheStream() public view {
+        assertLe(divToken.lastDividendUpdate(), divToken.dividendPeriodFinish(), "clock outran the stream");
     }
 }

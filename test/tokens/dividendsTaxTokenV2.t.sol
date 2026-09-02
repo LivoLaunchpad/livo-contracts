@@ -137,19 +137,20 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     ///////////////////////// native leg /////////////////////////
 
-    function test_nativeDividends_accrueFreezeAndPay() public {
+    function test_nativeDividends_accrueFundAndPay() public {
         LivoTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
         assertEq(token.pendingNative(), 0.5 ether, "half the earnings buffered for holders");
 
-        skip(token.MIN_ROUND_DURATION() + 1);
-        token.processRound(0, _noHolders());
+        token.processDividends(0, _noHolders());
+        assertEq(token.dividendsOwed(), 0.5 ether, "the whole buffer funded the stream");
+        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 before = buyer.balance;
         address[] memory holders = new address[](1);
         holders[0] = buyer;
-        token.processRound(0, holders);
-        assertEq(buyer.balance - before, 0.5 ether, "sole holder takes the pot");
+        token.processDividends(0, holders);
+        assertApproxEqRel(buyer.balance - before, 0.5 ether, 1e12, "sole holder takes the whole stream");
     }
 
     /// @dev THE automatic leak. `_processCollectedTokens` fires on every sell that crosses the swap-back
@@ -170,19 +171,18 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertGe(address(token).balance, token.pendingNative(), "buffer backed by a real balance");
     }
 
-    /// @dev A frozen, undelivered pot is holders' money sitting in the token's balance. The swap-back's
-    ///      ETH sweep must not see it either.
-    function test_frozenPotSurvivesTheSwapBack() public {
+    /// @dev Undelivered dividends are holders' money sitting in the token's balance. The swap-back's
+    ///      ETH sweep must not see them either.
+    function test_undeliveredDividendsSurviveTheSwapBack() public {
         LivoTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
-        skip(token.MIN_ROUND_DURATION() + 1);
-        token.processRound(0, _noHolders());
-        assertEq(token.roundPot(), 0.5 ether, "pot frozen");
+        token.processDividends(0, _noHolders());
+        assertEq(token.dividendsOwed(), 0.5 ether, "the stream is funded");
 
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 2;
         _swapSellV2(buyer, address(token), sellAmount, 0, true);
 
-        assertEq(token.roundPot(), 0.5 ether, "pot untouched");
+        assertEq(token.dividendsOwed(), 0.5 ether, "owed untouched");
         assertGe(address(token).balance, 0.5 ether, "and still fully backed");
     }
 
@@ -229,7 +229,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertGe(IERC20(address(token)).balanceOf(address(token)), buffered, "still backed");
     }
 
-    function test_selfTokenLeg_freezesAndPaysInTokens() public {
+    function test_selfTokenLeg_fundsAndPaysInTokens() public {
         LivoTaxableTokenUniV2 token = _selfToken();
 
         // Sell repeatedly so the token-space buffer crosses SWAP_THRESHOLD.
@@ -245,15 +245,15 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         uint256 buffered = token.dividendPendingTokens();
         vm.assume(buffered >= token.SWAP_THRESHOLD());
 
-        skip(token.MIN_ROUND_DURATION() + 1);
-        token.processRound(0, _noHolders());
-        assertEq(token.roundPot(), buffered, "the token buffer became the pot, with no conversion");
+        token.processDividends(0, _noHolders());
+        assertEq(token.dividendsOwed(), buffered, "the token buffer funded the stream, with no conversion");
         assertEq(token.dividendPendingTokens(), 0, "buffer consumed");
+        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 before = IERC20(address(token)).balanceOf(buyer);
         address[] memory holders = new address[](1);
         holders[0] = buyer;
-        token.processRound(0, holders);
+        token.processDividends(0, holders);
         assertGt(IERC20(address(token)).balanceOf(buyer), before, "holder paid in the token itself");
     }
 
@@ -273,15 +273,14 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      into `_sweepableAsset`, and the only thing between the owner and holders' money is the
     ///      `committedDividends` subtraction. The stray balance dealt on top is what proves the
     ///      subtraction is exact rather than the rescue being a blanket no-op.
-    function test_rescueTokens_cannotTakeAnUndeliveredThirdAssetPot() public {
+    function test_rescueTokens_cannotTakeUndeliveredThirdAssetDividends() public {
         LivoTaxableTokenUniV2 token = _thirdAssetToken();
         _accrue(token, 1 ether);
-        skip(token.MIN_ROUND_DURATION() + 1);
-        token.processRound(0, _noHolders());
+        token.processDividends(0, _noHolders());
 
-        uint256 pot = token.roundPot();
-        assertGt(pot, 0, "DAI pot frozen");
-        assertEq(token.committedDividends(DAI), pot, "the whole pot is owed to holders");
+        uint256 pot = token.dividendsOwed();
+        assertGt(pot, 0, "a DAI stream is funded");
+        assertEq(token.committedDividends(DAI), pot, "the whole of it is owed to holders");
         assertEq(IERC20(DAI).balanceOf(address(token)), pot, "backed by a real DAI balance");
 
         uint256 stray = 123e18;
@@ -298,19 +297,18 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev The dividend entry points are stubs that `delegatecall` into a separate contract,
     ///      because their bodies do not fit in the clone's implementation alongside everything else.
     ///      What has to hold for that to be safe is that the extension writes the TOKEN's storage and
-    ///      keeps none of its own — which is exactly what a completed round lets us observe.
-    function test_extension_roundStateLandsOnTheTokenNotTheExtension() public {
+    ///      keeps none of its own — which is exactly what a funded stream lets us observe.
+    function test_extension_streamStateLandsOnTheTokenNotTheExtension() public {
         LivoTaxableTokenUniV2 token = _nativeToken();
         LivoDividendLogicUniV2 extension = LivoDividendLogicUniV2(payable(token.dividendLogic()));
 
         _accrue(token, 1 ether);
-        skip(token.MIN_ROUND_DURATION() + 1);
-        token.processRound(0, _noHolders());
+        token.processDividends(0, _noHolders());
 
-        assertGt(token.roundPot(), 0, "the token's pot was funded through the delegatecall");
-        assertTrue(token.roundFrozen(), "the token's round is frozen");
-        assertEq(extension.roundPot(), 0, "the extension kept nothing of its own");
-        assertEq(extension.currentRound(), 0, "the extension never opened a round of its own");
+        assertGt(token.dividendsOwed(), 0, "the token's stream was funded through the delegatecall");
+        assertGt(token.dividendRate(), 0, "and its slope is set");
+        assertEq(extension.dividendsOwed(), 0, "the extension kept nothing of its own");
+        assertEq(extension.dividendRate(), 0, "and never ran a stream of its own");
         assertEq(address(extension).balance, 0, "the extension holds no money");
     }
 
@@ -352,31 +350,29 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     /// @dev The threshold used to stop applying the moment the V2 tax window closed, on the theory that
     ///      no further earnings could arrive. They can: `accrueFees` and `sweepStrayEth` are both
-    ///      permissionless. That made a free grief — send a wei, sweep it into `pendingNative`, freeze a
-    ///      pot every holder's share rounds to zero out of, and the round cannot settle for a whole
-    ///      `PAYOUT_WINDOW`, repeatably, for gas. Staleness is the only bypass now, and reaching it costs
-    ///      30 days of a completely idle token.
-    function test_aWeiPushedInAfterTheTaxWindowCannotForceAFreeze() public {
+    ///      permissionless. Staleness is the only bypass now, and reaching it costs 30 days of a
+    ///      completely idle token.
+    /// @dev Under the drip a dust distribution could no longer stall anything even if it went through —
+    ///      it would just set a dust slope. The threshold is a gas floor now, not a safety one; this
+    ///      pins that it still holds.
+    function test_aWeiPushedInAfterTheTaxWindowCannotForceADistribution() public {
         LivoTaxableTokenUniV2 token = _nativeToken();
         skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
 
         vm.deal(address(token), address(token).balance + 2 wei);
         token.sweepStrayEth();
         assertGt(token.pendingNative(), 0, "the attacker's dust did reach the buffer");
-        skip(token.MIN_ROUND_DURATION() + 1);
 
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        token.processRound(0, _noHolders());
-        assertFalse(token.roundFrozen(), "a dust pot cannot stall the round");
+        token.processDividends(0, _noHolders());
+        assertEq(token.dividendsOwed(), 0, "no dust stream was funded");
     }
 
     /// @dev The SELF-TOKEN counterpart of the grief above, which the native fix did not reach: the
-    ///      token-space freeze kept "the tax window has closed" as its bypass, and that hands the same
-    ///      free stall to anyone. Donate dust TOKENS to the contract, let the post-window drain in
-    ///      `_update` carve the dividend slice out of them, freeze a pot every holder's share rounds to
-    ///      zero out of, and the round cannot settle for a whole `PAYOUT_WINDOW`. Staleness is the only
-    ///      bypass here too.
-    function test_dustDonatedAfterTheTaxWindowCannotForceASelfTokenFreeze() public {
+    ///      token-space funding kept "the tax window has closed" as its bypass. Donate dust TOKENS to
+    ///      the contract and the post-window drain in `_update` carves a dividend slice out of them.
+    ///      Staleness is the only bypass here too.
+    function test_dustDonatedAfterTheTaxWindowCannotForceASelfTokenDistribution() public {
         LivoTaxableTokenUniV2 token = _selfToken();
         skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
 
@@ -390,10 +386,9 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertGt(buffered, 0, "the dust did reach the dividend buffer");
         assertLt(buffered, token.SWAP_THRESHOLD(), "and it is far below the threshold");
 
-        skip(token.MIN_ROUND_DURATION() + 1);
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        token.processRound(0, _noHolders());
-        assertFalse(token.roundFrozen(), "a dust pot cannot stall the self-token round either");
+        token.processDividends(0, _noHolders());
+        assertEq(token.dividendsOwed(), 0, "no dust stream was funded on the self-token leg either");
     }
 
     ///////////////////////// creation-time guard /////////////////////////

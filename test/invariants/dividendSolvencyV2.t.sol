@@ -62,10 +62,10 @@ contract DividendSolvencyV2Handler is Test, V2SwapHelpers {
         try TOKEN.processLiquidity(bound(uint256(raw), 0, 1)) {} catch {}
     }
 
-    /// @dev Freeze-only: the single entry point does whichever step the round is due for, so a call with
-    ///      no holders exercises the freeze and the rollover paths on their own.
+    /// @dev Fund-only: the single entry point does whichever of conversion / funding / pushing there is
+    ///      anything to do, so a call with no holders exercises the conversion path on its own.
     function process() public {
-        try TOKEN.processRound(0, new address[](0)) {} catch {}
+        try TOKEN.processDividends(0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -73,7 +73,7 @@ contract DividendSolvencyV2Handler is Test, V2SwapHelpers {
         for (uint256 i; i < holders.length; ++i) {
             batch[i] = holders[(i + seed) % holders.length];
         }
-        try TOKEN.processRound(0, batch) {} catch {}
+        try TOKEN.processDividends(0, batch) {} catch {}
     }
 
     function transferBetweenHolders(uint256 seed, uint96 raw) public {
@@ -171,15 +171,18 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
         assertGe(address(divToken).balance, committed, "native balance must cover the native commitments");
     }
 
-    /// @dev Over-distribution is impossible by construction; if this trips, the frozen-denominator
-    ///      argument has been broken.
-    function invariant_roundNeverPaysMoreThanItsPot() public view {
-        assertLe(divToken.roundPaid(), divToken.roundPot(), "the round paid out more than it froze");
+    /// @dev Over-distribution is impossible by construction: the accumulator truncates in the holders'
+    ///      favour at every step. If this trips, that argument has been broken.
+    function invariant_promisedNeverExceedsFunded() public view {
+        uint256 promised =
+            divToken.previewDividend(buyer) + divToken.previewDividend(holderA) + divToken.previewDividend(holderB);
+        assertLe(promised, divToken.dividendsOwed(), "more promised to holders than was ever funded");
     }
 
-    /// @dev The denominator is a sum of per-account minima, so it can never exceed the supply it was
-    ///      seeded from — even as the burn leg shrinks that supply underneath it.
-    function invariant_denominatorNeverExceedsSupply() public view {
-        assertLe(uint256(divToken.roundTotalShares()), IERC20(address(divToken)).totalSupply(), "denominator sane");
+    /// @dev The stream can never run past its own end, so the accumulator's clock is always clamped to
+    ///      `dividendPeriodFinish`. A `lastDividendUpdate` beyond it would double-count the tail — even
+    ///      as the burn leg shrinks the eligible supply underneath it.
+    function invariant_accumulatorClockNeverOutrunsTheStream() public view {
+        assertLe(divToken.lastDividendUpdate(), divToken.dividendPeriodFinish(), "clock outran the stream");
     }
 }

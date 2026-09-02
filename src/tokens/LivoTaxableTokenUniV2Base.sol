@@ -66,7 +66,7 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
     ///         so the token side is kept, not bought back; `processLiquidity` sells only half for the ETH side.
     uint256 public liquidityPendingTokens;
 
-    /// @notice Tax TOKENS set aside for a SELF-TOKEN dividend payout, awaiting a `processRound` freeze.
+    /// @notice Tax TOKENS set aside for a SELF-TOKEN dividend payout, awaiting a distribution.
     ///         V2 buffers this payout in token space, not as native, because a V2 pair reverts `INVALID_TO`
     ///         when asked to deliver a token to its own address — the ETH round trip every other venue
     ///         uses is simply not available here. Tracked apart from the tax pool for the same reason
@@ -113,9 +113,9 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
         uint256 reserved = liquidityBps != 0 ? liquidityPendingTokens : 0;
         // ONE cold read (`dividendToken`) decides the whole dividend leg. Only a self-token payout has
         // anything in token space: for a native or third-asset payout both `dividendPendingTokens` and
-        // the pot are structurally zero, and reading them on every sell that reaches the swap-back
-        // branch is a cold SLOAD paid for a value that cannot be non-zero.
-        if (hasDividends && dividendToken == asset) reserved += dividendPendingTokens + (roundPot - roundPaid);
+        // `dividendsOwed` are structurally zero, and reading them on every sell that reaches the
+        // swap-back branch is a cold SLOAD paid for a value that cannot be non-zero.
+        if (hasDividends && dividendToken == asset) reserved += dividendPendingTokens + dividendsOwed;
         return balance > reserved ? balance - reserved : 0;
     }
 }

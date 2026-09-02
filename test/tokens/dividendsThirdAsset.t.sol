@@ -24,8 +24,8 @@ contract DividendHarness is DividendDistributionLogic {
         _initializeDividends(asset);
     }
 
-    function openRound() external {
-        _openDividendRound();
+    function activate() external {
+        _activateDividends();
     }
 
     function accrue() external payable {
@@ -83,18 +83,22 @@ contract DividendsThirdAssetTests is Test {
         harness = _harness(DAI);
     }
 
-    /// @dev A harness paying `asset`, configured and ready to have its round opened.
+    /// @dev A harness paying `asset`, configured and ready to be activated.
     function _harness(address asset) internal returns (DividendHarness h) {
         h = new DividendHarness();
         h.configure(asset);
     }
 
-    function _fundAndOpen(DividendHarness h) internal {
+    function _fundAndActivate(DividendHarness h) internal {
         h.setBalance(holder, 1_000e18);
-        h.openRound();
+        h.activate();
         vm.deal(address(this), 1 ether);
         h.accrue{value: 1 ether}();
-        skip(h.MIN_ROUND_DURATION() + 1);
+    }
+
+    /// @dev Lets a funded stream run all the way out, so the sole holder has accrued the whole of it.
+    function _drain(DividendHarness h) internal {
+        skip(h.DIVIDEND_DRIP_DURATION());
     }
 
     function _holders() internal view returns (address[] memory list) {
@@ -108,41 +112,50 @@ contract DividendsThirdAssetTests is Test {
 
     //////////////////////// the payout shape //////////////////////
 
-    function test_thirdAsset_boughtOnFreezeAndPaidToHolders() public {
-        _fundAndOpen(harness);
+    function test_thirdAsset_boughtOnFundingAndStreamedToHolders() public {
+        _fundAndActivate(harness);
         assertEq(harness.pendingNative(), 1 ether, "native buffered for the DAI payout");
 
-        harness.processRound(0, _noHolders());
+        harness.processDividends(0, _noHolders());
 
-        uint256 pot = harness.roundPot();
+        uint256 pot = harness.dividendsOwed();
         assertGt(pot, 0, "native converted into DAI");
-        // A swapping payout converts at most `MAX_DIVIDEND_PER_FREEZE` per freeze; the rest stays
+        // A swapping payout converts at most `MAX_DIVIDEND_PER_CONVERSION` at a time; the rest stays
         // buffered.
-        assertEq(harness.pendingNative(), 1 ether - harness.MAX_DIVIDEND_PER_FREEZE(), "only the cap was converted");
-        assertEq(IERC20(DAI).balanceOf(address(harness)), pot, "the pot is a real DAI balance");
-        // What every sweep path subtracts: an undelivered third-asset pot is COMMITTED, not stray, so
+        assertEq(harness.pendingNative(), 1 ether - harness.MAX_DIVIDEND_PER_CONVERSION(), "only the cap was converted");
+        assertEq(IERC20(DAI).balanceOf(address(harness)), pot, "the distribution is a real DAI balance");
+        // What every sweep path subtracts: an undelivered third-asset payout is COMMITTED, not stray, so
         // `rescueTokens` cannot hand holders' money to the owner while it is still owed.
-        assertEq(harness.committedDividends(DAI), pot, "the whole pot is owed to holders");
+        assertEq(harness.committedDividends(DAI), pot, "the whole of it is owed to holders");
 
-        harness.processRound(0, _holders());
+        // It arrives as a SLOPE, not a drop: nothing is claimable at the instant of funding. (This call
+        // converts the next capped slice too, which is why the total owed is re-read below.)
+        harness.processDividends(0, _holders());
+        assertEq(IERC20(DAI).balanceOf(holder), 0, "nothing accrues in zero seconds");
 
-        assertEq(IERC20(DAI).balanceOf(holder), pot, "sole holder paid the whole pot, in DAI");
-        assertEq(harness.committedDividends(DAI), 0, "nothing left owed");
+        _drain(harness);
+        uint256 owed = harness.dividendsOwed();
+        harness.processDividends(0, _holders());
+
+        assertApproxEqRel(IERC20(DAI).balanceOf(holder), owed, 1e12, "sole holder paid the whole stream, in DAI");
+        // What is still owed is the slice this very call converted, not an undelivered remainder of the
+        // one that just drained: a payout call funds the next stream on its way through.
+        assertApproxEqRel(
+            harness.committedDividends(DAI), harness.dividendsOwed(), 1e12, "only the freshly-funded slice is owed"
+        );
     }
 
-    /// @dev The per-freeze cap bounds one sandwich, it does not cap what a token can ever pay: whatever
-    ///      it leaves behind stays buffered and converts in a later round, so nothing strands.
-    function test_thirdAsset_cappedFreezeLeavesTheRemainderForTheNextRound() public {
-        _fundAndOpen(harness);
-        uint256 cap = harness.MAX_DIVIDEND_PER_FREEZE();
+    /// @dev The per-conversion cap bounds one sandwich, it does not cap what a token can ever pay:
+    ///      whatever it leaves behind stays buffered and converts on a later call, so nothing strands.
+    function test_thirdAsset_cappedConversionLeavesTheRemainderBuffered() public {
+        _fundAndActivate(harness);
+        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
 
-        harness.processRound(0, _holders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "the first freeze took exactly the cap");
-        assertEq(harness.currentRound(), 2, "a fully paid round rolls over in the same call");
+        harness.processDividends(0, _holders());
+        assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion took exactly the cap");
 
-        skip(harness.MIN_ROUND_DURATION() + 1);
-        harness.processRound(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "the next round takes the next slice");
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "and the next one takes the next slice");
     }
 
     //////////////////////// the liquidity proof //////////////////////
@@ -240,7 +253,7 @@ contract DividendsThirdAssetTests is Test {
     ///      token was configured for it stops converting on the next freeze. The buffer is not lost —
     ///      it stays put, and the dead-pool escape eventually downgrades the token to native.
     function test_blacklistingAnAssetStopsAnExistingTokenFromConverting() public {
-        _fundAndOpen(harness);
+        _fundAndActivate(harness);
 
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
         uint8 blacklisted = registry.TRUST_BLACKLISTED();
@@ -248,177 +261,154 @@ contract DividendsThirdAssetTests is Test {
         registry.setTrustStatus(DAI, blacklisted);
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processRound(0, _noHolders());
+        harness.processDividends(0, _noHolders());
         assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched, not seized");
 
         uint8 unknown = registry.TRUST_UNKNOWN();
         vm.prank(registryOwner);
         registry.setTrustStatus(DAI, unknown);
-        harness.processRound(0, _noHolders());
-        assertGt(harness.roundPot(), 0, "and it converts again once the veto is lifted");
+        harness.processDividends(0, _noHolders());
+        assertGt(harness.dividendsOwed(), 0, "and it converts again once the veto is lifted");
     }
 
     /// @dev The registry is a swap venue, not a vault: it forwards everything it buys inside the same
     ///      call and is empty before and after.
     function test_theRegistryHoldsNothing() public {
-        _fundAndOpen(harness);
-        harness.processRound(0, _noHolders());
+        _fundAndActivate(harness);
+        harness.processDividends(0, _noHolders());
 
         assertEq(address(registry).balance, 0, "no native retained");
         assertEq(IERC20(DAI).balanceOf(address(registry)), 0, "no asset retained");
-        assertEq(IERC20(DAI).balanceOf(address(harness)), harness.roundPot(), "it all reached the token");
+        assertEq(IERC20(DAI).balanceOf(address(harness)), harness.dividendsOwed(), "it all reached the token");
     }
 
     //////////////////////// conversion failures //////////////////////
 
-    /// @dev `minOut` is what bounds the swap. A floor the pool cannot meet leaves the round unfrozen with
-    ///      its buffer untouched — and says so precisely: the money IS there, the swap is the problem, so
-    ///      the keeper is told to retry rather than to wait for earnings it already has.
-    function test_aMissedSlippageFloorLeavesTheRoundUnfrozen() public {
-        _fundAndOpen(harness);
+    /// @dev `minOut` is what bounds the swap. A floor the pool cannot meet leaves the buffer untouched —
+    ///      and says so precisely: the money IS there, the swap is the problem, so the keeper is told to
+    ///      retry rather than to wait for earnings it already has.
+    function test_aMissedSlippageFloorLeavesTheBufferUntouched() public {
+        _fundAndActivate(harness);
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processRound(1_000_000e18, _noHolders());
+        harness.processDividends(1_000_000e18, _noHolders());
 
         assertEq(harness.pendingNative(), 1 ether, "nothing was spent");
-        assertFalse(harness.roundFrozen(), "the round did not freeze");
+        assertEq(harness.dividendsOwed(), 0, "and no stream was funded");
 
-        harness.processRound(0, _noHolders());
-        assertGt(harness.roundPot(), 0, "the same buffer converts once the floor is reachable");
+        harness.processDividends(0, _noHolders());
+        assertGt(harness.dividendsOwed(), 0, "the same buffer converts once the floor is reachable");
     }
 
-    /// @dev A round that simply has not earned enough yet reports the OTHER error: the keeper is told to
+    /// @dev A token that simply has not earned enough yet reports the OTHER error: the keeper is told to
     ///      wait, not sent looking for a broken pool.
     function test_aBelowThresholdBufferReportsBelowDividendThreshold() public {
         harness.setBalance(holder, 1_000e18);
-        harness.openRound();
+        harness.activate();
         vm.deal(address(this), 1 wei);
         harness.accrue{value: 1 wei}();
-        skip(harness.MIN_ROUND_DURATION() + 1);
 
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        harness.processRound(0, _noHolders());
+        harness.processDividends(0, _noHolders());
     }
 
     /// @dev A payout asset that returns a non-boolean word from `transfer` must be TOLERATED, not
     ///      decoded strictly. `abi.decode(_, (bool))` reverts on any word above 1, which is legal for a
     ///      non-standard ERC20 — and a revert inside `_payDividend` is precisely what the skip-don't-revert
-    ///      contract exists to prevent: it would take down the whole `processRound` batch, `claimRound`
-    ///      for everyone, and the round's ability to settle until `PAYOUT_WINDOW`.
+    ///      contract exists to prevent: it would take down the whole `processDividends` batch and
+    ///      `claimDividends` for everyone.
     function test_aNonBooleanTransferReturnDoesNotBrickTheBatch() public {
-        _fundAndOpen(harness);
-        harness.processRound(0, _noHolders()); // freeze in DAI
+        _fundAndActivate(harness);
+        harness.processDividends(0, _noHolders()); // buy DAI, fund the stream
+        _drain(harness);
 
-        uint256 pot = harness.roundPot();
+        uint256 owed = harness.previewDividend(holder);
+        assertGt(owed, 0, "the holder has accrued the stream");
         vm.mockCall(DAI, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(uint256(2)));
 
         vm.expectEmit(true, true, true, true, address(harness));
-        emit DividendDistribution.DividendPaid(harness.currentRound(), holder, DAI, pot);
-        harness.processRound(0, _holders());
+        emit DividendDistribution.DividendPaid(holder, DAI, owed);
+        harness.processDividends(0, _holders());
 
-        assertEq(harness.roundPot(), 0, "the pot was delivered and the round rolled over");
+        assertEq(harness.previewDividend(holder), 0, "the payout was accepted, not skipped");
     }
 
     //////////////////////// the dead-pool escape //////////////////////
 
     /// @dev The replacement for an admin-curated route override: nobody can repair a dead pool, so the
-    ///      token repairs itself. Once the round has gone `STALE_ROUND_WINDOW` without rolling over AND
-    ///      the swap cannot execute at ANY price, the payout asset is permanently downgraded to native —
-    ///      the one asset that needs no pool. Without it, a buffer owed to holders would strand forever.
+    ///      token repairs itself. Once the token has gone `STALE_DIVIDEND_WINDOW` without a distribution
+    ///      AND the swap cannot execute at ANY price, the payout asset is permanently downgraded to
+    ///      native — the one asset that needs no pool. Without it, a buffer owed to holders would strand
+    ///      forever.
     function test_aPermanentlyDeadPoolDowngradesThePayoutToNative() public {
-        _fundAndOpen(harness);
+        _fundAndActivate(harness);
         _killTheV2Router();
 
         // Not yet: a live token retries rather than downgrading.
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processRound(0, _noHolders());
+        harness.processDividends(0, _noHolders());
 
-        skip(harness.STALE_ROUND_WINDOW());
+        skip(harness.STALE_DIVIDEND_WINDOW() + 1);
 
         vm.expectEmit(true, false, false, false, address(harness));
         emit DividendDistribution.DividendAssetDowngradedToNative(DAI);
-        harness.processRound(0, _holders());
+        harness.processDividends(0, _noHolders());
 
         assertEq(harness.dividendToken(), address(0), "the payout asset is native from here on");
-        assertEq(harness.pendingNative(), 0, "the whole buffer became the pot - native has no swap to cap");
-        assertEq(holder.balance, 1 ether, "the holder was paid in native");
+        assertEq(harness.pendingNative(), 0, "the whole buffer funded the stream - native has no swap to cap");
+        assertEq(harness.dividendsOwed(), 1 ether, "and it is owed in native now");
+
+        _drain(harness);
+        harness.processDividends(0, _holders());
+        assertApproxEqRel(holder.balance, 1 ether, 1e12, "the holder was paid in native");
     }
 
     /// @dev The downgrade cannot be manufactured. A caller who supplies an unreachable floor gets a
-    ///      conversion failure, however stale the round is: `minOut == 0` is what proves the pool itself
+    ///      conversion failure, however stale the token is: `minOut == 0` is what proves the pool itself
     ///      is gone rather than the caller's price.
-    function test_aStaleRoundWithALiveePoolCannotBeForcedToDowngrade() public {
-        _fundAndOpen(harness);
-        skip(harness.STALE_ROUND_WINDOW());
+    function test_aStaleTokenWithALivePoolCannotBeForcedToDowngrade() public {
+        _fundAndActivate(harness);
+        skip(harness.STALE_DIVIDEND_WINDOW() + 1);
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processRound(1_000_000e18, _noHolders());
+        harness.processDividends(1_000_000e18, _noHolders());
         assertEq(harness.dividendToken(), DAI, "still paying DAI");
 
-        harness.processRound(0, _noHolders());
+        harness.processDividends(0, _noHolders());
         assertEq(harness.dividendToken(), DAI, "a live pool converts and never downgrades");
-        assertGt(harness.roundPot(), 0, "funded in DAI as usual");
+        assertGt(harness.dividendsOwed(), 0, "funded in DAI as usual");
     }
 
-    /// @dev A residual left in the OLD asset has to reach holders before the asset can change, or the pot
-    ///      would mix two currencies. So the first stale round after the pool dies drains the residual,
-    ///      and only the round after that downgrades — against an empty pot.
-    function test_anOldAssetResidualIsDrainedBeforeTheDowngrade() public {
-        _fundAndOpen(harness);
-        harness.processRound(0, _noHolders()); // freeze in DAI, pay nobody
-        uint256 residual = harness.roundPot();
-        assertGt(residual, 0, "a DAI pot nobody was paid from");
+    /// @dev What the downgrade does to money already accrued in the DEAD asset: it writes it off, by
+    ///      bumping `dividendEpoch`. `Acct.rewards` is a bare number of units with no asset attached, so
+    ///      carrying it across would pay an old-asset debt out of a new-asset balance at a 1:1 unit
+    ///      ratio between two assets that need not even share decimals. Holders had the whole
+    ///      `STALE_DIVIDEND_WINDOW` to claim — claiming never depended on the pool being alive.
+    function test_theDowngradeWritesOffUnclaimedAccrualsInTheDeadAsset() public {
+        _fundAndActivate(harness);
+        harness.processDividends(0, _noHolders()); // a real DAI stream
+        _drain(harness);
 
-        skip(harness.PAYOUT_WINDOW() + 1);
-        harness.processRound(0, _noHolders()); // the window expires and the residual rolls forward
-        assertEq(harness.roundPot(), residual, "the residual seeds the next round");
+        uint256 daiOwed = harness.previewDividend(holder);
+        assertGt(daiOwed, 0, "the holder accrued DAI it never claimed");
 
         _killTheV2Router();
         vm.deal(address(this), 1 ether);
         harness.accrue{value: 1 ether}();
-        skip(harness.STALE_ROUND_WINDOW());
+        skip(harness.STALE_DIVIDEND_WINDOW() + 1);
+        // The whole native buffer — the fresh ether plus whatever the capped first conversion left.
+        uint256 buffered = harness.pendingNative();
+        harness.processDividends(0, _noHolders());
 
-        harness.processRound(0, _holders());
-        assertEq(harness.dividendToken(), DAI, "the asset survives the residual drain");
-        assertEq(IERC20(DAI).balanceOf(holder), residual, "the residual reached the holder in DAI");
+        assertEq(harness.dividendToken(), address(0), "downgraded");
+        assertEq(harness.previewDividend(holder), 0, "the DAI claim was written off, not repaid in native");
+        assertEq(harness.dividendsOwed(), buffered, "only the newly-streamed native is owed");
+        // The stranded DAI stops being committed, which is the only way it is ever recoverable at all.
+        assertEq(harness.committedDividends(DAI), 0, "the dead asset is no longer holders' money");
 
-        // Now the pot is empty, so the NEXT round downgrades — and "next round" means next round, not
-        // another `STALE_ROUND_WINDOW`. The drain rolled the round over, which reset the stale clock;
-        // `dividendPoolDead` is what carries the proof across that rollover. Without it every
-        // `processRound` here would revert `DividendConversionFailed` for another 30 days while the
-        // buffer sat unspendable.
-        assertTrue(harness.dividendPoolDead(), "the drain recorded that the pool is gone");
-        skip(harness.MIN_ROUND_DURATION() + 1);
-        harness.processRound(0, _noHolders());
-        assertEq(harness.dividendToken(), address(0), "downgraded once nothing was owed in the old asset");
-        assertFalse(harness.dividendPoolDead(), "the flag is consumed by the downgrade it unlocked");
-    }
-
-    /// @dev The short-circuit is not a permanent downgrade licence: a pool that starts converting again
-    ///      clears it, so a later failure has to re-earn a full `STALE_ROUND_WINDOW` like any other.
-    function test_aPoolThatRecoversClearsTheDeadFlag() public {
-        _fundAndOpen(harness);
-        harness.processRound(0, _noHolders());
-        uint256 residual = harness.roundPot();
-
-        skip(harness.PAYOUT_WINDOW() + 1);
-        harness.processRound(0, _noHolders());
-
-        _killTheV2Router();
-        vm.deal(address(this), 2 ether);
-        harness.accrue{value: 1 ether}();
-        skip(harness.STALE_ROUND_WINDOW());
-        harness.processRound(0, _holders()); // drains the residual, sets the flag
-        assertTrue(harness.dividendPoolDead(), "flagged");
-        assertEq(IERC20(DAI).balanceOf(holder), residual, "residual paid in DAI");
-
-        // The pool comes back before the downgrade round runs.
-        vm.clearMockedCalls();
-        skip(harness.MIN_ROUND_DURATION() + 1);
-        harness.processRound(0, _noHolders());
-
-        assertEq(harness.dividendToken(), DAI, "still paying DAI - the conversion worked");
-        assertFalse(harness.dividendPoolDead(), "and the short-circuit is gone with it");
+        // And the holder accrues normally from here, in the new asset.
+        _drain(harness);
+        assertApproxEqRel(harness.previewDividend(holder), buffered, 1e12, "rebased onto native");
     }
 
     /// @dev Makes every V2 swap revert, whatever the price — the on-chain shape of a pool that is gone.

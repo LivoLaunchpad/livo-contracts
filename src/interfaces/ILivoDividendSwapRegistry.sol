@@ -46,7 +46,7 @@ struct Hop {
 ///
 /// @dev WHAT THIS COSTS. Every token's dividend conversion now flows native currency through one shared
 ///      upgradeable contract, so whoever can upgrade it can, in principle, take the native sent for a
-///      conversion in flight. Bounded per token per freeze by `MAX_DIVIDEND_PER_FREEZE`, never
+///      conversion in flight. Bounded per token per conversion by `MAX_DIVIDEND_PER_CONVERSION`, never
 ///      custodial (the registry holds nothing between calls), and the calling token measures its own
 ///      balance delta rather than trusting the return value — so the worst case is a failed conversion,
 ///      which the round machinery already handles.

@@ -34,7 +34,7 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap via a private
 ///      mempool. Factory-deployed tokens have `owner == address(0)`, so this entry point is
 ///      reachable only via the launchpad owner; the auto-trigger remains the live path.
-/// @dev The out-of-band dividend entry points (`processRound`, `claimRound`) are thin
+/// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are thin
 ///      `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
 ///      bodies live elsewhere, and nothing on the transfer hot path does. See `DividendDistributionLogic`.
 contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
@@ -372,14 +372,14 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     /// @param minOut Slippage floor for the conversion, in the payout asset's own decimals. Ignored when
     ///        the payout asset is native or the token itself, and by any call that does not freeze.
     /// @param holders Addresses to push this round's payouts to. May be empty.
-    function processRound(uint256 minOut, address[] calldata holders) external {
+    function processDividends(uint256 minOut, address[] calldata holders) external {
         minOut;
         holders;
         _delegateToDividendLogic();
     }
 
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
-    function claimRound() external {
+    function claimDividends() external {
         _delegateToDividendLogic();
     }
 

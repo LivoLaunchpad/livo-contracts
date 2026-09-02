@@ -25,7 +25,7 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 ///      Tax accounting on swaps lives in `LivoSwapHook`; the token exposes the tax config via
 ///      `getTaxConfig()`. The earnings-allocation burn bucket is buffered here as ETH
 ///      (`burnPendingEth`) and processed out-of-band by `processBurn`, which buys back and burns tokens.
-/// @dev The out-of-band dividend entry points (`processRound`, `claimRound`) are thin
+/// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are thin
 ///      `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
 ///      bodies live elsewhere, and nothing on the swap hot path does. See `DividendDistributionLogic`.
 contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
@@ -199,14 +199,14 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     /// @param minOut Slippage floor for the conversion, in the payout asset's own decimals. Ignored when
     ///        the payout asset is native or the token itself, and by any call that does not freeze.
     /// @param holders Addresses to push this round's payouts to. May be empty.
-    function processRound(uint256 minOut, address[] calldata holders) external {
+    function processDividends(uint256 minOut, address[] calldata holders) external {
         minOut;
         holders;
         _delegateToDividendLogic();
     }
 
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
-    function claimRound() external {
+    function claimDividends() external {
         _delegateToDividendLogic();
     }
 

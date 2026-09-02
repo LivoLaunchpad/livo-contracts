@@ -5,11 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 
-/// @notice A bare `DividendDistributionLogic` whose balances move through `_trackDividendShares`, the way a
-///         real token's `_update` moves them. `DividendHarness` in `dividendsThirdAsset.t.sol` sets
-///         balances directly and so cannot exercise the round-minimum accounting at all; this one keeps
-///         a holder list so the denominator can be reconciled against the sum it claims to be.
-contract SharesHarness is DividendDistributionLogic {
+/// @notice A bare `DividendDistributionLogic` whose balances move through `_onDividendTransfer`, in the
+///         order a real token's `_update` moves them: SETTLE FIRST, then mutate. That order is the whole
+///         of the anti-sandwich argument, so the harness has to reproduce it exactly — a harness that
+///         mutated first would quietly test a different (and broken) contract.
+contract StreamHarness is DividendDistributionLogic {
     mapping(address account => uint256 balance) public balances;
     uint256 public eligibleSupply;
 
@@ -24,8 +24,14 @@ contract SharesHarness is DividendDistributionLogic {
         _initializeDividends(asset);
     }
 
-    function openRound() external {
-        _openDividendRound();
+    function activate() external {
+        _activateDividends();
+    }
+
+    /// @dev The supply floor is `internal` in production (nothing outside needs it); the harness exposes
+    ///      it so the pause test asserts against the real constant rather than a copy of it.
+    function minDividendSupply() external pure returns (uint256) {
+        return MIN_DIVIDEND_SUPPLY;
     }
 
     function accrue() external payable {
@@ -36,32 +42,32 @@ contract SharesHarness is DividendDistributionLogic {
         excluded[index] = account;
     }
 
-    /// @dev Seeds a balance WITHOUT tracking, standing in for supply that existed before the round
-    ///      opened (the bonding-curve distribution).
+    /// @dev Seeds a balance without settling, standing in for supply that existed before dividends went
+    ///      live (the bonding-curve distribution).
     function seed(address to, uint256 value) external {
         _remember(to);
-        eligibleSupply += value;
+        if (!_dividendExcluded(to)) eligibleSupply += value;
         balances[to] += value;
     }
 
-    /// @dev A transfer as the token performs it: track first (pre-transfer balances), then move.
+    /// @dev A transfer as the token performs it: settle against the accumulator at PRE-transfer balances
+    ///      and the PRE-transfer eligible supply, then move.
     function transfer(address from, address to, uint256 amount) external {
-        _trackDividendShares(from, to, amount);
+        _onDividendTransfer(from, to);
+
         balances[from] -= amount;
         balances[to] += amount;
+        if (!_dividendExcluded(from)) eligibleSupply -= amount;
+        if (!_dividendExcluded(to)) eligibleSupply += amount;
         _remember(to);
     }
 
-    /// @notice `Σ dividendShares(a)` over every address that has ever held — what `roundTotalShares`
-    ///         claims to be. The whole solvency argument is this identity.
-    function sumOfShares() external view returns (uint256 total) {
+    /// @notice `Σ previewDividend(a)` over every address that has ever held — what `dividendsOwed`
+    ///         claims to cover. The whole solvency argument is this inequality.
+    function sumOfPreviews() external view returns (uint256 total) {
         for (uint256 i; i < tracked.length; ++i) {
-            total += dividendShares(tracked[i]);
+            total += previewDividend(tracked[i]);
         }
-    }
-
-    function trackedCount() external view returns (uint256) {
-        return tracked.length;
     }
 
     function _remember(address account) internal {
@@ -80,6 +86,27 @@ contract SharesHarness is DividendDistributionLogic {
 
     function _dividendEligibleSupply() internal view override returns (uint256) {
         return eligibleSupply;
+    }
+
+    receive() external payable {}
+}
+
+/// @notice A flash borrower: takes a balance and gives it back inside ONE transaction, poking the
+///         accumulator on the way through. The whole design exists to make this worth zero.
+contract FlashBorrower {
+    StreamHarness public immutable H;
+
+    constructor(StreamHarness h) {
+        H = h;
+    }
+
+    /// @dev Borrow, touch the accumulator as many times as the attacker likes, repay. No time passes.
+    function attack(address lender, uint256 amount, uint256 pokes) external {
+        H.transfer(lender, address(this), amount);
+        for (uint256 i; i < pokes; ++i) {
+            H.transfer(address(this), address(this), 0);
+        }
+        H.transfer(address(this), lender, amount);
     }
 
     receive() external payable {}
@@ -127,14 +154,14 @@ contract ReenteringHolder {
 
     receive() external payable {
         if (useClaim) {
-            try TARGET.claimRound() {}
+            try TARGET.claimDividends() {}
             catch {
                 ++blockedReentries;
             }
         } else {
             address[] memory batch = new address[](1);
             batch[0] = address(this);
-            try TARGET.processRound(0, batch) {}
+            try TARGET.processDividends(0, batch) {}
             catch {
                 ++blockedReentries;
             }
@@ -142,10 +169,11 @@ contract ReenteringHolder {
     }
 }
 
-/// @notice The dividend accounting identity and the payout-path safety properties, exercised against a
-///         bare `DividendDistribution` so the assertions are about the module rather than about a pool.
+/// @notice The dividend accumulator's accounting identity and the payout-path safety properties,
+///         exercised against a bare `DividendDistribution` so the assertions are about the module rather
+///         than about a pool.
 contract DividendAccountingTests is Test {
-    SharesHarness internal h;
+    StreamHarness internal h;
 
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
@@ -154,15 +182,15 @@ contract DividendAccountingTests is Test {
     uint256 internal constant SUPPLY = 1_000_000e18;
 
     function setUp() public {
-        h = new SharesHarness();
+        h = new StreamHarness();
         h.configure(address(0));
     }
 
-    function _nativeRound() internal {
+    function _live() internal {
         h.seed(alice, SUPPLY / 2);
         h.seed(bob, SUPPLY / 4);
         h.seed(carol, SUPPLY / 4);
-        h.openRound();
+        h.activate();
     }
 
     function _fund(uint256 amount) internal {
@@ -179,277 +207,320 @@ contract DividendAccountingTests is Test {
         list[0] = a;
     }
 
-    /// @dev Freezes, pays everyone and rolls the round over — the way a keeper actually turns a round.
-    function _turnRound(SharesHarness harness, address[] memory holders) internal {
-        skip(harness.MIN_ROUND_DURATION() + 1);
-        harness.processRound(0, holders);
+    function _everyone() internal view returns (address[] memory list) {
+        list = new address[](3);
+        (list[0], list[1], list[2]) = (alice, bob, carol);
+    }
+
+    /// @dev Funds the stream and lets it drip all the way out — one full distribution cycle.
+    function _distribute(uint256 amount) internal {
+        _fund(amount);
+        h.processDividends(0, _noHolders());
+        skip(h.DIVIDEND_DRIP_DURATION());
     }
 
     receive() external payable {}
 
-    ///////////////////////// the accounting identity /////////////////////////
+    ///////////////////////// the flash-loan property /////////////////////////
 
-    /// @dev `roundTotalShares == Σ dividendShares(a)`. Everything else in the module — that a pot can
-    ///      never over-distribute, that a mid-round buyer earns nothing — is downstream of this. A drift
-    ///      high silently under-distributes; a drift low over-distributes and drains the pot early.
-    function test_denominatorEqualsSumOfShares_afterTransfers() public {
-        _nativeRound();
-        assertEq(h.roundTotalShares(), h.sumOfShares(), "identity holds at round open");
+    /// @dev THE property the whole design exists for. A borrowed balance exists for zero seconds, and
+    ///      the accumulator integrates `balance x time`, so its integrand is zero however the rest of the
+    ///      transaction is arranged: however many times it pokes the accumulator, whichever order it
+    ///      borrows and repays in, whether or not a distribution lands in the same block.
+    function test_aFlashLoanedBalanceEarnsExactlyZero() public {
+        _live();
+        _fund(1 ether);
+        h.processDividends(0, _noHolders());
+        skip(h.DIVIDEND_DRIP_DURATION() / 2); // mid-stream, so real money is in flight
 
-        h.transfer(alice, bob, SUPPLY / 10);
-        assertEq(h.roundTotalShares(), h.sumOfShares(), "after a transfer between two holders");
+        FlashBorrower borrower = new FlashBorrower(h);
+        borrower.attack(alice, SUPPLY / 2, 3);
 
-        h.transfer(bob, makeAddr("newcomer"), SUPPLY / 20);
-        assertEq(h.roundTotalShares(), h.sumOfShares(), "after a transfer to a fresh address");
+        assertEq(h.previewDividend(address(borrower)), 0, "a zero-duration balance accrues nothing");
 
-        h.transfer(carol, alice, SUPPLY / 4);
-        assertEq(h.roundTotalShares(), h.sumOfShares(), "after a holder empties out");
+        h.processDividends(0, _batch(address(borrower)));
+        assertEq(address(borrower).balance, 0, "and is paid nothing");
     }
 
-    /// @dev The same identity under an arbitrary transfer sequence. This is the property the hand-written
-    ///      cases above only sample.
-    function testFuzz_denominatorEqualsSumOfShares(uint256[8] calldata seeds, uint96[8] calldata amounts) public {
-        _nativeRound();
+    /// @dev The same, when the borrower funds the distribution ITSELF inside the borrowed window — the
+    ///      sandwich the old round machinery needed a minimum round age to rule out. There is no
+    ///      instant to sandwich any more: the money arrives as a slope.
+    function test_aFlashLoanCannotSandwichItsOwnDistribution() public {
+        _live();
+        _fund(1 ether);
+        skip(h.DIVIDEND_DRIP_DURATION() / 2);
+
+        address borrower = makeAddr("borrower");
+        h.transfer(alice, borrower, SUPPLY / 2); // borrow
+        h.processDividends(0, _noHolders()); // fund, in the same block
+        address[] memory batch = _batch(borrower);
+        h.processDividends(0, batch); // and try to take it
+        h.transfer(borrower, alice, SUPPLY / 2); // repay
+
+        assertEq(borrower.balance, 0, "borrowing across the funding instant is still worth nothing");
+    }
+
+    /// @dev The OTHER half of the ordering rule, and the one a wrong implementation would fail. The
+    ///      accumulator divides the elapsed interval by the eligible supply read at settle time; if the
+    ///      settle ran AFTER the mutation, an attacker could collapse the denominator inside their own
+    ///      transaction and harvest a real interval at an inflated rate. Settling first books the
+    ///      pending interval at the supply that was actually in effect for it.
+    function test_shrinkingEligibleSupplyCannotInflateThePendingInterval() public {
+        address sink = makeAddr("sink");
+        h.exclude(0, sink);
+        _live();
+        _fund(1 ether);
+        h.processDividends(0, _noHolders());
+
+        // Half the stream elapses with nobody touching the contract, so a full interval is pending.
+        skip(h.DIVIDEND_DRIP_DURATION() / 2);
+
+        // A second, untouched harness run as the control: same stream, no denominator games.
+        uint256 honest = h.previewDividend(bob);
+
+        // Alice dumps 90% of the eligible supply into an excluded address and immediately settles.
+        h.transfer(alice, sink, SUPPLY / 2);
+        h.transfer(carol, sink, SUPPLY / 5);
+        uint256 afterShrink = h.previewDividend(bob);
+
+        assertEq(afterShrink, honest, "the pending interval was booked at the pre-shrink supply");
+        assertLt(h.eligibleSupply(), SUPPLY / 2, "and the supply really did collapse");
+    }
+
+    ///////////////////////// the accrual identity /////////////////////////
+
+    /// @dev Accrual is proportional to balance across a fully-dripped stream. Everything else is
+    ///      downstream of this: a holder with half the eligible supply for the whole window earns half.
+    function test_accrualIsProportionalToBalanceOverTheStream() public {
+        _live();
+        _distribute(1 ether);
+
+        uint256 a = h.previewDividend(alice);
+        uint256 b = h.previewDividend(bob);
+        uint256 c = h.previewDividend(carol);
+
+        assertApproxEqRel(a, 0.5 ether, 1e12, "half the supply earns half the stream");
+        assertApproxEqRel(b, 0.25 ether, 1e12, "a quarter earns a quarter");
+        assertEq(b, c, "equal balances earn equally");
+        assertLe(a + b + c, h.dividendsOwed(), "and the parts never exceed the whole");
+    }
+
+    /// @dev Arriving halfway through a stream earns from the moment of arrival, not from its start. The
+    ///      drip is a smoothing window, never an eligibility gate — a newcomer is not "too new", they
+    ///      simply have less time under the integral.
+    function test_aMidStreamArrivalEarnsOnlyItsOwnTail() public {
+        h.seed(alice, SUPPLY);
+        h.activate();
+        _fund(1 ether);
+        h.processDividends(0, _noHolders());
+
+        skip(h.DIVIDEND_DRIP_DURATION() / 2);
+        h.transfer(alice, bob, SUPPLY / 2); // bob arrives at the halfway mark
+        skip(h.DIVIDEND_DRIP_DURATION() / 2);
+
+        // Second half of the stream (0.5 ether) split evenly; alice also has the whole first half.
+        assertApproxEqRel(h.previewDividend(bob), 0.25 ether, 1e12, "half of the second half");
+        assertApproxEqRel(h.previewDividend(alice), 0.75 ether, 1e12, "the rest");
+    }
+
+    /// @dev Solvency, stated directly: what the module has promised holders never exceeds what it has
+    ///      been given. The accumulator truncates at every step, so this is an inequality by
+    ///      construction, and it has to survive an arbitrary transfer sequence mid-stream.
+    function testFuzz_promisedNeverExceedsFunded(uint256[8] calldata seeds, uint96[8] calldata amounts) public {
+        _live();
+        _fund(1 ether);
+        h.processDividends(0, _noHolders());
 
         address[4] memory actors = [alice, bob, carol, makeAddr("dave")];
         for (uint256 i; i < seeds.length; ++i) {
+            skip(bound(seeds[i], 1, h.DIVIDEND_DRIP_DURATION() / 4));
             address from = actors[seeds[i] % actors.length];
             address to = actors[(seeds[i] / 7 + 1) % actors.length];
             if (from == to) continue;
             uint256 balance = h.balances(from);
             if (balance == 0) continue;
             h.transfer(from, to, bound(uint256(amounts[i]), 1, balance));
-            assertEq(h.roundTotalShares(), h.sumOfShares(), "identity holds after every transfer");
+            assertLe(h.sumOfPreviews(), h.dividendsOwed(), "promised never exceeds funded");
         }
+
+        skip(h.DIVIDEND_DRIP_DURATION());
+        assertLe(h.sumOfPreviews(), h.dividendsOwed(), "and still not once the stream has run dry");
     }
 
-    /// @dev The identity must survive a round boundary too: `_openDividendRound` reseeds the denominator
-    ///      from live balances, and every stale `Acct.roundId` has to fall back to the live balance.
-    function test_denominatorEqualsSumOfShares_acrossARoundBoundary() public {
-        _nativeRound();
-        h.transfer(alice, bob, SUPPLY / 10);
-
-        // A round rolls over when its pot has been paid out, which is the only way it ever rolls.
-        _fund(1 ether);
-        address[] memory everyone = new address[](3);
-        (everyone[0], everyone[1], everyone[2]) = (alice, bob, carol);
-        _turnRound(h, everyone);
-
-        assertEq(h.currentRound(), 2, "next round open");
-        assertEq(h.roundTotalShares(), h.sumOfShares(), "identity re-established on the new round");
-    }
-
-    /// @dev An excluded address contributes nothing to the denominator and is never paid, and the two
-    ///      halves of that statement come from two separately-written functions in the token
-    ///      (`_dividendExcluded` and `_dividendEligibleSupply`). They have to agree.
+    /// @dev An excluded address neither accrues nor is payable, and the two halves of that statement
+    ///      come from two separately-written functions in the token (`_dividendExcluded` and
+    ///      `_dividendEligibleSupply`). They have to agree, or the excluded balance would dilute the
+    ///      denominator while earning nothing — under-distributing every stream.
     function test_excludedAddressNeitherCountsNorEarns() public {
         h.exclude(0, carol);
-        _nativeRound();
-        // `seed` counts everyone, so drop the excluded balance the way the token's eligible-supply
-        // accessor does, then reopen.
-        h.transfer(carol, alice, SUPPLY / 4);
+        _live();
+        _distribute(1 ether);
 
-        assertEq(h.dividendShares(carol), 0, "an excluded address has no weight");
+        assertEq(h.previewDividend(carol), 0, "an excluded address accrues nothing");
+        h.processDividends(0, _batch(carol));
+        assertEq(carol.balance, 0, "and is never paid");
+
+        // Alice and bob hold 2:1 of the ELIGIBLE supply, so the whole stream goes to them in that ratio.
+        assertApproxEqRel(h.previewDividend(alice), uint256(2 ether) / 3, 1e12, "carol's balance did not dilute");
+    }
+
+    ///////////////////////// the stream, and refunding it mid-flight /////////////////////////
+
+    /// @dev A distribution landing mid-stream is the NORMAL case and must never revert. It folds what
+    ///      the running stream still owes into the new money and re-spreads the sum over a fresh full
+    ///      window: the slope changes, the delivery time stays constant, nothing is deferred.
+    function test_fundingMidStreamFoldsTheRemainderAndChangesTheSlope() public {
+        _live();
+        _fund(1 ether);
+        h.processDividends(0, _noHolders());
+
+        uint256 firstRate = h.dividendRate();
+        skip(h.DIVIDEND_DRIP_DURATION() / 2); // half delivered, ~0.5 ether still owed
 
         _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        h.processDividends(0, _noHolders()); // no revert, no wait, no phase
 
-        address[] memory batch = new address[](1);
-        batch[0] = carol;
-        h.processRound(0, batch);
-        assertEq(carol.balance, 0, "an excluded address is never paid");
+        assertEq(h.dividendPeriodFinish(), block.timestamp + h.DIVIDEND_DRIP_DURATION(), "a full fresh window from now");
+        assertApproxEqRel(h.dividendRate(), firstRate * 3 / 2, 1e12, "slope is (remainder + new) / duration");
+
+        skip(h.DIVIDEND_DRIP_DURATION());
+        assertApproxEqRel(h.sumOfPreviews(), 2 ether, 1e12, "and both distributions reach holders in full");
     }
 
-    ///////////////////////// the frozen denominator /////////////////////////
+    /// @dev Refunding over and over, faster than the stream can drain, must not lose money or stall it.
+    ///      Every fold pushes `periodFinish` out, but the slope rises to match, so the outstanding
+    ///      balance decays rather than accumulating.
+    function test_repeatedMidStreamFundingDeliversEverything() public {
+        _live();
+        for (uint256 i; i < 5; ++i) {
+            _fund(1 ether);
+            h.processDividends(0, _noHolders());
+            skip(h.DIVIDEND_DRIP_DURATION() / 3);
+        }
+        skip(h.DIVIDEND_DRIP_DURATION());
 
-    /// @dev The denominator is snapshotted on the FIRST freeze of a round and reused by any leg that
-    ///      freezes later in the same round. Re-snapshotting would shrink it under a partially-paid pot
-    ///      and over-distribute that pot.
-    function test_denominatorFrozenAtFirstFreeze_notResnapshotted() public {
-        SharesHarness split = new SharesHarness();
-        split.configure(address(0));
-        split.seed(alice, SUPPLY);
-        split.openRound();
-
-        vm.deal(address(this), 1 ether);
-        split.accrue{value: 1 ether}();
-        skip(split.MIN_ROUND_DURATION() + 1);
-        split.processRound(0, _noHolders());
-
-        uint96 frozen = split.frozenShares();
-        assertEq(frozen, SUPPLY, "denominator frozen at the opening total");
-
-        // Alice dumps everything AFTER the freeze. The live denominator collapses; the frozen one must
-        // not follow it, or her already-frozen pot would be divided by a smaller number.
-        split.transfer(alice, bob, SUPPLY);
-        assertLt(split.roundTotalShares(), frozen, "the live denominator did fall");
-        assertEq(split.frozenShares(), frozen, "the frozen denominator did not");
+        assertApproxEqRel(h.sumOfPreviews(), 5 ether, 1e12, "everything funded is eventually promised");
+        assertEq(h.dividendsOwed(), 5 ether, "and owed matches what went in");
     }
 
-    /// @dev With a zero denominator nothing is payable, and in particular nothing divides by it. The
-    ///      argument that this is unreachable is subtle enough to be worth a test rather than a comment.
-    function test_zeroDenominatorIsNotPayable() public {
+    /// @dev The stream PAUSES below `MIN_DIVIDEND_SUPPLY` — the division guard and the accumulator's
+    ///      ceiling in one. Crucially the CLOCK still advances: freezing it would bank the skipped
+    ///      seconds and hand them to whoever bought in first once supply recovered, which is exactly the
+    ///      just-in-time capture window this design exists not to have.
+    function test_streamPausesBelowTheSupplyFloorAndDoesNotBankTheSkippedTime() public {
+        address sink = makeAddr("sink");
+        h.exclude(0, sink);
         h.seed(alice, SUPPLY);
-        h.openRound();
+        h.activate();
         _fund(1 ether);
-        // Alice empties out before any freeze, so every tracked minimum — and the denominator — is 0.
-        h.transfer(alice, bob, SUPPLY);
-        assertEq(h.roundTotalShares(), 0, "denominator collapsed to zero");
+        h.processDividends(0, _noHolders());
 
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        // Alice parks all but a dust balance out of reach, taking eligible supply under the floor.
+        h.transfer(alice, sink, SUPPLY - 1);
+        assertLt(h.eligibleSupply(), h.minDividendSupply(), "under the floor");
 
-        address[] memory batch = new address[](2);
-        batch[0] = alice;
-        batch[1] = bob;
-        h.processRound(0, batch); // must not panic on a division by zero
-        assertEq(h.roundPaid(), 0, "nothing paid out against a zero denominator");
+        uint256 before = h.dividendRewardPerToken();
+        skip(h.DIVIDEND_DRIP_DURATION() / 2);
+        assertEq(h.dividendRewardPerToken(), before, "nothing accrued while paused");
+
+        // Supply comes back. The paused half-window must NOT land on whoever is holding now.
+        h.transfer(sink, bob, SUPPLY - 1);
+        assertEq(h.previewDividend(bob), 0, "the skipped interval was not banked for a late arrival");
     }
 
     ///////////////////////// the threshold and its bypass /////////////////////////
 
-    /// @dev Below the threshold the buffer keeps accruing rather than freezing a pot not worth its gas.
-    function test_subThresholdBufferDoesNotFreeze() public {
-        _nativeRound();
+    /// @dev Below the threshold the buffer keeps accruing rather than funding a stream not worth its gas.
+    function test_subThresholdBufferDoesNotFund() public {
+        _live();
         _fund(h.DIVIDEND_THRESHOLD() / 2);
-        skip(h.MIN_ROUND_DURATION() + 1);
 
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        h.processRound(0, _noHolders());
+        h.processDividends(0, _noHolders());
     }
 
-    /// @dev Staleness is the ONLY escape from the threshold: a round nobody has rolled over for
-    ///      `STALE_ROUND_WINDOW` belongs to a dead token, so the threshold stops applying and the
-    ///      residual can finally be paid instead of stranding. Reaching it costs 30 days of a
-    ///      completely idle token, which is what stops the bypass being a free round-stall for anyone
-    ///      who can push a wei into the buffer.
-    function test_thresholdBypassedOnceTheRoundGoesStale() public {
-        _nativeRound();
+    /// @dev A call carrying holders pushes their payouts and returns QUIETLY even when the buffer is
+    ///      short. A keeper batching payouts must not be punished for the buffer happening not to
+    ///      qualify — this is what makes `processDividends(0, holders)` usable as a plain `claimFor`.
+    function test_aPushOnlyCallDoesNotRevertOnAShortBuffer() public {
+        _live();
+        _distribute(1 ether);
+        _fund(h.DIVIDEND_THRESHOLD() / 2); // not fundable
+
+        h.processDividends(0, _everyone()); // must not revert
+
+        assertGt(alice.balance, 0, "the payouts went out anyway");
+        assertEq(h.pendingNative(), h.DIVIDEND_THRESHOLD() / 2, "and the short buffer is untouched");
+    }
+
+    /// @dev Staleness is the ONLY escape from the threshold: a token that has gone
+    ///      `STALE_DIVIDEND_WINDOW` without a distribution is dead, so the threshold stops applying and
+    ///      the residual can finally reach holders instead of stranding.
+    function test_thresholdBypassedOnceTheTokenGoesStale() public {
+        _live();
         uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
         _fund(dust);
-        skip(h.MIN_ROUND_DURATION() + 1);
 
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        h.processRound(0, _noHolders());
+        h.processDividends(0, _noHolders());
 
-        skip(h.STALE_ROUND_WINDOW());
-        h.processRound(0, _noHolders());
+        skip(h.STALE_DIVIDEND_WINDOW() + 1);
+        h.processDividends(0, _noHolders());
 
-        assertEq(h.roundPot(), dust, "the residual froze once the round went stale");
+        assertEq(h.dividendsOwed(), dust, "the residual funded a stream once the token went stale");
         assertEq(h.pendingNative(), 0, "buffer drained");
     }
 
-    /// @dev The bypass must stay shut for a token that is merely QUIET. `roundOpenedAt` resets on every
-    ///      rollover, so a token still turning over rounds never ages into it however small its buffer —
-    ///      otherwise every live token would start freezing dust pots and stalling on them.
-    function test_staleBypassStaysShutWhileRoundsKeepRollingOver() public {
-        _nativeRound();
-        address[] memory everyone = new address[](3);
-        (everyone[0], everyone[1], everyone[2]) = (alice, bob, carol);
-
-        // Well past the stale window in absolute time, but each round earns enough to be turned over.
+    /// @dev The bypass must stay shut for a token that is merely QUIET. `dividendPeriodFinish` moves
+    ///      forward on every distribution, so a token still distributing never ages into it however
+    ///      small its buffer.
+    function test_staleBypassStaysShutWhileDistributionsKeepHappening() public {
+        _live();
         for (uint256 i; i < 3; ++i) {
-            skip(h.STALE_ROUND_WINDOW() / 2);
-            _fund(1 ether);
-            _turnRound(h, everyone);
+            skip(h.STALE_DIVIDEND_WINDOW() / 2);
+            _distribute(1 ether);
         }
 
         _fund(h.DIVIDEND_THRESHOLD() / 2);
-        skip(h.MIN_ROUND_DURATION() + 1);
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        h.processRound(0, _noHolders());
-    }
-
-    /// @dev A round that has gone stale with NOTHING buffered rolls over instead of reverting. It is the
-    ///      only call with nothing to freeze that is worth its gas: without it a token that stops earning
-    ///      would keep one round open forever, and every holder's share would be their low-water mark
-    ///      over that unbounded span.
-    function test_anEmptyStaleRoundRollsOverInsteadOfReverting() public {
-        _nativeRound();
-        skip(h.MIN_ROUND_DURATION() + 1);
-
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        h.processRound(0, _noHolders());
-
-        skip(h.STALE_ROUND_WINDOW());
-        h.processRound(0, _noHolders());
-
-        assertEq(h.currentRound(), 2, "the stale round rolled over");
-        assertEq(h.roundTotalShares(), h.sumOfShares(), "and reseeded its denominator");
-    }
-
-    ///////////////////////// the single entry point /////////////////////////
-
-    /// @dev The whole point of collapsing freeze / pay / roll-over into one function: a keeper whose
-    ///      holder list does not fit in one block just calls it again. The freeze happens once, the
-    ///      rollover happens once, and the calls in between are pure payout batches — no separate
-    ///      transactions to sequence and none to forget.
-    function test_oneEntryPointFreezesOncePaysInBatchesAndRollsOnce() public {
-        _nativeRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-
-        // Batch 1 freezes and pays alice.
-        h.processRound(0, _batch(alice));
-        uint256 pot = h.roundPot();
-        assertTrue(h.roundFrozen(), "the first call froze the round");
-        assertEq(h.currentRound(), 1, "and did not roll it over with holders still owed");
-        assertEq(alice.balance, pot / 2, "alice paid in the first batch");
-
-        // Batch 2 skips the freeze entirely and pays the rest, which settles and rolls the round.
-        h.processRound(0, _batch(bob));
-        assertEq(h.currentRound(), 1, "carol is still owed, so the round stays open");
-        h.processRound(0, _batch(carol));
-
-        assertEq(bob.balance + carol.balance, pot / 2, "the remaining two split the other half");
-        assertEq(h.currentRound(), 2, "draining the pot rolled the round over, in the last batch");
-        assertEq(address(h).balance, 0, "and the pot went out exactly once");
-    }
-
-    /// @dev Freezing and paying in ONE transaction is what the merge relies on, and it is safe for a
-    ///      reason that has nothing to do with transaction boundaries: receiving borrowed tokens is
-    ///      itself a tracked balance change, so the borrower's minimum for the round is zero however the
-    ///      rest of the call is arranged. Nothing the flash loan can do inside this call changes that.
-    function test_aFlashLoanedBalanceEarnsNothingEvenWhenTheFreezeAndThePayoutShareATransaction() public {
-        _nativeRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-
-        address borrower = makeAddr("borrower");
-        h.transfer(alice, borrower, SUPPLY / 2); // the "loan" lands mid-round
-
-        address[] memory batch = new address[](2);
-        batch[0] = borrower;
-        batch[1] = bob;
-        h.processRound(0, batch);
-
-        assertEq(borrower.balance, 0, "a mid-round arrival is owed nothing, in the same tx as the freeze");
-        assertGt(bob.balance, 0, "while a holder who was there at the open is paid");
+        h.processDividends(0, _noHolders());
     }
 
     ///////////////////////// payout-path safety /////////////////////////
 
-    /// @dev One holder whose `receive()` reverts must not brick the batch: the others are paid, the
-    ///      failed amount stays in the pot, and the holder is left UNMARKED so a later batch retries.
+    /// @dev A holder the keeper omits loses NOTHING. Their accrual keeps sitting there across any number
+    ///      of later distributions, which is what lets a keeper push only to holders above whatever
+    ///      threshold it likes instead of having to reach everyone before the money moves on.
+    function test_anOmittedHolderKeepsAccruingAcrossDistributions() public {
+        _live();
+        _distribute(1 ether);
+        h.processDividends(0, _batch(alice)); // bob and carol omitted
+        _distribute(1 ether);
+        h.processDividends(0, _batch(alice));
+
+        assertApproxEqRel(h.previewDividend(bob), 0.5 ether, 1e12, "two streams' worth, still owed");
+        h.processDividends(0, _batch(bob));
+        assertApproxEqRel(bob.balance, 0.5 ether, 1e12, "and paid in full whenever the keeper gets to it");
+    }
+
+    /// @dev One holder whose `receive()` reverts must not brick the batch: the others are paid, and the
+    ///      failed amount stays ACCRUED so a later batch — or the holder itself — retries.
     function test_revertingHolderIsSkippedNotReverted() public {
         address rejecting = address(new RejectingHolder());
         h.seed(rejecting, SUPPLY / 2);
         h.seed(bob, SUPPLY / 2);
-        h.openRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        h.activate();
+        _distribute(1 ether);
 
         address[] memory batch = new address[](2);
         batch[0] = rejecting;
         batch[1] = bob;
-        h.processRound(0, batch);
+        h.processDividends(0, batch);
 
         assertEq(rejecting.balance, 0, "the rejecting holder got nothing");
-        assertEq(bob.balance, h.roundPot() / 2, "the healthy holder was still paid in the same batch");
-        assertEq(h.roundPaid(), h.roundPot() / 2, "only the delivered half counts as paid");
-        assertGt(h.previewDividend(rejecting), 0, "left unmarked, so a later batch can retry");
+        assertApproxEqRel(bob.balance, 0.5 ether, 1e12, "the healthy holder was still paid in the same batch");
+        assertApproxEqRel(h.previewDividend(rejecting), 0.5 ether, 1e12, "its accrual is intact for a retry");
+        assertApproxEqRel(h.dividendsOwed(), 0.5 ether, 1e12, "and is still counted as owed");
     }
 
     /// @dev The same protection, without an explicit revert: a holder that simply burns more than
@@ -458,97 +529,79 @@ contract DividendAccountingTests is Test {
         address guzzler = address(new GasGuzzlingHolder());
         h.seed(guzzler, SUPPLY / 2);
         h.seed(bob, SUPPLY / 2);
-        h.openRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        h.activate();
+        _distribute(1 ether);
 
         address[] memory batch = new address[](2);
         batch[0] = guzzler;
         batch[1] = bob;
-        h.processRound(0, batch);
+        h.processDividends(0, batch);
 
         assertEq(guzzler.balance, 0, "the stipend was not enough for the guzzler, so its send failed");
-        assertEq(bob.balance, h.roundPot() / 2, "and the healthy holder was still paid");
+        assertApproxEqRel(bob.balance, 0.5 ether, 1e12, "and the healthy holder was still paid");
     }
 
     /// @dev The other half of the stipend's contract. Capping the batch is only acceptable because the
-    ///      holder it skips is not locked out: `claimRound` forwards all remaining gas, because it has no
-    ///      batch to protect and the caller is spending their own. Without this the stipend would be a
-    ///      permanent eligibility gate — a wallet costing more than `NATIVE_PAYOUT_GAS` could never be
-    ///      paid, in this round or any other, and its share would roll forward forever.
+    ///      holder it skips is not locked out: `claimDividends` forwards all remaining gas, because it
+    ///      has no batch to protect and the caller is spending their own.
     function test_gasGuzzlingHolderCanStillClaimItself() public {
         address guzzler = address(new GasGuzzlingHolder());
         h.seed(guzzler, SUPPLY / 2);
         h.seed(bob, SUPPLY / 2);
-        h.openRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        h.activate();
+        _distribute(1 ether);
 
-        address[] memory batch = new address[](1);
-        batch[0] = guzzler;
-        h.processRound(0, batch);
+        h.processDividends(0, _batch(guzzler));
         assertEq(guzzler.balance, 0, "skipped by the batch, as the stipend intends");
 
         vm.prank(guzzler);
-        h.claimRound();
+        h.claimDividends();
 
-        assertEq(guzzler.balance, h.roundPot() / 2, "but paid in full when it claims for itself");
+        assertApproxEqRel(guzzler.balance, 0.5 ether, 1e12, "but paid in full when it claims for itself");
     }
 
-    /// @dev A payee reentering `processRound` from `receive()` must be stopped by the transient
-    ///      guard. Without it the attacker would be paid its share, reenter before `roundPaid` is
-    ///      settled, and be paid it a second time out of the same pot.
+    /// @dev A payee reentering `processDividends` from `receive()` must be stopped by the transient
+    ///      guard. Without it the attacker would be paid, reenter before its accrual is zeroed, and be
+    ///      paid the same amount a second time.
     function test_reentrantDistributeCannotDoublePay() public {
         ReenteringHolder attacker = new ReenteringHolder(h);
         h.seed(address(attacker), SUPPLY / 2);
         h.seed(bob, SUPPLY / 2);
-        h.openRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        h.activate();
+        _distribute(1 ether);
 
-        uint256 pot = h.roundPot();
         address[] memory batch = new address[](2);
         batch[0] = address(attacker);
         batch[1] = bob;
-        h.processRound(0, batch);
+        h.processDividends(0, batch);
 
         assertEq(attacker.blockedReentries(), 1, "the reentrant call was refused by the guard");
-        assertEq(address(attacker).balance, pot / 2, "the attacker got its honest half, once");
-        assertEq(bob.balance, pot / 2, "and the other half went where it was owed");
-        assertEq(address(h).balance, 0, "the pot settled to exactly its size, not more");
+        assertApproxEqRel(address(attacker).balance, 0.5 ether, 1e12, "the attacker got its honest half, once");
+        assertApproxEqRel(bob.balance, 0.5 ether, 1e12, "and the other half went where it was owed");
+        assertLe(address(h).balance, 1e6, "nothing beyond rounding dust stayed behind");
     }
 
-    /// @dev Same via `claimRound`, the self-serve backstop — it shares the guard for the same reason.
+    /// @dev Same via `claimDividends`, the self-serve backstop — it shares the guard for the same reason.
     function test_reentrantClaimCannotDoublePay() public {
         ReenteringHolder attacker = new ReenteringHolder(h);
         attacker.setUseClaim(true);
         h.seed(address(attacker), SUPPLY / 2);
         h.seed(bob, SUPPLY / 2);
-        h.openRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+        h.activate();
+        _distribute(1 ether);
 
-        uint256 pot = h.roundPot();
-        h.processRound(0, _batch(address(attacker)));
+        h.processDividends(0, _batch(address(attacker)));
 
         assertEq(attacker.blockedReentries(), 1, "the reentrant claim was refused");
-        assertEq(address(attacker).balance, pot / 2, "paid once, for its own share only");
-        assertLe(h.roundPaid(), pot, "the pot is never over-drawn");
+        assertApproxEqRel(address(attacker).balance, 0.5 ether, 1e12, "paid once, for its own share only");
     }
 
-    /// @dev Solvency, stated directly: whatever the batch composition, the sum pushed out never exceeds
-    ///      the frozen pot. Duplicates in the batch are the interesting case — each must pay once.
-    function test_duplicatesInABatchCannotOverDrawThePot() public {
-        _nativeRound();
-        _fund(1 ether);
-        skip(h.MIN_ROUND_DURATION() + 1);
-        h.processRound(0, _noHolders());
+    /// @dev Duplicates in a batch are the interesting solvency case: zeroing the accrual on the first
+    ///      hit is what makes every later hit pay 0, so the batch cannot over-draw.
+    function test_duplicatesInABatchCannotOverDraw() public {
+        _live();
+        _distribute(1 ether);
 
-        uint256 pot = h.roundPot();
         address[] memory batch = new address[](6);
         batch[0] = alice;
         batch[1] = alice;
@@ -556,10 +609,21 @@ contract DividendAccountingTests is Test {
         batch[3] = bob;
         batch[4] = carol;
         batch[5] = alice;
-        h.processRound(0, batch);
+        h.processDividends(0, batch);
 
-        assertEq(alice.balance + bob.balance + carol.balance, pot, "duplicates cannot over-draw");
-        assertEq(alice.balance, pot / 2, "alice paid exactly once");
-        assertEq(bob.balance, pot / 4, "bob paid exactly once");
+        assertApproxEqRel(alice.balance + bob.balance + carol.balance, 1 ether, 1e12, "duplicates cannot over-draw");
+        assertApproxEqRel(alice.balance, 0.5 ether, 1e12, "alice paid exactly once");
+        assertApproxEqRel(bob.balance, 0.25 ether, 1e12, "bob paid exactly once");
+    }
+
+    /// @dev An unknown address in the batch pays 0 rather than reverting, so a keeper's list needs no
+    ///      validation and a stale indexer entry costs nothing but gas.
+    function test_unknownAddressInABatchPaysNothing() public {
+        _live();
+        _distribute(1 ether);
+
+        address stranger = makeAddr("stranger");
+        h.processDividends(0, _batch(stranger));
+        assertEq(stranger.balance, 0, "an address that never held is owed nothing");
     }
 }

@@ -16,27 +16,21 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 ///      compiler derives the same storage layout for both — the property the delegatecall depends on.
 ///      Pinned by `just check-dividend-layout`.
 contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributionLogic {
-    /// @dev Freezes a self-token payout straight out of its token buffer — no conversion, no slippage,
+    /// @dev Funds a self-token payout straight out of its token buffer — no conversion, no slippage,
     ///      and so no way for it to fail. Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply
     ///      size the swap-back amortises against) because the buffer is denominated in tokens, not
     ///      native. Every other payout asset is native-buffered and goes through the base.
-    /// @dev Staleness is the threshold's ONLY bypass, for the reason the base spells out: "the tax
-    ///      window has closed" was a free grief, because anyone can donate tokens to this contract and
-    ///      have the post-window drain carve them into the dividend buffer, then freeze a pot every
-    ///      holder's share rounds to zero out of and stall settlement for a whole `PAYOUT_WINDOW`.
-    function _freezeDividends(uint256 minOut)
-        internal
-        override
-        returns (FreezeOutcome outcome, uint256 nativeIn, uint256 out)
-    {
-        if (dividendToken != address(this)) return super._freezeDividends(minOut);
+    /// @dev Staleness is the threshold's ONLY bypass, for the reason the base spells out: a residual
+    ///      below the threshold on a token nobody trades would otherwise strand forever.
+    function _fundDividends(uint256 minOut) internal override returns (FundOutcome, uint256, uint256) {
+        if (dividendToken != address(this)) return super._fundDividends(minOut);
 
         uint256 buffered = dividendPendingTokens;
-        if (buffered == 0) return (FreezeOutcome.NotReady, 0, 0);
-        if (buffered < SWAP_THRESHOLD && !_roundIsStale()) return (FreezeOutcome.NotReady, 0, 0);
+        if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
+        if (buffered < SWAP_THRESHOLD && !dividendsStale()) return (FundOutcome.NotReady, 0, 0);
 
         dividendPendingTokens = 0;
-        return (FreezeOutcome.Converted, 0, buffered);
+        return (FundOutcome.Funded, 0, buffered);
     }
 
     /// @dev Names the winner between the venue base's override and the `DividendDistribution` default

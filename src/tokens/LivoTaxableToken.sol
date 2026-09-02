@@ -147,30 +147,27 @@ abstract contract LivoTaxableToken is
     ///      timestamp tracking. `graduationTimestamp` is the tax-window anchor for tokens configured
     ///      with `startTaxFromLaunch == false`; for `startTaxFromLaunch == true` tokens it is only the
     ///      V4 hook's "has graduated?" guard via `getTaxConfig` (the window is creation-anchored).
-    /// @dev Also opens the token's FIRST dividend round, right here, so holders start earning the moment
-    ///      the token goes live rather than whenever the first earnings happen to arrive.
+    /// @dev Also STARTS the dividend accumulator, right here, so holders begin earning the moment the
+    ///      token goes live rather than whenever the first earnings happen to arrive.
     ///
-    ///      The graduator still holds the whole graduating supply at this instant, which looks like it
-    ///      would poison the opening denominator — but it moves that supply into the pool LATER IN THIS
-    ///      SAME TRANSACTION, and with the round already open the min-balance rule sees that transfer:
-    ///      the graduator's minimum drops to 0 and `roundTotalShares` is decremented by exactly what it
-    ///      held. The denominator self-corrects before the transaction ends, by the same mechanism that
-    ///      makes a flash loan worthless. So this costs a couple of SSTOREs once, in the graduation tx,
-    ///      and buys every bonding-curve holder a full-balance share of round 1 — without an entry in
-    ///      `_dividendExcluded` and without a single wei of per-transfer cost.
+    ///      The graduator still holds the whole graduating supply at this instant, which under the old
+    ///      round machinery would have poisoned an opening denominator. It cannot here: there is no
+    ///      opening denominator. The accumulator reads eligible supply live on every advance, and no
+    ///      stream is running yet (`dividendRate` is 0), so the seconds between this call and the
+    ///      graduator moving its supply into the pool accrue exactly nothing to anyone.
     ///
     ///      `_onGraduatedEarnings` stays as the fallback and is NOT redundant: a deploy buy large enough
     ///      to graduate the token inside `createToken` runs this before the factory has called
-    ///      `initializeEarningsAllocation`, so `hasDividends` is still false here and the round opens on
-    ///      the first earnings instead.
+    ///      `initializeEarningsAllocation`, so `hasDividends` is still false here and the accumulator
+    ///      starts on the first earnings instead.
     function markGraduated() external virtual override(ILivoToken, LivoToken) {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
         graduated = true;
         graduationTimestamp = uint40(block.timestamp);
         emit Graduated();
-        // After `Graduated`, never before: the indexer reads `DividendRoundOpened` as following it.
-        if (hasDividends) _openDividendRound();
+        // After `Graduated`, never before: the indexer reads `DividendsActivated` as following it.
+        if (hasDividends) _activateDividends();
     }
 
     /// @notice Allows the token owner OR the launchpad owner to rescue stuck ERC20 balances (never the
@@ -227,7 +224,7 @@ abstract contract LivoTaxableToken is
     ///         `tokenFactory`, which is zero outside that tx (same pattern as `registerFees`).
     /// @dev A non-zero `_dividendsBps` is REFUSED here: this overload configures no payout asset and
     ///      never sets `hasDividends`, so the slice would be carved out of every post-graduation earning
-    ///      and buffered into `pendingNative` with no round to freeze it into and no `processRound` that
+    ///      and buffered into `pendingNative` with no stream to fund and no `processDividends` that
     ///      does not revert `DividendsNotActive`. Worse, `_reservedNative()` returns 0 without
     ///      `hasDividends`, so the permissionless `sweepStrayEth()` would keep recycling that buffer
     ///      through the split. A dividends allocation must come in through the 5-argument overload.
@@ -280,7 +277,7 @@ abstract contract LivoTaxableToken is
     }
 
     /// @dev Dividends accrue as native into the packed per-leg buffer — one SSTORE for all three legs,
-    ///      well inside the router gas budget — and are converted out-of-band by `processRound`.
+    ///      well inside the router gas budget — and are converted out-of-band by `processDividends`.
     ///      A token with no dividend configuration has a zero native weight total, so this consumes
     ///      nothing and the slice folds back to the fund wallets.
     function _handleDividends(uint256 amount) internal override returns (uint256 unconsumed) {
@@ -288,22 +285,19 @@ abstract contract LivoTaxableToken is
     }
 
     /// @inheritdoc EarningsAllocation
-    /// @dev FALLBACK round opener. The normal path is `markGraduated()`, which opens round 1 the moment
-    ///      the token goes live; this covers the one case that misses it — a deploy buy large enough to
-    ///      graduate the token INSIDE `createToken`, where `markGraduated()` runs before the factory has
-    ///      called `initializeEarningsAllocation` and `hasDividends` is therefore still false. Such a
-    ///      token opens its round on the first earnings it routes instead.
-    /// @dev Creation is never the right moment either way: the launchpad holds the whole supply then, so
-    ///      the round would open with an almost-empty denominator and every bonding-curve buyer would
-    ///      look like a mid-round arrival worth zero.
+    /// @dev FALLBACK activator. The normal path is `markGraduated()`, which starts the accumulator the
+    ///      moment the token goes live; this covers the one case that misses it — a deploy buy large
+    ///      enough to graduate the token INSIDE `createToken`, where `markGraduated()` runs before the
+    ///      factory has called `initializeEarningsAllocation` and `hasDividends` is therefore still
+    ///      false. Such a token starts accruing on the first earnings it routes instead.
     /// @dev Hooked HERE rather than in `_handleDividends` so the Uniswap-V2 self-token leg is covered
     ///      too: that leg is carved in token space and never reaches `_handleDividends`, so a token
-    ///      paying only in itself would otherwise never open a round.
-    /// @dev One-off cost: four `balanceOf` reads and two SSTOREs, once per token, inside the router's
-    ///      gas budget. If it ever ran out of gas the fee falls through to the treasury and the next
-    ///      accrual opens the round instead — self-healing, not a one-shot.
+    ///      paying only in itself would otherwise never start.
+    /// @dev One-off cost: one SSTORE, once per token, inside the router's gas budget. If it ever ran out
+    ///      of gas the fee falls through to the treasury and the next accrual activates instead —
+    ///      self-healing, not a one-shot.
     function _onGraduatedEarnings() internal override {
-        if (hasDividends && currentRound == 0) _openDividendRound();
+        if (hasDividends && dividendPeriodFinish == 0) _activateDividends();
     }
 
     //////////////////////// DIVIDEND LOGIC EXTENSION //////////////////////
@@ -316,7 +310,7 @@ abstract contract LivoTaxableToken is
 
     /// @dev Runs the extension's copy of the entry point against THIS contract's storage, balance and
     ///      transient slots, forwarding calldata and returndata untouched. The extension exists for one
-    ///      reason: the round machinery, the venue routing and the payout loop are ~8.6 KB of bytecode a
+    ///      reason: the conversion, the venue routing and the payout loop are ~8.6 KB of bytecode a
     ///      cloned token cannot afford under EIP-170, and they only ever run out-of-band. Nothing on the
     ///      transfer hot path goes through here.
     /// @dev ⚠️ The extension MUST have byte-identical storage layout to this token — it writes round
@@ -348,8 +342,8 @@ abstract contract LivoTaxableToken is
     //////////////////////// DIVIDEND HOOKS //////////////////////
 
     /// @inheritdoc LivoToken
-    function _onBalanceChange(address from, address to, uint256 amount) internal override {
-        _trackDividendShares(from, to, amount);
+    function _onBalanceChange(address from, address to, uint256) internal override {
+        _onDividendTransfer(from, to);
     }
 
     /// @inheritdoc DividendDistribution

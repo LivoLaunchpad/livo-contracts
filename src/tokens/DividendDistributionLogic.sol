@@ -6,17 +6,20 @@ import {ILivoDividendSwapRegistry, SwapRejection} from "src/interfaces/ILivoDivi
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 
 /// @title DividendDistributionLogic
-/// @notice The COLD half of `DividendDistribution`: the round machinery, the native -> payout-asset
-///         conversion, and the per-holder push. Everything here runs out-of-band, driven by a keeper or
-///         a holder — never from a transfer or a swap.
+/// @notice The COLD half of `DividendDistribution`: the native -> payout-asset conversion, the stream
+///         funding, and the per-holder push. Everything here runs out-of-band, driven by a keeper or a
+///         holder — never from a transfer or a swap.
 ///
-/// @dev ONE ENTRY POINT. `processRound` freezes, pays and rolls over, in that order, doing whichever of
-///      the three the round is due for. They were three separate transactions once, and there was never
-///      a reason for it: they are strictly sequential, and the safety of freezing and paying in the same
-///      transaction comes from the minimum-balance rule, not from a transaction boundary — receiving
-///      borrowed tokens IS a tracked balance change, so a borrower's minimum for the round is zero
-///      however the rest of the call is arranged. `MIN_ROUND_DURATION` guards the other instant, the
-///      round's OPEN, and it still does.
+/// @dev ONE ENTRY POINT for the keeper. `processDividends` converts the buffer, folds the proceeds into
+///      the running stream and pushes payouts, doing whichever of the three there is anything to do.
+///      They were three separate transactions and a round state machine once, and there was never a
+///      reason for it: the anti-flash-loan property comes from the DRIP, not from a transaction boundary
+///      or a phase, so the three collapse into one call that can be made at any moment.
+///
+/// @dev NOTHING HERE REVERTS FOR BEING EARLY. A distribution landing mid-stream is the normal case: it
+///      folds the undelivered remainder into a fresh window and changes the slope. The only reverts are
+///      for a call that could accomplish NOTHING — an empty push list against an unfundable buffer —
+///      and they are there so a keeper's simulation gets a reason rather than a silent success.
 ///
 /// @dev WHY THIS IS A SEPARATE CONTRACT. Taxable tokens are CLONES of a single implementation, and that
 ///      implementation has to fit in EIP-170's 24,576 bytes. The dividend engine did not fit alongside
@@ -25,7 +28,7 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 ///      deployed ONCE per venue per chain by the token implementation's own constructor.
 ///
 /// @dev The delegatecall means every line below runs in the TOKEN's context: `address(this)` is the
-///      token, the pot is paid out of the token's own balance, the events are emitted from the token's
+///      token, the payouts come out of the token's own balance, the events are emitted from the token's
 ///      address (so indexers see no change), and the `dividendLocked` transient guard is the token's.
 ///      Nothing is pooled and nothing is custodied here.
 ///
@@ -41,24 +44,19 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
     error NotAToken();
 
-    /// @notice `processRound` was called with nothing to freeze and no frozen round to pay.
-    error NoFrozenRound();
+    /// @notice A distribution would have set a stream slope wider than `dividendRate` can hold. Not
+    ///         reachable with any asset the registry accepts — see `_fundDividendStream`.
+    error DividendRateOverflow();
 
-    /// @notice What `_freezeDividends` found. A return value rather than a flag because the caller has
-    ///         to distinguish four outcomes, three of which carry no amounts.
-    enum FreezeOutcome {
+    /// @notice What `_fundDividends` found. A return value rather than a flag because the caller has to
+    ///         distinguish "wait for earnings" from "the earnings are here and the swap is broken".
+    enum FundOutcome {
         /// @dev Nothing buffered, or not enough of it yet. The quiet, normal answer.
         NotReady,
-        /// @dev The pot is funded with `out` of the payout asset.
-        Converted,
+        /// @dev The stream is funded with `out` of the payout asset.
+        Funded,
         /// @dev Enough was buffered and the conversion did not happen. The buffer is untouched.
-        ConversionFailed,
-        /// @dev The conversion is permanently impossible AND an earlier round left a residual in the
-        ///      old asset. Freeze on that residual alone so it reaches holders; the asset downgrade
-        ///      then happens on the following round, against an empty pot — the `dividendPoolDead`
-        ///      flag this outcome sets is what keeps that "following round" from meaning "another
-        ///      `STALE_ROUND_WINDOW` from now".
-        DrainResidual
+        ConversionFailed
     }
 
     //////////////////////// configuration //////////////////////
@@ -89,190 +87,158 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         emit DividendsInitialized(token);
     }
 
-    //////////////////////// the round //////////////////////
+    //////////////////////// the distribution //////////////////////
 
-    /// @notice Advances the token's dividend round by everything it is due for: freezes the pot if the
-    ///         round is unfrozen and the buffer has cleared its threshold, pushes payouts to `holders`,
-    ///         and rolls the round over once the pot is drained (or its payout window has expired).
-    ///         Permissionless, and the only entry point a keeper needs.
+    /// @notice Converts whatever has accrued into the payout asset, folds it into the running stream,
+    ///         and pushes payouts to `holders`. Permissionless, and the only entry point a keeper needs.
     ///
-    /// @dev Idempotent and unforgeable in the part that matters: the amounts are computed here from each
-    ///      holder's own round minimum, so a duplicate address pays 0, an unknown address pays 0, and an
-    ///      omitted holder is simply paid next round. Callers with a holder list too long for one block
-    ///      call it again with the next batch — the freeze happens once, the rollover happens once, and
-    ///      the calls in between are pure payout batches.
+    /// @dev Idempotent and unforgeable in the part that matters: the amounts are read from each holder's
+    ///      own accrued balance, so a duplicate pays 0, an unknown address pays 0, and an omitted holder
+    ///      loses nothing at all — their accrual keeps sitting there for the next batch or for their own
+    ///      `claimDividends()`. A keeper is free to push only to holders above whatever size threshold
+    ///      it likes; the small ones are not forfeiting anything by being skipped.
     ///
-    /// @dev The freeze is DERIVED, never chosen by the caller: which round freezes, and on what, is a
-    ///      function of the buffer and the clock alone. The only thing a caller supplies is the slippage
-    ///      floor for their own conversion.
+    /// @dev What gets funded, and when, is DERIVED: a function of the buffer and the clock alone. The
+    ///      only thing a caller supplies is the slippage floor for their own conversion.
     ///
     /// @param minOut Slippage floor for the conversion, in the payout asset's own decimals. Ignored when
-    ///        the payout asset is native or the token itself, and by any call that does not freeze.
-    /// @param holders Addresses to push this round's payouts to. May be empty — a freeze-only or
-    ///        rollover-only call is a normal thing for a keeper to make.
-    function processRound(uint256 minOut, address[] calldata holders) external nonReentrantDividends {
-        uint32 round = currentRound;
-        require(round != 0, DividendsNotActive());
+    ///        the payout asset is native or the token itself, and by any call that does not convert.
+    /// @param holders Addresses to push accrued payouts to. May be empty — a fund-only call is a normal
+    ///        thing for a keeper to make.
+    function processDividends(uint256 minOut, address[] calldata holders) external nonReentrantDividends {
+        require(dividendPeriodFinish != 0, DividendsNotActive());
 
-        if (!roundFrozen) {
-            // The one instant an attacker would want to control is the round's OPEN, because that is
-            // where balances are read live and rolling over is permissionless. A floor here is what
-            // stops open -> freeze -> pay fitting inside one flash loan.
-            require(block.timestamp >= uint256(roundOpenedAt) + MIN_ROUND_DURATION, RoundTooYoung());
+        // Before anything else, for the reason the base spells out: the accumulator has to close the
+        // interval that just ended at the supply that was actually in effect for it.
+        uint256 rpt = _syncDividends();
 
-            (FreezeOutcome outcome, uint256 nativeIn, uint256 out) = _freezeDividends(minOut);
-            // Two different situations, two different errors: a keeper that sees `BelowDividendThreshold`
-            // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
-            // swap problem — a `minOut` the pool has moved past, or a pool that is gone. Reporting the
-            // first for the second sends it away to wait for money that already arrived.
-            if (outcome == FreezeOutcome.NotReady) {
-                // A STALE ROUND ALWAYS MAKES PROGRESS. Reaching here with nothing buffered at all means
-                // a token that has not earned in a month, and leaving its round open forever would
-                // measure every holder's share against their low-water mark over that whole span. Roll
-                // it over instead: it resets the stale clock, and it is the only case where a call with
-                // nothing to freeze is worth its gas.
-                if (!_roundIsStale()) revert BelowDividendThreshold();
-                _finalizeRound(round);
-                return;
-            }
-            if (outcome == FreezeOutcome.ConversionFailed) revert DividendConversionFailed();
-
-            uint96 denom = roundTotalShares;
-            uint256 pot = roundPot + out; // adds to whatever earlier rounds left unpaid
-            roundPot = pot;
-            roundFrozen = true;
-            frozenShares = denom;
-            roundClosedAt = uint40(block.timestamp);
-            // Read AFTER the freeze: a dead-pool downgrade rewrites it, and the event must name the
-            // asset the pot is actually denominated in.
-            emit DividendRoundFunded(round, dividendToken, nativeIn, pot, denom);
+        (FundOutcome outcome, uint256 nativeIn, uint256 out) = _fundDividends(minOut);
+        if (outcome == FundOutcome.Funded) {
+            _fundDividendStream(out);
+            // Both read AFTER the funding: a dead-pool downgrade rewrites the asset AND restarts the
+            // accumulator, so the event must name the asset the stream is actually denominated in and
+            // the payout loop below must measure against the accumulator the holders are now on.
+            emit DividendsFunded(dividendToken, nativeIn, out, dividendRate, dividendPeriodFinish);
+            rpt = rewardPerTokenStored;
         }
 
         if (holders.length != 0) {
-            uint256 denom = frozenShares;
             address asset = dividendToken;
             uint256 paid;
             for (uint256 i; i < holders.length; ++i) {
-                paid += _payHolder(holders[i], round, asset, denom, NATIVE_PAYOUT_GAS);
+                paid += _payHolder(holders[i], asset, rpt, NATIVE_PAYOUT_GAS);
             }
-            if (paid != 0) roundPaid += paid;
+            _reduceDividendsOwed(paid);
+        } else if (outcome == FundOutcome.NotReady) {
+            // Two different situations, two different errors: a keeper that sees `BelowDividendThreshold`
+            // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
+            // swap problem — a `minOut` the pool has moved past, or a pool that is gone.
+            revert BelowDividendThreshold();
+        } else if (outcome == FundOutcome.ConversionFailed) {
+            revert DividendConversionFailed();
         }
-
-        // Rolls as soon as the pot is drained to dust. The window is the escape hatch for a pot that
-        // CANNOT be drained — a holder whose `receive()` reverts, an address a payout asset blacklists —
-        // without which the round would never roll and the token's dividends would stop for good.
-        if (_roundSettled() || block.timestamp >= uint256(roundClosedAt) + PAYOUT_WINDOW) {
-            _finalizeRound(round);
-        }
+        // A call carrying holders never reverts for the buffer being short or the swap being broken: it
+        // asked to push payouts, and it pushed them.
     }
 
-    /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
+    /// @notice Self-serve payout of everything the caller has accrued.
     /// @dev Forwards ALL remaining gas to a native payout instead of `NATIVE_PAYOUT_GAS`. The stipend
     ///      exists to stop one expensive fallback from starving the REST of a keeper batch; a self-serve
     ///      claim has no rest of a batch, and the caller is spending their own gas on their own payout.
     ///      This is what keeps the stipend a throughput knob rather than a permanent eligibility gate —
     ///      a holder whose wallet costs more than a batch will spend can still always be paid here.
-    function claimRound() external nonReentrantDividends {
-        require(roundFrozen, NoFrozenRound());
-        uint256 paid = _payHolder(msg.sender, currentRound, dividendToken, frozenShares, gasleft());
-        if (paid != 0) roundPaid += paid;
+    function claimDividends() external nonReentrantDividends {
+        require(dividendPeriodFinish != 0, DividendsNotActive());
+        uint256 rpt = _syncDividends();
+        _reduceDividendsOwed(_payHolder(msg.sender, dividendToken, rpt, gasleft()));
     }
 
     //////////////////////// internal //////////////////////
 
-    /// @dev Rolls the round over: whatever stayed unpaid seeds the next round's pot, and a fresh
-    ///      denominator is read from live balances.
-    function _finalizeRound(uint32 round) private {
-        uint256 pot = roundPot;
-        uint256 alreadyPaid = roundPaid;
-        if (alreadyPaid != 0) {
-            pot -= alreadyPaid;
-            roundPot = pot;
-            roundPaid = 0;
-        }
+    /// @dev Folds `amount` into the stream: whatever the running one still had to deliver is added to
+    ///      it, and the sum is re-spread over a fresh full `DIVIDEND_DRIP_DURATION`. The slope changes;
+    ///      nothing is ever rejected, delayed or carried over.
+    ///
+    /// @dev THE WHOLE POINT of re-spreading rather than appending: a stream that merely extended would
+    ///      let a large distribution land at the old (small) slope, and the money would take
+    ///      proportionally longer to reach holders the more of it there was. Re-spreading keeps the
+    ///      delivery time constant and puts the size into the slope, which is the only variable a
+    ///      flash-loan attacker cannot integrate against.
+    function _fundDividendStream(uint256 amount) private {
+        uint256 finish = dividendPeriodFinish;
+        uint256 remaining = finish > block.timestamp ? (finish - block.timestamp) * dividendRate : 0;
 
-        emit DividendRoundFinalized(round, pot);
-        _openDividendRound();
+        uint256 rate = (amount + remaining) / DIVIDEND_DRIP_DURATION;
+        // Unreachable for any asset the registry accepts: `uint96` holds 7.9e28 units per second, i.e.
+        // 7.1e31 units — 71 trillion whole tokens of an 18-decimal asset — inside one 15-minute window.
+        // A revert here is a cold-path failure that leaves the buffer untouched, never a stuck token.
+        require(rate <= type(uint96).max, DividendRateOverflow());
+
+        // Owed grows by the whole distribution. Integer division leaves a sub-`DIVIDEND_DRIP_DURATION`
+        // residue the stream cannot deliver, which stays owed and simply never leaves the balance —
+        // dust, and dust that errs towards holders rather than towards a sweep.
+        // `uint160` holds 1.5e48 payout-asset units; `amount` is bounded by the conversion cap.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        dividendsOwed = uint160(uint256(dividendsOwed) + amount);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        dividendRate = uint96(rate);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        dividendPeriodFinish = uint40(block.timestamp + DIVIDEND_DRIP_DURATION);
+        // The caller synced first, so this only ever moves the clock FORWARD across a gap between
+        // streams — seconds in which the rate was zero and nothing could have accrued.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        lastDividendUpdate = uint40(block.timestamp);
     }
 
-    /// @dev Whether the open round has aged past `STALE_ROUND_WINDOW`, i.e. the token has not had a
-    ///      rollover in a month. Only read while the round is UNFROZEN, so `roundOpenedAt` is always the
-    ///      right anchor here.
-    function _roundIsStale() internal view returns (bool) {
-        return block.timestamp >= uint256(roundOpenedAt) + STALE_ROUND_WINDOW;
+    /// @dev Saturating on purpose. The accumulator truncates in the holders' favour at every step, so
+    ///      `Σ payouts <= dividendsOwed` holds by construction — but this runs in a non-upgradeable
+    ///      clone, and a rounding surprise must degrade into a stale counter rather than into payouts
+    ///      that revert forever.
+    function _reduceDividendsOwed(uint256 paid) private {
+        if (paid == 0) return;
+        uint256 owed = dividendsOwed;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        dividendsOwed = paid >= owed ? 0 : uint160(owed - paid);
     }
 
-    /// @dev True when the frozen pot has been paid down to within 0.01%.
-    function _roundSettled() private view returns (bool) {
-        uint256 pot = roundPot;
-        return (pot - roundPaid) * 10_000 <= pot;
-    }
-
-    /// @dev Turns the accrued buffer into a payable pot, or reports why it could not. Overridable so a
-    ///      venue can source the payout from somewhere other than the native buffer (the V2 self-token
-    ///      payout, which is carved from tax tokens).
-    function _freezeDividends(uint256 minOut)
-        internal
-        virtual
-        returns (FreezeOutcome outcome, uint256 nativeIn, uint256 out)
-    {
+    /// @dev Turns the accrued buffer into payout-asset units, or reports why it could not. Overridable
+    ///      so a venue can source the payout from somewhere other than the native buffer (the V2
+    ///      self-token payout, which is carved from tax tokens).
+    function _fundDividends(uint256 minOut) internal virtual returns (FundOutcome, uint256 nativeIn, uint256 out) {
         uint256 buffered = pendingNative;
-        if (buffered == 0) return (FreezeOutcome.NotReady, 0, 0);
+        if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
 
-        // The threshold exists so a distribution only fires when the pot is worth its gas, and staleness
-        // is its ONLY bypass: a residual below the threshold on a token nobody has traded or finalized
-        // for `STALE_ROUND_WINDOW` would otherwise strand forever.
-        //
-        // There used to be a second bypass — "the earnings source is provably finished", i.e. the V2 tax
-        // window has closed — and it was a free grief. `accrueFees` and `sweepStrayEth` are both
-        // permissionless, so anyone could push a wei into `pendingNative` after the window, freeze a pot
-        // every holder's share rounds to zero out of, and stall settlement for a whole `PAYOUT_WINDOW`,
-        // repeatably, for gas. Staleness costs 30 days of a completely idle token to reach, which is the
-        // price that makes the bypass safe; nothing else was buying anything the stale clock does not
-        // already deliver, only later.
-        bool stale = _roundIsStale();
-        if (buffered < DIVIDEND_THRESHOLD && !stale) {
-            return (FreezeOutcome.NotReady, 0, 0);
-        }
+        // The threshold exists so a distribution only fires when it is worth its gas, and staleness is
+        // its ONLY bypass: a residual below the threshold on a token nobody has traded for
+        // `STALE_DIVIDEND_WINDOW` would otherwise strand forever. There is nothing to grief here any
+        // more — a dust distribution just sets a dust slope, it cannot stall anything.
+        bool stale = dividendsStale();
+        if (buffered < DIVIDEND_THRESHOLD && !stale) return (FundOutcome.NotReady, 0, 0);
 
         address asset = dividendToken;
         // Only a payout that SWAPS is capped. Native is already denominated in the payout asset, so it
         // has no swap to sandwich, and throttling it would delay real money for no security gain.
-        uint256 spend = (asset != address(0) && buffered > MAX_DIVIDEND_PER_FREEZE) ? MAX_DIVIDEND_PER_FREEZE : buffered;
+        uint256 spend =
+            (asset != address(0) && buffered > MAX_DIVIDEND_PER_CONVERSION) ? MAX_DIVIDEND_PER_CONVERSION : buffered;
         out = _acquireDividendAsset(asset, spend, minOut);
 
         if (out == 0) {
             // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
-            // fail for reasons outside anyone's control, and the round simply stays unfrozen and tries
-            // again. The two escapes below exist for the one case where "try again" never terminates —
-            // the pool is gone and the buffer would be owed to holders forever.
+            // fail for reasons outside anyone's control, and the next call simply tries again. The escape
+            // below exists for the one case where "try again" never terminates — the pool is gone and the
+            // buffer would be owed to holders forever.
             //
-            // Neither is reachable on a live token, and neither can be manufactured: they need the round
-            // to have gone `STALE_ROUND_WINDOW` without a rollover (a traded token rolls constantly) AND
-            // `minOut == 0`, meaning the swap could not execute at ANY price. A caller passing a floor
-            // the pool has merely moved past gets `ConversionFailed`, not a downgrade.
-            // `dividendPoolDead` short-circuits the clock on the SECOND pass: the first pass already
-            // proved the pool unreachable, and its residual drain rolled the round over — which reset
-            // `roundOpenedAt` and would otherwise make the downgrade wait out another
-            // `STALE_ROUND_WINDOW`, reverting every call in between.
-            if (!(stale || dividendPoolDead) || minOut != 0) return (FreezeOutcome.ConversionFailed, 0, 0);
+            // Not reachable on a live token and not manufacturable: it needs `STALE_DIVIDEND_WINDOW`
+            // without a single distribution AND `minOut == 0`, meaning the swap could not execute at ANY
+            // price. A caller passing a floor the pool has merely moved past gets `ConversionFailed`.
+            if (!stale || minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
 
-            // An earlier round's residual is denominated in the OLD asset. Pay that out first, under the
-            // asset it was bought in; the downgrade below then runs against an empty pot, so a pot never
-            // mixes two assets.
-            if (roundPot != 0) {
-                dividendPoolDead = true;
-                return (FreezeOutcome.DrainResidual, 0, 0);
-            }
-
-            dividendPoolDead = false;
-            dividendToken = address(0);
-            emit DividendAssetDowngradedToNative(asset);
-            // Native needs no conversion, so the whole buffer becomes the pot: the freeze cap only ever
-            // existed to bound a swap.
+            _downgradeDividendAsset(asset);
+            // Native needs no conversion, so the whole buffer funds the stream: the conversion cap only
+            // ever existed to bound a swap.
             // forge-lint: disable-next-line(unsafe-typecast)
             pendingNative = uint88(pendingNative - buffered);
-            return (FreezeOutcome.Converted, buffered, buffered);
+            return (FundOutcome.Funded, buffered, buffered);
         }
 
         // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
@@ -280,19 +246,37 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         // Bounded by the value read, which is already a `uint88`.
         // forge-lint: disable-next-line(unsafe-typecast)
         pendingNative = uint88(pendingNative - spend);
-        // The pool converted again, so it was not dead after all — drop the downgrade short-circuit.
-        if (dividendPoolDead) dividendPoolDead = false;
-        return (FreezeOutcome.Converted, spend, out);
+        return (FundOutcome.Funded, spend, out);
+    }
+
+    /// @dev Permanently repoints the payout at native and writes off every unclaimed accrual in the old
+    ///      asset by bumping `dividendEpoch` — each account rebases to zero on its next touch.
+    /// @dev The write-off is the only coherent answer, not a shortcut. `Acct.rewards` is a bare number
+    ///      of units with no asset attached, so carrying it across the downgrade would pay an old-asset
+    ///      debt out of a new-asset balance, at a 1:1 unit ratio between two assets that may not even
+    ///      share decimals. Claiming never depended on the pool being alive, so every holder had the
+    ///      full `STALE_DIVIDEND_WINDOW` — thirty days after the last distribution — to take theirs.
+    ///      What is left of the dead asset stops being `committedDividends` and becomes rescuable, which
+    ///      is the only way it is ever recoverable at all.
+    function _downgradeDividendAsset(address previous) private {
+        dividendToken = address(0);
+        dividendsOwed = 0;
+        // Restart the accumulator with the epoch. An account still on the old epoch is read as
+        // "checkpointed at zero", so this is what makes the write-off consistent for accounts that have
+        // not been touched since — and what lets them accrue normally in the new asset from here.
+        rewardPerTokenStored = 0;
+        ++dividendEpoch;
+        emit DividendAssetDowngradedToNative(previous);
     }
 
     /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought on the
     ///      pool the creator named for it. The token itself is venue-specific, handled by an override.
-    /// @dev The route is the creator's, fixed at creation, and never the caller's: `processRound` is
+    /// @dev The route is the creator's, fixed at creation, and never the caller's: `processDividends` is
     ///      permissionless, so a route supplied there would let any caller send the token's earnings
     ///      through a pool they control.
     /// @return out asset actually received, measured as a balance delta so a fee-on-transfer asset is
     ///         counted for what it delivered. 0 when the conversion did not happen — see
-    ///         `_freezeDividends`.
+    ///         `_fundDividends`.
     function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal
         virtual
@@ -309,56 +293,44 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///      asset back here in one call. Nothing about the route is stored on the token any more: the
     ///      registry resolves it, so a token created before a venue existed can still use it.
     /// @dev A LOW-LEVEL call, on purpose. The registry reverts on a dead pair, a missed floor or an
-    ///      asset blacklisted since creation, and this caller is a dividend freeze that must not lose
-    ///      its buffer to any of those — a reverted call leaves the native exactly where it was, and
-    ///      `false` here becomes `ConversionFailed` rather than a reverted round.
+    ///      asset blacklisted since creation, and this caller is a distribution that must not lose its
+    ///      buffer to any of those — a reverted call leaves the native exactly where it was, and
+    ///      `false` here becomes `ConversionFailed` rather than a reverted distribution.
     function _swapNativeToDividendAsset(address asset, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
         (ok,) = DIVIDEND_SWAP_REGISTRY.call{value: nativeIn}(
             abi.encodeCall(ILivoDividendSwapRegistry.swapNativeToAsset, (asset, minOut, address(this)))
         );
     }
 
-    /// @dev Pays one holder, or nothing. The caller holds `nonReentrantDividends`, so nothing can revisit
-    ///      this holder mid-payout and the marker is safe to write at the END — which is what lets it
-    ///      record whether anything actually went out.
-    /// @dev Marking a holder who received NOTHING would forfeit their round outright: `claimRound` would
-    ///      find the marker set and pay 0, for that round and every future one it happened in. Leaving
-    ///      them unmarked costs a retried (and gas-capped) send per batch instead.
+    /// @dev Pays one holder everything they have accrued, or nothing.
+    /// @dev The banked accrual is zeroed AFTER the send succeeds, never before. A failed send therefore
+    ///      costs the holder nothing — the amount stays accrued and the next batch (or their own claim)
+    ///      pays it. This is what a reverting `receive()` or a payout-asset blacklist degrades into.
+    /// @dev Settling before reading is not optional: the caller has already advanced the accumulator, so
+    ///      this holder's share of the interval that just closed is only in `Acct.rewards` after this.
     /// @param gasStipend Gas forwarded to a native payout: `NATIVE_PAYOUT_GAS` from a keeper batch,
-    ///        `gasleft()` from `claimRound` (which, under EIP-150's 63/64 rule, is an uncapped call).
+    ///        `gasleft()` from `claimDividends` (which, under EIP-150's 63/64 rule, is an uncapped call).
     /// @return The amount actually delivered, 0 if the holder was skipped or the send failed.
-    function _payHolder(address holder, uint32 round, address asset, uint256 denom, uint256 gasStipend)
-        private
-        returns (uint256)
-    {
-        // Only reachable if the saturating `_reduceRoundShares` ever fires, which needs an exclusion set
-        // this contract does not have. Guarded anyway: the alternative is a division panic that would
-        // brick every payout of the round, in a clone nobody can patch.
-        if (denom == 0) return 0;
+    function _payHolder(address holder, address asset, uint256 rpt, uint256 gasStipend) private returns (uint256) {
+        // An excluded address never accrues, so its `Acct` is a stale checkpoint against a live balance
+        // — settling it would mint a phantom claim out of the accumulator's whole history.
+        if (_dividendExcluded(holder)) return 0;
 
-        Acct storage acct = dividendAccounts[holder];
-        if (acct.lastPaidRound == round || _dividendExcluded(holder)) return 0;
-
-        uint256 shares = acct.roundId == round ? acct.minShares : _dividendBalanceOf(holder);
-        if (shares == 0 || shares * MIN_SHARE_DENOM < denom) return 0;
-
-        uint256 amount = roundPot * shares / denom;
+        _settleDividends(holder, rpt);
+        uint256 amount = dividendAccounts[holder].rewards;
         if (amount == 0) return 0;
 
-        // A failed send is skipped, not reverted: one holder with a reverting `receive()` — or one
-        // blacklisted by the payout asset — must not brick the batch. The amount stays in the pot and
-        // rolls to the next round.
         if (!_payDividend(asset, holder, amount, gasStipend)) return 0;
 
-        acct.lastPaidRound = round;
-        emit DividendPaid(round, holder, asset, amount);
+        dividendAccounts[holder].rewards = 0;
+        emit DividendPaid(holder, asset, amount);
         return amount;
     }
 
     /// @dev Delivers one payout, reporting failure instead of reverting — for BOTH shapes. Native goes
     ///      out with a bounded stipend. A third asset is the creator's choice, and a creator's choice can
     ///      blacklist addresses, so a reverting `safeTransfer` on ONE holder would take down the whole
-    ///      batch, `claimRound` for everyone, and with them the round's ability to settle.
+    ///      batch and `claimDividends` for everyone.
     function _payDividend(address asset, address to, uint256 amount, uint256 gasStipend) private returns (bool) {
         if (asset == address(0)) {
             (bool sent,) = to.call{value: amount, gas: gasStipend}("");
@@ -370,7 +342,7 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         // contract — its pot could only have been funded through a `balanceOf` call on it.
         // Decoded as a WORD, not a `bool`: `abi.decode(_, (bool))` reverts on any value above 1, which a
         // non-standard ERC20 may legally return — and reverting here is precisely what this function
-        // exists not to do (it would brick the batch, `claimRound`, and the round's ability to settle).
+        // exists not to do (it would brick the batch and `claimDividends`).
         return ok && (ret.length == 0 || (ret.length >= 32 && abi.decode(ret, (uint256)) != 0));
     }
 }

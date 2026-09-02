@@ -20,7 +20,7 @@ import {Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 ///      and skipped rather than broadcast.
 ///
 /// @dev That probing is the whole reason this is a forge script rather than a loop of `cast send`.
-///      A route naming the wrong pool does not fail loudly — it fails at some future `processRound`,
+///      A route naming the wrong pool does not fail loudly — it fails at some future `processDividends`,
 ///      on a clone nobody can patch, for a creator who picked that asset in good faith.
 ///
 /// @dev IT IS ALSO THE HEALTH CHECK. Run WITHOUT `--broadcast` and it probes the route each asset is
