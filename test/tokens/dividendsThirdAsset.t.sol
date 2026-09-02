@@ -300,6 +300,23 @@ contract DividendsThirdAssetTests is Test {
         assertGt(harness.dividendsOwed(), 0, "the same buffer converts once the floor is reachable");
     }
 
+    /// @dev A raw `call` to an address with no code SUCCEEDS and keeps the value. If the registry constant
+    ///      is ever wrong — or the registry is deployed after the token implementations — the conversion
+    ///      must fail closed rather than hand the buffer to a codeless address on every call.
+    function test_aCodelessRegistryFailsClosedInsteadOfBurningTheBuffer() public {
+        _fundAndActivate(harness);
+        vm.etch(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, hex"");
+
+        // A call CARRYING holders never reverts for a broken swap, so nothing rolls the transfer back:
+        // this is the shape in which a codeless registry would silently pocket the buffer, every call.
+        uint256 balanceBefore = address(harness).balance;
+        harness.processDividends(0, _holders());
+
+        assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched");
+        assertEq(address(harness).balance, balanceBefore, "and the native never left the token");
+        assertEq(harness.dividendsOwed(), 0, "no stream was funded");
+    }
+
     /// @dev A token that simply has not earned enough yet reports the OTHER error: the keeper is told to
     ///      wait, not sent looking for a broken pool.
     function test_aBelowThresholdBufferReportsBelowDividendThreshold() public {

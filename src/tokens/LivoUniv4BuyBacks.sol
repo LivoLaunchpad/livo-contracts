@@ -31,6 +31,10 @@ abstract contract LivoUniv4BuyBacks {
     /// @notice Universal-router command byte selecting a V4 swap.
     uint8 internal constant V4_SWAP_COMMAND = 0x10;
 
+    /// @notice Universal-router command byte returning the router's leftover native to a recipient. A
+    ///         router-LEVEL command, not a v4 action: `V4Router` rejects `Actions.SWEEP` as unsupported.
+    uint8 internal constant SWEEP_COMMAND = 0x04;
+
     /// @dev Buys this token with `ethIn` native ETH on its canonical graduated pool
     ///      (`UniswapV4PoolConstants.livoPoolKey` — the same key the graduator initialized), requiring at
     ///      least `minTokensOut`. Tokens are TAKEn to this contract.
@@ -41,8 +45,15 @@ abstract contract LivoUniv4BuyBacks {
     ///      conversion did not happen" and keeps its buffer, and its escape hatch for a pool that has
     ///      stopped swapping altogether is only reachable if the call returns rather than reverts. A
     ///      caller that does want to revert says so itself.
-    /// @return ok false if the router reverted; the ETH stays with this contract.
+    /// @return ok false if the router reverted or the floor was unrepresentable. Either way — and on a
+    ///         partial fill too — the native the pool did not take stays with this contract.
     function _buyBackTokensWithEth(address hook, uint256 ethIn, uint256 minTokensOut) internal returns (bool ok) {
+        // The router's params are `uint128`. `ethIn` is capped far below that by the per-call spend cap,
+        // but `minTokensOut` comes from whoever called the processor: truncating it would SILENTLY weaken
+        // the floor they asked for, so an unrepresentable one fails the swap instead. Same rule as
+        // `UniversalRouterVenue.swapNativeToAssetV4`.
+        if (minTokensOut > type(uint128).max || ethIn > type(uint128).max) return false;
+
         // abi round-trip converts the canonical lib/v4-core key into v4-periphery's identical PoolKey.
         PoolKey memory key = abi.decode(abi.encode(UniswapV4PoolConstants.livoPoolKey(address(this), hook)), (PoolKey));
 
@@ -61,11 +72,18 @@ abstract contract LivoUniv4BuyBacks {
 
         bytes memory actions =
             abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
-        bytes[] memory inputs = new bytes[](1);
+        bytes[] memory inputs = new bytes[](2);
         inputs[0] = abi.encode(actions, params);
+        // `SETTLE_ALL` settles the debt the swap ACTUALLY incurred, not `ethIn`. A pool that fills only
+        // partially — or not at all, which `amountOutMinimum == 0` lets through without a revert — leaves
+        // the rest sitting in the router, which never refunds on its own and which anyone may sweep. This
+        // brings it back here, so "no tokens bought" also means "the ETH is still ours".
+        inputs[1] = abi.encode(address(0), address(this), uint256(0)); // SWEEP native, no minimum
 
         (ok,) = UNIV4_UNIVERSAL_ROUTER.call{value: ethIn}(
-            abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP_COMMAND), inputs, block.timestamp))
+            abi.encodeCall(
+                IUniversalRouter.execute, (abi.encodePacked(V4_SWAP_COMMAND, SWEEP_COMMAND), inputs, block.timestamp)
+            )
         );
     }
 }

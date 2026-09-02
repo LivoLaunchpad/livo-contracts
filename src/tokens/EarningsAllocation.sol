@@ -96,8 +96,6 @@ abstract contract EarningsAllocation {
         internal
         returns (uint256 fundAmount)
     {
-        if (amount == 0) return 0;
-
         if (!_earningsGraduated()) {
             return amount;
         }
@@ -105,7 +103,12 @@ abstract contract EarningsAllocation {
         // First point at which a token is provably past graduation AND actually earning. Modules that
         // need a one-off "the token is live now" moment hook in here rather than into `markGraduated()`,
         // which still runs mid-graduation with the graduator holding the whole supply.
+        // BEFORE the zero-amount exit, not after: a token whose every bucket is peeled upstream in token
+        // space reaches here with `amount == 0` on EVERY earnings routing, and that is exactly the token
+        // whose dividends would otherwise never open.
         _onGraduatedEarnings();
+
+        if (amount == 0) return 0;
 
         // Carve the burn/liquidity slices this venue takes from the ETH here; a venue that peeled them
         // upstream in token-space passes 0 for that share.

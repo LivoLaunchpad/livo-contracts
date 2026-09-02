@@ -149,13 +149,24 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
         PoolKey memory key =
             UniswapV4PoolConstants.livoPoolKey(address(this), ILivoV4Graduator(graduator).HOOK_ADDRESS());
         address adder = ILivoV4Graduator(graduator).LIQUIDITY_ADDER();
-        // NFT and dust ETH both return to this token (permanent depth; dust rejoins the earnings split).
+        // NFT and leftover ETH both return to this token (permanent depth; the ETH stays earmarked).
+        uint256 balanceBefore = address(this).balance;
         uint128 liquidity = ILivoUniV4LiquidityAdder(adder).addSingleSidedEthBelowPrice{value: ethIn}(
             key, LIQUIDITY_WALL_TICK_WIDTH, address(this), address(this)
         );
 
-        // Shared event signature; the token side is always 0 for the single-sided ETH wall.
-        emit LiquidityAdded(ethIn, 0, liquidity);
+        // Whatever the adder handed back stays earmarked for liquidity, mirroring the V2 processor:
+        // `liquidityPendingEth` was debited by the full `ethIn` above, so without this the unplaced
+        // remainder silently rejoins the stray-ETH pool and `sweepStrayEth` re-splits it into the burn /
+        // dividend / fund buckets. Two ways to get one: `ethIn` sized to zero liquidity and came back
+        // whole, or the mint's `SWEEP` returned the rounding dust. Nothing can send ETH here mid-call —
+        // the mint is a `modifyLiquidities`, not a swap, so no hook fee can land in between.
+        uint256 ethAdded = balanceBefore - address(this).balance;
+        if (ethAdded < ethIn) liquidityPendingEth += ethIn - ethAdded;
+
+        // Shared event signature; reports the ETH the pool ACTUALLY took, as the V2 processor does. The
+        // token side is always 0 for the single-sided ETH wall.
+        emit LiquidityAdded(ethAdded, 0, liquidity);
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

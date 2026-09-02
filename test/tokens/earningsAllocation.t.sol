@@ -13,6 +13,7 @@ contract EarningsAllocationHarness is EarningsAllocation {
     uint256 public burnReceived;
     uint256 public dividendsReceived;
     uint256 public liquidityReceived;
+    uint256 public graduatedEarningsCalls;
 
     function setGraduated(bool g) external {
         grad = g;
@@ -28,6 +29,10 @@ contract EarningsAllocationHarness is EarningsAllocation {
 
     function _earningsGraduated() internal view override returns (bool) {
         return grad;
+    }
+
+    function _onGraduatedEarnings() internal override {
+        ++graduatedEarningsCalls;
     }
 
     function _depositToFund(uint256 amount) internal override {
@@ -146,6 +151,23 @@ contract EarningsAllocationTest is Test {
 
         assertEq(h.fundReceived(), 0);
         assertEq(h.burnReceived(), 0);
+    }
+
+    /// @dev The zero-amount exit must not skip the graduated-earnings hook. A token whose every bucket is
+    ///      peeled upstream in token space routes `0` ETH on EVERY earnings event, and that is exactly the
+    ///      token whose dividend module would otherwise never get its fallback opener — leaving dividends
+    ///      permanently inactive and its token buffer frozen.
+    function test_zeroAmount_stillFiresTheGraduatedEarningsHook() public {
+        h.initAllocation(0, 0, 0);
+
+        h.setGraduated(false);
+        h.allocate(0);
+        assertEq(h.graduatedEarningsCalls(), 0, "pre-graduation earnings never open anything");
+
+        h.setGraduated(true);
+        h.allocate(0);
+        assertEq(h.graduatedEarningsCalls(), 1, "a zero-amount post-graduation routing still opens the module");
+        assertEq(h.fundReceived(), 0, "and still deposits nothing");
     }
 
     function test_initReverts_whenBucketsExceedTotal() public {

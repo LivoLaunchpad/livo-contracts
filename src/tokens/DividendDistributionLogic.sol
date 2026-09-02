@@ -296,7 +296,12 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///      asset blacklisted since creation, and this caller is a distribution that must not lose its
     ///      buffer to any of those — a reverted call leaves the native exactly where it was, and
     ///      `false` here becomes `ConversionFailed` rather than a reverted distribution.
+    /// @dev The `extcodesize` check is what makes the low-level call fail CLOSED. A raw `call` to an
+    ///      address with no code succeeds, so against a misconfigured (or not-yet-deployed) registry
+    ///      constant it would hand the buffer over and report success while `_acquireDividendAsset`
+    ///      measured a zero delta — burning the native on every call instead of reverting once.
     function _swapNativeToDividendAsset(address asset, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
+        if (DIVIDEND_SWAP_REGISTRY.code.length == 0) return false;
         (ok,) = DIVIDEND_SWAP_REGISTRY.call{value: nativeIn}(
             abi.encodeCall(ILivoDividendSwapRegistry.swapNativeToAsset, (asset, minOut, address(this)))
         );

@@ -111,6 +111,30 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         burnToken.processBurn(0); // next block processes again
     }
 
+    /// @dev The router's `amountOutMinimum` is a `uint128`, so a floor above that must fail the buy-back
+    ///      rather than truncate into `uint128(2**128) == 0`. Belt and braces: the encoding's `TAKE_ALL`
+    ///      minimum is the UNtruncated value and would reject the take anyway; the explicit guard is what
+    ///      makes the property independent of that, and matches `UniversalRouterVenue.swapNativeToAssetV4`.
+    function test_v4ProcessBurn_unrepresentableMinOutFailsInsteadOfTruncating() public {
+        address token = _createBurnTaxToken(400, 5000);
+        testToken = token;
+        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _graduateToken();
+        _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
+
+        uint256 pending = burnToken.burnPendingEth();
+        assertGt(pending, 0, "burn ETH should accrue from the sell tax");
+
+        vm.expectRevert(LivoTaxableTokenUniV4.BuyBackFailed.selector);
+        burnToken.processBurn(uint256(type(uint128).max) + 1);
+
+        assertEq(burnToken.burnPendingEth(), pending, "the buffer is untouched by the rejected call");
+    }
+
     function test_v4SweepStrayEth_routesStrayToBurnBuffer() public {
         address token = _createBurnTaxToken(400, 5000);
         testToken = token;

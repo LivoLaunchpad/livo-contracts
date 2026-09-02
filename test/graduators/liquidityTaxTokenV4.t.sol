@@ -9,9 +9,22 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 
 interface IERC721Minimal {
     function balanceOf(address owner) external view returns (uint256);
+}
+
+/// @notice Stand-in for `LivoUniV4LiquidityAdder` on its zero-liquidity branch: an amount that sizes to
+///         no liquidity is handed straight back to the caller. Real pools only reach this with an amount
+///         far below anything a Livo pool's tick range can produce, so the branch is mocked rather than
+///         contrived.
+contract RefundingLiquidityAdderStub {
+    function addSingleSidedEthBelowPrice(PoolKey calldata, int24, address, address) external payable returns (uint128) {
+        (bool sent,) = msg.sender.call{value: msg.value}("");
+        require(sent, "refund failed");
+        return 0;
+    }
 }
 
 /// @notice Integration tests for the V4 single-sided-ETH liquidity earnings-allocation leg: the tax ETH
@@ -87,6 +100,36 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // The buffered ETH left the token (into the position); only rounding dust may remain.
         assertLt(token.balance, tokenEthBefore, "buffered ETH deposited into the position");
         assertApproxEqAbs(tokenEthBefore - token.balance, pending, 1e12, "almost the whole buffer went to liquidity");
+    }
+
+    /// @dev ETH the adder hands back must stay on the liquidity ledger. `liquidityPendingEth` is debited by
+    ///      the full `ethIn` up front, so without the credit-back the returned ETH becomes stray and the
+    ///      permissionless `sweepStrayEth` re-splits an allocation earmarked for liquidity into the burn /
+    ///      dividend / fund buckets.
+    function test_v4ProcessLiquidity_unplacedEthStaysEarmarked() public {
+        address token = _createLiquidityTaxToken(400, 5000);
+        testToken = token;
+        LivoTaxableTokenUniV4 liqToken = LivoTaxableTokenUniV4(payable(token));
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _graduateToken();
+        _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
+
+        uint256 pending = liqToken.liquidityPendingEth();
+        assertGt(pending, 0, "liquidity ETH should accrue from the sell tax");
+
+        // Swap in an adder that places nothing and refunds — the branch a real pool only reaches for an
+        // amount too small for its tick range to size.
+        address stub = address(new RefundingLiquidityAdderStub());
+        vm.mockCall(liqToken.graduator(), abi.encodeWithSignature("LIQUIDITY_ADDER()"), abi.encode(stub));
+
+        uint256 ethBefore = token.balance;
+        liqToken.processLiquidity();
+
+        assertEq(liqToken.liquidityPendingEth(), pending, "refunded ETH stays earmarked for liquidity");
+        assertEq(token.balance, ethBefore, "and never left the token");
     }
 
     function test_v4ProcessLiquidity_revertsWhenNothingPending() public {
