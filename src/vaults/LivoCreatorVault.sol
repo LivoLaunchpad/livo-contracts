@@ -56,6 +56,9 @@ contract LivoCreatorVault is Initializable {
     /// @notice Emitted on every successful claim.
     event Claimed(address indexed owner, uint256 amount);
 
+    /// @notice The native leg of `rescueTokens` could not be delivered; the ERC20 legs still completed.
+    event NativeRescueFailed(uint256 amount);
+
     //////////////////////// Errors //////////////////////
 
     error InvalidOwner();
@@ -64,7 +67,6 @@ contract LivoCreatorVault is Initializable {
     error NotOwner();
     error NotGraduated();
     error NothingToClaim();
-    error EthTransferFailed();
 
     /// @dev Locks the implementation so only clones can be initialized.
     constructor() {
@@ -139,8 +141,11 @@ contract LivoCreatorVault is Initializable {
 
         uint256 nativeAmount = address(this).balance;
         if (nativeAmount > 0) {
+            // Best-effort, deliberately NOT `require`d: this leg runs AFTER the ERC20 loop, so an owner
+            // contract with no payable fallback would otherwise revert the whole call and could never
+            // rescue any ERC20 either. A failed send just leaves the native here for a later attempt.
             (bool success,) = owner.call{value: nativeAmount}("");
-            require(success, EthTransferFailed());
+            if (!success) emit NativeRescueFailed(nativeAmount);
         }
     }
 

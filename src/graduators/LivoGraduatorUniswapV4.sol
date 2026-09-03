@@ -32,6 +32,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
 
+    /// @notice Sink for the token dust left over after the graduation liquidity deposit.
+    address internal constant DEAD_ADDRESS = address(0xdEaD);
+
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
@@ -235,8 +238,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
         // we attempt to deposit tokensForLiquidity, but this is the actual amount deposited
-        // any token not deposited is stuck here in this contract
         uint256 tokensDeposited = tokenBalanceBeforeDeposit - tokenBalanceAfterDeposit;
+
+        // Burn the leftover rather than hold it forever. A graduator balance is a CONTINUOUS holder of
+        // the token and the graduator is NOT in `LivoTaxableToken._dividendExcluded` (adding it would put
+        // a cold SLOAD on the hot transfer path), so the dust would accrue dividends nobody can ever
+        // claim and permanently understate the token's sweepable balances. `DEAD_ADDRESS` is already
+        // excluded, on both the tracking side and in `_dividendEligibleSupply`.
+        if (tokenBalanceAfterDeposit > 0) token.safeTransfer(DEAD_ADDRESS, tokenBalanceAfterDeposit);
 
         emit TokenGraduated(tokenAddress, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
     }

@@ -9,6 +9,16 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
+/// @notice Stand-in for the universal router on its no-fill branch: it takes nothing from the pool and
+///         sweeps the whole native input back to the caller. A real pool reaches this with an amount too
+///         small to move the tick, so the branch is mocked rather than contrived.
+contract RefundingUniversalRouterStub {
+    function execute(bytes calldata, bytes[] calldata, uint256) external payable {
+        (bool sent,) = msg.sender.call{value: msg.value}("");
+        require(sent, "refund failed");
+    }
+}
+
 /// @notice Integration tests for the V4 buy-back-and-burn earnings-allocation leg.
 contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via the allocation-aware
@@ -74,6 +84,35 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // buffer is drained well below `pending`, not necessarily to exactly 0.
         assertLt(burnToken.burnPendingEth(), pending, "burn buffer drained");
         assertLt(IERC20(token).totalSupply(), supplyBefore, "total supply reduced by the buy-back-and-burn");
+    }
+
+    /// @dev Native the router sweeps back must stay on the burn ledger. `burnPendingEth` is debited by the
+    ///      full `ethIn` up front, so without the credit-back the returned native becomes stray and the
+    ///      permissionless `sweepStrayEth` re-splits an allocation earmarked for burning into the
+    ///      dividend / liquidity / fund buckets. Mirrors `processLiquidity`'s own re-earmark, except the
+    ///      measure has to be `_sweepableNative()`: a buy-back is a SWAP, so the hook's `accrueFees` can
+    ///      land native here mid-call and a raw balance delta would count it as an unspent refund.
+    function test_v4ProcessBurn_unspentEthStaysEarmarked() public {
+        address token = _createBurnTaxToken(400, 5000);
+        testToken = token;
+        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _graduateToken();
+        _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
+
+        uint256 pending = burnToken.burnPendingEth();
+        assertGt(pending, 0, "burn ETH should accrue from the sell tax");
+
+        vm.etch(burnToken.UNIV4_UNIVERSAL_ROUTER(), address(new RefundingUniversalRouterStub()).code);
+
+        uint256 ethBefore = token.balance;
+        burnToken.processBurn(0);
+
+        assertEq(burnToken.burnPendingEth(), pending, "swept-back ETH stays earmarked for burning");
+        assertEq(token.balance, ethBefore, "and never left the token");
     }
 
     function test_v4ProcessBurn_revertsWhenNothingPending() public {

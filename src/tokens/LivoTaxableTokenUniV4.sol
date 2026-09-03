@@ -115,14 +115,31 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
 
         address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
         uint256 balanceBefore = balanceOf(address(this));
+        // Stray native, NOT the raw balance `processLiquidity` can use: this one is a SWAP, so the hook's
+        // `accrueFees` lands native here mid-call. That accrual raises the balance and the buffers by the
+        // same amount (the fund slice leaves immediately), so it moves `_sweepableNative()` by zero and
+        // only the router's spend does. `burnPendingEth` was debited above, so `ethIn` counts as stray
+        // for the duration of the call.
+        uint256 strayBefore = _sweepableNative();
         // Precursor marker: must stay BEFORE the swap so indexers can classify the resulting
         // `LivoSwapHook.LivoSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
         emit BuyBackInitiated(ethIn);
         require(_buyBackTokensWithEth(hook, ethIn, minTokensOut), BuyBackFailed());
         uint256 tokensBought = balanceOf(address(this)) - balanceBefore;
 
+        // Whatever the pool did not take came back with the router's `SWEEP` and stays earmarked for
+        // burning, mirroring `processLiquidity`: without this the unspent remainder rejoins the stray
+        // pool and `sweepStrayEth` re-splits it into the fund / dividend / liquidity buckets, spending
+        // an allocation meant for burning. Stray cannot legitimately grow across the call; read
+        // defensively anyway, because assuming the whole spend merely under-credits while an underflow
+        // would revert an otherwise good buy-back.
+        uint256 strayAfter = _sweepableNative();
+        uint256 ethSpent = strayBefore >= strayAfter ? strayBefore - strayAfter : ethIn;
+        if (ethSpent < ethIn) burnPendingEth += ethIn - ethSpent;
+
         if (tokensBought > 0) _burn(address(this), tokensBought);
-        emit CreatorTaxBurn(ethIn, tokensBought);
+        // Reports the ETH the pool ACTUALLY took, as `processLiquidity` does with `ethAdded`.
+        emit CreatorTaxBurn(ethSpent, tokensBought);
     }
 
     /// @notice Deposits the accrued liquidity ETH as a single-sided ETH position just below the current

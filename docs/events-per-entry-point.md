@@ -172,7 +172,8 @@ Livo event order:
 6. **`LivoToken.Graduated`**.
    - Tax tokens emit this same event from the override and also record `graduationTimestamp`.
 7. External Uniswap V4 PoolManager / PositionManager / Permit2 events occur while liquidity positions are minted.
-8. **`LivoGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`).
+7a. ERC20 `Transfer` (graduator -> `0x…dEaD`) of the token dust the positions could not take. Always present in practice — the position math never consumes the deposit exactly — and burned rather than held so the graduator never becomes a continuous holder accruing unclaimable dividends.
+8. **`LivoGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`). `tokenAmount` is what the positions ACTUALLY took, so it already excludes the dust burned in 7a.
 9. **`LivoLaunchpad.TokenGraduated`** (`token, ethCollected, tokensForGraduation`).
 
 ---

@@ -126,8 +126,10 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     /// @dev Token-native: the token side is KEPT (not bought back — a V2 pair reverts INVALID_TO when
     ///      asked to send a token to its own address), only half is sold for the ETH side. Post-graduation
     ///      only. The sell + add run under `_inSwap` so the intrinsic tax / auto-swap-back don't fire on
-    ///      the router's transfers. Unused ETH the router refunds folds back into the next swap-back;
-    ///      unused tokens go back to the liquidity buffer they were carved from.
+    ///      the router's transfers. Unused tokens go back to the liquidity buffer they were carved from.
+    ///      Unused ETH does NOT: `_processCollectedTokens` clamps its split to `_sweepableNative()`, so a
+    ///      refund never folds into the next swap-back — `sweepStrayEth()` is what routes it, and on V2
+    ///      (no native-side burn or liquidity handler) both slices fall through to the fund wallets.
     function processLiquidity(uint256 amountOutMinWei) external {
         require(graduated, NotGraduated());
         // Once per block + capped at the swap-back's own per-sell size: bounds what a sandwich of the
