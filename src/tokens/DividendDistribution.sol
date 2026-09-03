@@ -114,10 +114,12 @@ abstract contract DividendDistribution {
     ///      holders have all sold back into the pool — and it is the bound that keeps
     ///      `rewardPerTokenStored` inside its `uint128`: the accumulator's growth is
     ///      `payout * 1e18 / supply`, so a floor on the denominator is a ceiling on the accumulator.
-    /// @dev The paused interval's clock still advances (see `_syncDividends`). Freezing it instead would
-    ///      bank the skipped seconds and hand the whole lot to whoever bought in first once supply
-    ///      recovered — a just-in-time capture window, which is the one thing this design exists to not
-    ///      have.
+    /// @dev The paused interval's clock still advances (see `_syncDividends`), and the stream's finish
+    ///      line moves out by the same span. Freezing the clock instead would bank the skipped seconds
+    ///      and hand the whole lot to whoever bought in first once supply recovered — a just-in-time
+    ///      capture window, which is the one thing this design exists to not have. Advancing the clock
+    ///      WITHOUT extending the window was the other wrong answer: `dividendsOwed` already counted the
+    ///      whole distribution, so the skipped value would stay reserved and reach nobody, ever.
     uint256 internal constant MIN_DIVIDEND_SUPPLY = 1e18;
 
     /// @notice Pass this as the payout asset to mean "the token itself". A creator configuring a token
@@ -282,7 +284,7 @@ abstract contract DividendDistribution {
     ///      |-------------------------------------------------|-------------------------------------|
     ///      | no time since the last sync (or stream over)     | none                                |
     ///      | time passed, eligible supply above the floor     | the global slot                     |
-    ///      | time passed, eligible supply below the floor     | the clock only — see the floor      |
+    ///      | time passed, eligible supply below the floor     | the clock + the finish line          |
     ///
     /// @dev Between streams `lastDividendUpdate == dividendPeriodFinish`, so this is a single warm SLOAD
     ///      and a comparison. That is the whole hot-path cost of the feature while nothing is dripping.
@@ -299,6 +301,13 @@ abstract contract DividendDistribution {
             // total ever distributed times `1e18 / MIN_DIVIDEND_SUPPLY`, which is 1.
             // forge-lint: disable-next-line(unsafe-typecast)
             rewardPerTokenStored = uint128(rpt);
+        } else if (dividendRate != 0) {
+            // PAUSED: credit nobody for this interval, but do not write it off either. Pushing the finish
+            // line out by exactly the paused span leaves `rate` untouched and the same total still to
+            // deliver, so the value arrives late instead of never — `dividendsOwed` already counted it,
+            // and nothing else can ever release it. Same slot as the clock below, so this costs nothing.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            dividendPeriodFinish = uint40(uint256(dividendPeriodFinish) + (applicable - last));
         }
         // Advances even when the accrual was skipped. See `MIN_DIVIDEND_SUPPLY`.
         // forge-lint: disable-next-line(unsafe-typecast)

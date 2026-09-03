@@ -428,6 +428,33 @@ contract DividendAccountingTests is Test {
         assertEq(h.previewDividend(bob), 0, "the skipped interval was not banked for a late arrival");
     }
 
+    /// @dev The paused span is DEFERRED, not written off. `dividendsOwed` counted the whole distribution
+    ///      when it was funded and is only ever reduced by real payouts, so an interval the accumulator
+    ///      skipped would otherwise stay reserved forever: unclaimable by any holder and unreachable by
+    ///      every sweep. Extending the finish line by the paused span is what makes it arrive late
+    ///      instead of never — and the amount is unbounded, not dust: a stream that spends its whole
+    ///      window under the floor would lose all of it.
+    function test_aPausedIntervalIsDeliveredLateRatherThanWrittenOff() public {
+        address sink = makeAddr("sink");
+        h.exclude(0, sink);
+        h.seed(alice, SUPPLY);
+        h.activate();
+        _fund(1 ether);
+        h.processDividends(0, _noHolders());
+
+        // Half the window spent under the floor.
+        h.transfer(alice, sink, SUPPLY - 1);
+        assertLt(h.eligibleSupply(), h.minDividendSupply(), "under the floor");
+        skip(h.DIVIDEND_DRIP_DURATION() / 2);
+
+        // Supply recovers; let the (now extended) stream run all the way out.
+        h.transfer(sink, alice, SUPPLY - 1);
+        skip(h.DIVIDEND_DRIP_DURATION());
+
+        assertApproxEqRel(h.sumOfPreviews(), 1 ether, 1e12, "the paused half is delivered, not lost");
+        assertEq(h.dividendsOwed(), 1 ether, "and owed still matches what went in");
+    }
+
     ///////////////////////// the threshold and its bypass /////////////////////////
 
     /// @dev Below the threshold the buffer keeps accruing rather than funding a stream not worth its gas.
