@@ -346,8 +346,8 @@ shapes, the event signatures and the emitting ADDRESS are all still the token's.
 is never an event source and never needs indexing.
 
 A token pays dividends in exactly ONE asset, fixed at creation: native, the token itself, or any ERC20
-whose configured pool held liquidity at creation. `asset` on every event below is therefore the same
-address for the life of the token, with one exception — see `DividendAssetDowngradedToNative`.
+whose configured pool held liquidity at creation. `asset` on every event below is the same address for
+the life of the token, with no exceptions — it is written once and never rewritten, by anyone.
 
 Dividends are STREAMED, not dropped. Each distribution funds a linear stream over
 `DIVIDEND_DRIP_DURATION` (15 minutes) and every holder accrues against a `balance x time` accumulator.
@@ -374,14 +374,14 @@ just calls it again; there is no phase to sequence and no state that a second ca
    always moves to `block.timestamp + DIVIDEND_DRIP_DURATION`. The threshold stops applying in exactly
    one case, so a residual that can no longer grow is never stranded: the token has gone
    `STALE_DIVIDEND_WINDOW` (30 days) without a distribution.
-1b. Rarely, and only on a stale token whose pool cannot execute a zero-floor swap:
-   **`DividendAssetDowngradedToNative`** (`previousAsset`), immediately before that call's
-   `DividendsFunded`. The configured pool is gone for good and the payout asset becomes native
-   permanently — `asset` on every later event is `address(0)`. It replaces what used to be an
-   admin-curated route override; nothing about it is privileged or reversible. It also WRITES OFF every
-   unclaimed accrual in the old asset and restarts the accumulator: an indexer must treat every
-   holder's entitlement as reset to zero at this event, because a bare `rewards` figure carries no
-   asset and cannot be paid out in a different one.
+1b. Instead of `DividendsFunded`, when a zero-floor conversion came back empty:
+   **`DividendBufferSweptToTreasury`** (`asset, nativeAmount`). The pool cannot produce a single wei at
+   any price, so that slice of the native buffer went to `DIVIDEND_TREASURY` rather than sitting owed to
+   holders forever, and the call returned successfully instead of reverting. It is bounded by
+   `MAX_DIVIDEND_PER_CONVERSION` per call, so a dead pool's whole buffer takes several calls to clear.
+   Nothing else changes: the payout asset, the stream, the accumulator and every unclaimed accrual are
+   untouched, so an indexer needs only to stop expecting that native to become a distribution. A caller
+   whose own `minOut` was simply unreachable gets `DividendConversionFailed` and no sweep.
 2. V4 self-token only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
    (`ethIn`), followed by the pool's own `LivoSwapHook.LivoSwapBuy`. Same contract as
    `BuyBackInitiated`: the precursor must be classified as it arrives, so the keeper's PnL is not
@@ -393,9 +393,10 @@ just calls it again; there is no phase to sequence and no state that a second ca
    it likes.
 
    A call that funds nothing AND was given no holders reverts rather than emitting:
-   `DividendConversionFailed` when the buffer was fundable and the swap failed,
-   `BelowDividendThreshold` when it had not earned enough to try. A call carrying holders never reverts
-   for either reason — it pushes the payouts it was asked to push.
+   `DividendConversionFailed` when the buffer was fundable and the caller's floor was not reachable,
+   `BelowDividendThreshold` when it had not earned enough to try. A call that swept does NOT revert —
+   it resolved the buffer, and reverting would undo the sweep. A call carrying holders never reverts for
+   either reason — it pushes the payouts it was asked to push.
 
 **`claimDividends()`** — the self-serve backstop, emitting the same single **`DividendPaid`** for
 `msg.sender`. It differs from a batch payout in one respect: a native payout inside `processDividends`

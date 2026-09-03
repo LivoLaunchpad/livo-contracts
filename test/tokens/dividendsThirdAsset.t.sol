@@ -250,9 +250,13 @@ contract DividendsThirdAssetTests is Test {
     }
 
     /// @dev The one admin veto, and it reaches tokens that ALREADY exist: an asset blacklisted after a
-    ///      token was configured for it stops converting on the next freeze. The buffer is not lost —
-    ///      it stays put, and the dead-pool escape eventually downgrades the token to native.
-    function test_blacklistingAnAssetStopsAnExistingTokenFromConverting() public {
+    ///      token was configured for it stops converting on the next distribution.
+    /// @dev ⚠️ The veto is NOT a pause for the buffer. A blacklisted asset fails a zero-floor swap exactly
+    ///      the way a dead pool does, so a keeper calling `processDividends(0, ...)` while the veto is up
+    ///      sweeps a capped slice to the treasury each time. The sweep condition is deliberately the swap
+    ///      itself, with no reason code consulted, so an admin lifting the veto later recovers only what
+    ///      keepers have not already swept. Livo owns both ends of that, which is what makes it tolerable.
+    function test_blacklistingAnAssetSweepsRatherThanHoldingTheBuffer() public {
         _fundAndActivate(harness);
 
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
@@ -260,15 +264,17 @@ contract DividendsThirdAssetTests is Test {
         vm.prank(registryOwner);
         registry.setTrustStatus(DAI, blacklisted);
 
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched, not seized");
+        assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "a capped slice went to the treasury");
+        assertEq(harness.pendingNative(), 1 ether - cap, "the rest is still buffered");
 
         uint8 unknown = registry.TRUST_UNKNOWN();
         vm.prank(registryOwner);
         registry.setTrustStatus(DAI, unknown);
         harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "and it converts again once the veto is lifted");
+        assertGt(harness.dividendsOwed(), 0, "and what survived converts again once the veto is lifted");
     }
 
     /// @dev The registry is a swap venue, not a vault: it forwards everything it buys inside the same
@@ -309,11 +315,15 @@ contract DividendsThirdAssetTests is Test {
 
         // A call CARRYING holders never reverts for a broken swap, so nothing rolls the transfer back:
         // this is the shape in which a codeless registry would silently pocket the buffer, every call.
-        uint256 balanceBefore = address(harness).balance;
+        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
         harness.processDividends(0, _holders());
 
-        assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched");
-        assertEq(address(harness).balance, balanceBefore, "and the native never left the token");
+        // The point of the guard: the native went to the treasury, which can hand it back, instead of to
+        // a codeless address, which cannot. Without it the raw `call` would have succeeded and kept it.
+        assertEq(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance, 0, "the codeless address got nothing");
+        assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "the treasury caught it instead");
+        assertEq(harness.pendingNative(), 1 ether - cap, "and only the attempted slice left the buffer");
         assertEq(harness.dividendsOwed(), 0, "no stream was funded");
     }
 
@@ -352,80 +362,68 @@ contract DividendsThirdAssetTests is Test {
 
     //////////////////////// the dead-pool escape //////////////////////
 
-    /// @dev The replacement for an admin-curated route override: nobody can repair a dead pool, so the
-    ///      token repairs itself. Once the token has gone `STALE_DIVIDEND_WINDOW` without a distribution
-    ///      AND the swap cannot execute at ANY price, the payout asset is permanently downgraded to
-    ///      native — the one asset that needs no pool. Without it, a buffer owed to holders would strand
-    ///      forever.
-    function test_aPermanentlyDeadPoolDowngradesThePayoutToNative() public {
+    /// @dev Nobody can repair a dead pool, and a buffer that can never be converted must not sit owed to
+    ///      holders forever. Once a zero-floor swap comes back empty — the proof that the pool cannot
+    ///      produce a single wei at ANY price — that slice goes to the treasury and the call reports
+    ///      success instead of reverting. No wait, no staleness gate: the condition is the swap itself.
+    function test_aPermanentlyDeadPoolSweepsTheBufferToTheTreasury() public {
         _fundAndActivate(harness);
         _killTheV2Router();
 
-        // Not yet: a live token retries rather than downgrading.
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processDividends(0, _noHolders());
+        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
 
-        skip(harness.STALE_DIVIDEND_WINDOW() + 1);
+        vm.expectEmit(true, false, false, true, address(harness));
+        emit DividendDistribution.DividendBufferSweptToTreasury(DAI, cap);
+        harness.processDividends(0, _noHolders()); // must NOT revert
 
-        vm.expectEmit(true, false, false, false, address(harness));
-        emit DividendDistribution.DividendAssetDowngradedToNative(DAI);
-        harness.processDividends(0, _noHolders());
-
-        assertEq(harness.dividendToken(), address(0), "the payout asset is native from here on");
-        assertEq(harness.pendingNative(), 0, "the whole buffer funded the stream - native has no swap to cap");
-        assertEq(harness.dividendsOwed(), 1 ether, "and it is owed in native now");
-
-        _drain(harness);
-        harness.processDividends(0, _holders());
-        assertApproxEqRel(holder.balance, 1 ether, 1e12, "the holder was paid in native");
+        assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "the treasury caught the slice");
+        assertEq(harness.pendingNative(), 1 ether - cap, "and only the converted slice left the buffer");
     }
 
-    /// @dev The downgrade cannot be manufactured. A caller who supplies an unreachable floor gets a
-    ///      conversion failure, however stale the token is: `minOut == 0` is what proves the pool itself
-    ///      is gone rather than the caller's price.
-    function test_aStaleTokenWithALivePoolCannotBeForcedToDowngrade() public {
-        _fundAndActivate(harness);
-        skip(harness.STALE_DIVIDEND_WINDOW() + 1);
-
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processDividends(1_000_000e18, _noHolders());
-        assertEq(harness.dividendToken(), DAI, "still paying DAI");
-
-        harness.processDividends(0, _noHolders());
-        assertEq(harness.dividendToken(), DAI, "a live pool converts and never downgrades");
-        assertGt(harness.dividendsOwed(), 0, "funded in DAI as usual");
-    }
-
-    /// @dev What the downgrade does to money already accrued in the DEAD asset: it writes it off, by
-    ///      bumping `dividendEpoch`. `Acct.rewards` is a bare number of units with no asset attached, so
-    ///      carrying it across would pay an old-asset debt out of a new-asset balance at a 1:1 unit
-    ///      ratio between two assets that need not even share decimals. Holders had the whole
-    ///      `STALE_DIVIDEND_WINDOW` to claim — claiming never depended on the pool being alive.
-    function test_theDowngradeWritesOffUnclaimedAccrualsInTheDeadAsset() public {
+    /// @dev The sweep changes NOTHING that holders hold. It moves native that was still waiting to be
+    ///      converted and therefore had never been streamed to anyone — the payout asset, the accumulator
+    ///      and every unclaimed accrual survive it untouched. That is the whole reason it replaced a
+    ///      downgrade, which had to write those accruals off to stay coherent.
+    function test_theSweepDoesNotTouchWhatHoldersHaveAlreadyAccrued() public {
         _fundAndActivate(harness);
         harness.processDividends(0, _noHolders()); // a real DAI stream
         _drain(harness);
 
         uint256 daiOwed = harness.previewDividend(holder);
+        uint256 owedBefore = harness.dividendsOwed();
         assertGt(daiOwed, 0, "the holder accrued DAI it never claimed");
 
         _killTheV2Router();
         vm.deal(address(this), 1 ether);
         harness.accrue{value: 1 ether}();
-        skip(harness.STALE_DIVIDEND_WINDOW() + 1);
-        // The whole native buffer — the fresh ether plus whatever the capped first conversion left.
-        uint256 buffered = harness.pendingNative();
         harness.processDividends(0, _noHolders());
 
-        assertEq(harness.dividendToken(), address(0), "downgraded");
-        assertEq(harness.previewDividend(holder), 0, "the DAI claim was written off, not repaid in native");
-        assertEq(harness.dividendsOwed(), buffered, "only the newly-streamed native is owed");
-        // The stranded DAI stops being committed, which is the only way it is ever recoverable at all.
-        assertEq(harness.committedDividends(DAI), 0, "the dead asset is no longer holders' money");
+        assertEq(harness.dividendToken(), DAI, "the payout asset is never repointed");
+        assertEq(harness.previewDividend(holder), daiOwed, "the DAI claim survives the sweep");
+        assertEq(harness.dividendsOwed(), owedBefore, "and so does what the token owes");
+        assertEq(harness.committedDividends(DAI), owedBefore, "the DAI stays holders' money, not rescuable");
 
-        // And the holder accrues normally from here, in the new asset.
-        _drain(harness);
-        assertApproxEqRel(harness.previewDividend(holder), buffered, 1e12, "rebased onto native");
+        // The holder can still take it: claiming never depended on the pool being alive.
+        harness.processDividends(0, _holders());
+        assertEq(IERC20(DAI).balanceOf(holder), daiOwed, "paid in full, in the asset they accrued");
+    }
+
+    /// @dev The sweep cannot be triggered by a caller's bad price. A floor the pool has merely moved past
+    ///      is a `ConversionFailed` that leaves the buffer exactly where it was: only `minOut == 0` proves
+    ///      the pool itself is gone rather than the caller's number.
+    function test_aLivePoolCannotBeSweptByAnUnreachableFloor() public {
+        _fundAndActivate(harness);
+        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        harness.processDividends(1_000_000e18, _noHolders());
+
+        assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched");
+        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "and the treasury got nothing");
+
+        harness.processDividends(0, _noHolders());
+        assertGt(harness.dividendsOwed(), 0, "the same buffer funds a DAI stream at a reachable floor");
     }
 
     /// @dev Makes every V2 swap revert, whatever the price — the on-chain shape of a pool that is gone.

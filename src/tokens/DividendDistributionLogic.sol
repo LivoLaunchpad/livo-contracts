@@ -56,7 +56,10 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         /// @dev The stream is funded with `out` of the payout asset.
         Funded,
         /// @dev Enough was buffered and the conversion did not happen. The buffer is untouched.
-        ConversionFailed
+        ConversionFailed,
+        /// @dev The conversion could not happen at ANY price, so that slice of the buffer went to
+        ///      `DIVIDEND_TREASURY`. Nothing was streamed, and nothing accrued was written off.
+        SweptToTreasury
     }
 
     //////////////////////// configuration //////////////////////
@@ -115,11 +118,10 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         (FundOutcome outcome, uint256 nativeIn, uint256 out) = _fundDividends(minOut);
         if (outcome == FundOutcome.Funded) {
             _fundDividendStream(out);
-            // Both read AFTER the funding: a dead-pool downgrade rewrites the asset AND restarts the
-            // accumulator, so the event must name the asset the stream is actually denominated in and
-            // the payout loop below must measure against the accumulator the holders are now on.
+            // `rate` and `periodFinish` are read AFTER the fold-in, which is what makes them the
+            // authoritative slope from this block on. `rpt` needs no re-read: funding moves the slope,
+            // never the accumulator, so the value `_syncDividends` returned is still current.
             emit DividendsFunded(dividendToken, nativeIn, out, dividendRate, dividendPeriodFinish);
-            rpt = rewardPerTokenStored;
         }
 
         if (holders.length != 0) {
@@ -137,6 +139,8 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         } else if (outcome == FundOutcome.ConversionFailed) {
             revert DividendConversionFailed();
         }
+        // `SweptToTreasury` falls through: the call could not stream anything, but it did resolve the
+        // buffer, and reverting would undo the sweep it just made.
         // A call carrying holders never reverts for the buffer being short or the swap being broken: it
         // asked to push payouts, and it pushed them.
     }
@@ -224,21 +228,15 @@ abstract contract DividendDistributionLogic is DividendDistribution {
 
         if (out == 0) {
             // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
-            // fail for reasons outside anyone's control, and the next call simply tries again. The escape
-            // below exists for the one case where "try again" never terminates — the pool is gone and the
-            // buffer would be owed to holders forever.
-            //
-            // Not reachable on a live token and not manufacturable: it needs `STALE_DIVIDEND_WINDOW`
-            // without a single distribution AND `minOut == 0`, meaning the swap could not execute at ANY
-            // price. A caller passing a floor the pool has merely moved past gets `ConversionFailed`.
-            if (!stale || minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
+            // fail for reasons outside anyone's control — most often a floor the pool has merely moved
+            // past — and the next call simply tries again with a floor priced off the live pool.
+            if (minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
 
-            _downgradeDividendAsset(asset);
-            // Native needs no conversion, so the whole buffer funds the stream: the conversion cap only
-            // ever existed to bound a swap.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            pendingNative = uint88(pendingNative - buffered);
-            return (FundOutcome.Funded, buffered, buffered);
+            // Zero floor and still nothing came back: the pool cannot produce a single wei at any price,
+            // so "try again" never terminates. The slice goes to the treasury instead of sitting owed to
+            // holders forever — see the contract docstring for why that beats repointing the asset.
+            _sweepFailedConversion(asset, spend);
+            return (FundOutcome.SweptToTreasury, 0, 0);
         }
 
         // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
@@ -249,24 +247,20 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         return (FundOutcome.Funded, spend, out);
     }
 
-    /// @dev Permanently repoints the payout at native and writes off every unclaimed accrual in the old
-    ///      asset by bumping `dividendEpoch` — each account rebases to zero on its next touch.
-    /// @dev The write-off is the only coherent answer, not a shortcut. `Acct.rewards` is a bare number
-    ///      of units with no asset attached, so carrying it across the downgrade would pay an old-asset
-    ///      debt out of a new-asset balance, at a 1:1 unit ratio between two assets that may not even
-    ///      share decimals. Claiming never depended on the pool being alive, so every holder had the
-    ///      full `STALE_DIVIDEND_WINDOW` — thirty days after the last distribution — to take theirs.
-    ///      What is left of the dead asset stops being `committedDividends` and becomes rescuable, which
-    ///      is the only way it is ever recoverable at all.
-    function _downgradeDividendAsset(address previous) private {
-        dividendToken = address(0);
-        dividendsOwed = 0;
-        // Restart the accumulator with the epoch. An account still on the old epoch is read as
-        // "checkpointed at zero", so this is what makes the write-off consistent for accounts that have
-        // not been touched since — and what lets them accrue normally in the new asset from here.
-        rewardPerTokenStored = 0;
-        ++dividendEpoch;
-        emit DividendAssetDowngradedToNative(previous);
+    /// @dev Hands `amount` of unconvertible native to `DIVIDEND_TREASURY`. Bounded by
+    ///      `MAX_DIVIDEND_PER_CONVERSION` per call, so clearing a dead pool's whole buffer takes as many
+    ///      calls as converting it would have.
+    /// @dev Debited BEFORE the send, and re-read rather than reusing the caller's snapshot: the failed
+    ///      conversion was an external call, so earnings that arrived during it must survive this write.
+    /// @dev Deliberately NOT a write-off of anything holders hold. `dividendToken`, `dividendsOwed`,
+    ///      `rewardPerTokenStored` and every `Acct` are untouched — this moves native that had not been
+    ///      converted yet and therefore was never streamed to anyone.
+    function _sweepFailedConversion(address asset, uint256 amount) private {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pendingNative = uint88(pendingNative - amount);
+        (bool sent,) = DIVIDEND_TREASURY.call{value: amount}("");
+        require(sent, DividendSweepFailed());
+        emit DividendBufferSweptToTreasury(asset, amount);
     }
 
     /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought on the

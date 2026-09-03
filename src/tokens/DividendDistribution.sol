@@ -35,10 +35,19 @@ import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 ///      window and changes the SLOPE. It never reverts for being early, never has to wait for a
 ///      previous stream to drain, and never leaves money in a state that has to be rolled over.
 ///
-/// @dev ONE ASSET PER TOKEN, chosen at creation and permanent: native (`address(0)`), the token itself
-///      (`DIVIDEND_SELF_TOKEN`), or any ERC20 the registry can reach. There is no whitelist and no
-///      per-asset approval — what makes an ERC20 eligible is the liquidity `DIVIDEND_SWAP_REGISTRY`
-///      measures at creation, nothing else.
+/// @dev ONE ASSET PER TOKEN, chosen at creation and permanent — never rewritten, by anyone, for any
+///      reason: native (`address(0)`), the token itself (`DIVIDEND_SELF_TOKEN`), or any ERC20 the
+///      registry can reach. There is no whitelist and no per-asset approval — what makes an ERC20
+///      eligible is the liquidity `DIVIDEND_SWAP_REGISTRY` measures at creation, nothing else.
+///
+/// @dev A CONVERSION THAT CAN NEVER HAPPEN IS THE TREASURY'S PROBLEM, NOT THE TOKEN'S. If the payout
+///      pool dies, the buffered native cannot be converted and would otherwise sit owed to holders
+///      forever. Rather than rewrite the asset and write off what holders had already accrued — paying
+///      an old-asset debt out of a new-asset balance at a 1:1 unit ratio between two assets that may
+///      not even share decimals — the unconvertible buffer goes to `DIVIDEND_TREASURY`, and Livo makes
+///      holders whole off-chain if it is ever worth doing. Nothing on-chain is written off: the stream,
+///      the accumulator and every accrual survive untouched. This is a backstop for a case that should
+///      not occur — a token whose payout asset has no liquidity has, by then, no activity either.
 ///
 /// @dev NO HOLDER SET. The contract never enumerates holders. `processDividends(minOut, address[])`
 ///      takes the push list from the caller and reads each amount out of that holder's own accrued
@@ -85,9 +94,9 @@ abstract contract DividendDistribution {
     ///      arrival.
     uint256 public constant DIVIDEND_DRIP_DURATION = 15 minutes;
 
-    /// @notice Time without a distribution after which the token is treated as DEAD. Two things unlock
-    ///         there, both of them last resorts: funding below `DIVIDEND_THRESHOLD`, and — if the
-    ///         conversion cannot happen at any price — falling back to paying native.
+    /// @notice Time without a distribution after which the token is treated as DEAD. One thing unlocks
+    ///         there, and it is a last resort: funding below `DIVIDEND_THRESHOLD`, so a residual that can
+    ///         no longer grow is not stranded in the buffer forever.
     /// @dev Anchored on `dividendPeriodFinish`, which every distribution pushes forward, so a token that
     ///      is merely quiet never comes near this and the threshold keeps behaving exactly as it does
     ///      today. Only a token nobody is trading ages into it.
@@ -139,17 +148,22 @@ abstract contract DividendDistribution {
     ///      is what `minOut` has to be computed from.
     address public constant DIVIDEND_SWAP_REGISTRY = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY;
 
+    /// @notice Where a buffer the registry cannot convert AT ANY PRICE ends up. A safety net, not a fee:
+    ///         it only ever receives native that no holder could otherwise have been paid out of, and
+    ///         reaching it requires a zero-floor swap to have failed outright.
+    /// @dev A compile-time constant for the same reason the registry is one — a clone cannot be patched,
+    ///      so the escape hatch cannot be a stored address someone could repoint.
+    address public constant DIVIDEND_TREASURY = DeploymentAddresses.LIVO_TREASURY;
+
     /// @notice Per-account dividend state. One slot, and the only per-account storage the feature has.
     /// @dev `rewardPerTokenPaid` is the accumulator value this account was last settled at; `rewards` is
-    ///      what it has banked and not yet been paid. `epoch` is a lazy-reset marker — see
-    ///      `dividendEpoch`.
+    ///      what it has banked and not yet been paid.
     /// @dev `rewards` is `uint120` (1.3e36 payout-asset units) because it shares the slot. It bounds a
     ///      SINGLE holder's UNCLAIMED accrual, which cannot exceed everything the token has ever
     ///      distributed; for any asset the registry accepts that is orders of magnitude out of reach.
     struct Acct {
         uint128 rewardPerTokenPaid;
         uint120 rewards;
-        uint8 epoch;
     }
 
     /// @notice Per-account accumulator checkpoint + banked payout. See `Acct`.
@@ -169,13 +183,6 @@ abstract contract DividendDistribution {
     ///         active" flag: 0 until the token graduates.
     uint40 public dividendPeriodFinish;
 
-    /// @notice Bumped when the payout asset is downgraded to native on a dead pool, which also RESTARTS
-    ///         `rewardPerTokenStored` from zero. An account whose `Acct.epoch` is behind reads as
-    ///         "checkpointed at zero, nothing banked" and is rewritten that way on its next touch, which
-    ///         is what stops a claim accrued in the DEAD asset from being paid out in the new one —
-    ///         while still crediting everything it has earned since the downgrade.
-    uint8 public dividendEpoch;
-
     /// @notice Payout-asset units this token owes holders: everything it has streamed into the
     ///         accumulator, minus everything it has actually delivered.
     /// @dev THE single source of truth for "how much of this balance is not ours", read through
@@ -187,9 +194,9 @@ abstract contract DividendDistribution {
 
     /// @notice The payout asset. `address(0)` = native, `address(this)` = the token itself, anything
     ///         else = a third ERC20 bought through `DIVIDEND_SWAP_REGISTRY`.
-    /// @dev Not immutable and not a constant: tokens are clones. It is written once at creation and
-    ///      only ever rewritten by the dead-pool fallback, which downgrades a third asset to native
-    ///      when its pool has become unreachable (see `DividendDistributionLogic._fundDividends`).
+    /// @dev Not immutable and not a constant only because tokens are clones. It is written ONCE, at
+    ///      creation, and never again — a pool that dies is handled by sweeping the unconvertible buffer
+    ///      to `DIVIDEND_TREASURY`, not by repointing the payout.
     address public dividendToken;
 
     /// @notice Native earnings accrued so far, awaiting a distribution. Sized to FILL the slot it shares
@@ -235,13 +242,11 @@ abstract contract DividendDistribution {
     /// @notice One holder, one payout of everything they had accrued at that moment.
     event DividendPaid(address indexed holder, address indexed asset, uint256 amount);
 
-    /// @notice The configured pool became unreachable at any price and the payout asset was permanently
-    ///         downgraded to native. Only reachable on a token that has gone `STALE_DIVIDEND_WINDOW`
-    ///         without a distribution — the alternative is a buffer nobody can ever be paid out of.
-    /// @dev Everything accrued in the old asset and not yet claimed is written off here (`dividendEpoch`
-    ///      is bumped). Claiming never depended on the pool, so a holder had the whole stale window to
-    ///      take theirs; carrying the claim forward would mean paying an old-asset debt in a new asset.
-    event DividendAssetDowngradedToNative(address indexed previousAsset);
+    /// @notice A fundable buffer could not be converted into `asset` at ANY price, so `nativeAmount` went
+    ///         to `DIVIDEND_TREASURY` instead of sitting owed to holders forever. The payout asset is
+    ///         unchanged and nothing accrued is written off — this only ever moves native that was still
+    ///         waiting to be converted.
+    event DividendBufferSweptToTreasury(address indexed asset, uint256 nativeAmount);
 
     //////////////////////// Errors //////////////////////
 
@@ -255,6 +260,9 @@ abstract contract DividendDistribution {
     error BelowDividendThreshold();
     /// @notice The buffer was fundable and the conversion failed, so nothing was streamed.
     error DividendConversionFailed();
+    /// @notice The treasury refused the swept buffer. Reverts the whole call, leaving the buffer where it
+    ///         was — the same state a caller who never tried would have seen.
+    error DividendSweepFailed();
     error DividendBufferOverflow();
     /// @notice The named payout asset is not eligible. Carries the registry's own reason — no V2 pair,
     ///         not enough depth, blacklisted — so a creator learns which gate they failed rather than
@@ -319,21 +327,10 @@ abstract contract DividendDistribution {
     function _settleDividends(address account, uint256 rpt) internal {
         Acct storage acct = dividendAccounts[account];
 
-        uint256 paid;
-        uint8 epoch = dividendEpoch;
-        if (acct.epoch == epoch) {
-            paid = acct.rewardPerTokenPaid;
-            // Nothing has accrued since this account last moved — the common case for an active trader
-            // while no stream is running, and the reason a transfer can cost zero account writes.
-            if (paid == rpt) return;
-        } else {
-            // A dead-pool downgrade wrote off everything this account accrued in the old asset and
-            // restarted the accumulator, so the checkpoint to measure from is zero, not `rpt`. Falling
-            // through rather than returning is what credits the account for the interval it has ALREADY
-            // earned in the new asset since the downgrade.
-            acct.epoch = epoch;
-            acct.rewards = 0;
-        }
+        uint256 paid = acct.rewardPerTokenPaid;
+        // Nothing has accrued since this account last moved — the common case for an active trader while
+        // no stream is running, and the reason a transfer can cost zero account writes.
+        if (paid == rpt) return;
 
         // `rpt` is read straight out of `uint128 rewardPerTokenStored`.
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -389,14 +386,8 @@ abstract contract DividendDistribution {
     function previewDividend(address holder) public view returns (uint256) {
         if (_dividendExcluded(holder)) return 0;
         Acct storage acct = dividendAccounts[holder];
-        // Behind the current epoch means written off by a dead-pool downgrade, which also restarted the
-        // accumulator: read the account as checkpointed at zero with nothing banked, exactly as
-        // `_settleDividends` will rewrite it.
-        bool current = acct.epoch == dividendEpoch;
-        uint256 banked = current ? acct.rewards : 0;
-        uint256 paid = current ? acct.rewardPerTokenPaid : 0;
-
-        return banked + _dividendBalanceOf(holder) * (dividendRewardPerToken() - paid) / DIVIDEND_PRECISION;
+        return acct.rewards + _dividendBalanceOf(holder) * (dividendRewardPerToken() - acct.rewardPerTokenPaid)
+            / DIVIDEND_PRECISION;
     }
 
     /// @notice Dividend money already streamed to holders in `asset` but not yet delivered.
