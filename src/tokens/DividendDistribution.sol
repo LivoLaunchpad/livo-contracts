@@ -113,6 +113,17 @@ abstract contract DividendDistribution {
     ///      spending their own gas. Their accrual is untouched by the skip, so nothing is lost.
     uint256 public constant NATIVE_PAYOUT_GAS = DeploymentAddresses.NATIVE_PAYOUT_GAS;
 
+    /// @notice Gas stipend for an ERC20 payout inside a KEEPER BATCH. Same job as `NATIVE_PAYOUT_GAS`,
+    ///         deliberately far larger: the payout asset is the creator's choice and the registry vets its
+    ///         liquidity, never its behaviour, so a token whose `transfer` burns unbounded gas would
+    ///         otherwise take down every batch AND every `claimDividends()` instead of returning `false`.
+    /// @dev Sized to be unreachable by any honest token — a cold-slot transfer costs tens of thousands,
+    ///      a hook-heavy one a few hundred — so this is a bomb bound, not an eligibility gate. As with the
+    ///      native leg, a holder the batch skips is still payable in full through `claimDividends()`.
+    /// @dev Not per-chain: this bounds a contract's own code, which is the same everywhere, unlike the
+    ///      wallet population `NATIVE_PAYOUT_GAS` is sized against.
+    uint256 public constant ASSET_PAYOUT_GAS = 500_000;
+
     /// @notice Fixed-point scale of `rewardPerTokenStored`: accumulated payout per whole unit of
     ///         eligible supply, times this.
     uint256 internal constant DIVIDEND_PRECISION = 1e18;
@@ -182,6 +193,11 @@ abstract contract DividendDistribution {
     /// @notice When the current stream runs dry. Also the staleness anchor, and the "dividends are
     ///         active" flag: 0 until the token graduates.
     uint40 public dividendPeriodFinish;
+
+    /// @notice Block of the last call that actually moved the buffer — a funded conversion or a treasury
+    ///         sweep. Gates the FUNDING leg of `processDividends` to once per block.
+    /// @dev Free: it lands in the 48 bits this slot had spare, which the hot path already warms.
+    uint40 public lastDividendProcessBlock;
 
     /// @notice Payout-asset units this token owes holders: everything it has streamed into the
     ///         accumulator, minus everything it has actually delivered.
@@ -260,6 +276,9 @@ abstract contract DividendDistribution {
     error BelowDividendThreshold();
     /// @notice The buffer was fundable and the conversion failed, so nothing was streamed.
     error DividendConversionFailed();
+    /// @notice The buffer already moved in this block. Only the funding leg is gated — a call carrying
+    ///         holders still pays them.
+    error DividendProcessCooldown();
     /// @notice The treasury refused the swept buffer. Reverts the whole call, leaving the buffer where it
     ///         was — the same state a caller who never tried would have seen.
     error DividendSweepFailed();

@@ -115,7 +115,28 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         // interval that just ended at the supply that was actually in effect for it.
         uint256 rpt = _syncDividends();
 
-        (FundOutcome outcome, uint256 nativeIn, uint256 out) = _fundDividends(minOut);
+        // Once per block, for exactly the reason `processBurn` and `processLiquidity` are: the per-call
+        // cap only bounds what a manipulated block can yield if the block allows ONE conversion. Without
+        // it a caller re-enters at the same distorted price until the buffer is gone, paying the
+        // manipulation cost once instead of once per block.
+        // The gate is on the FUNDING leg ALONE. Pushing payouts is not rate-limited and must not be: a
+        // keeper splitting a large holder set across several transactions in one block is ordinary, and
+        // those calls read a buffer this one already resolved.
+        bool cooldown = block.number <= lastDividendProcessBlock;
+
+        FundOutcome outcome = FundOutcome.NotReady;
+        uint256 nativeIn;
+        uint256 out;
+        if (!cooldown) {
+            (outcome, nativeIn, out) = _fundDividends(minOut);
+            // Claimed only when the buffer actually MOVED. A call that found nothing fundable, or whose
+            // swap failed, spent nothing and must not lock the block against an honest keeper.
+            if (outcome == FundOutcome.Funded || outcome == FundOutcome.SweptToTreasury) {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                lastDividendProcessBlock = uint40(block.number);
+            }
+        }
+
         if (outcome == FundOutcome.Funded) {
             _fundDividendStream(out);
             // `rate` and `periodFinish` are read AFTER the fold-in, which is what makes them the
@@ -126,11 +147,18 @@ abstract contract DividendDistributionLogic is DividendDistribution {
 
         if (holders.length != 0) {
             address asset = dividendToken;
+            // The asset leg gets its own, far larger stipend: `NATIVE_PAYOUT_GAS` is sized for a wallet's
+            // `receive()` and would starve an ordinary ERC20 `transfer`.
+            uint256 stipend = asset == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
             uint256 paid;
             for (uint256 i; i < holders.length; ++i) {
-                paid += _payHolder(holders[i], asset, rpt, NATIVE_PAYOUT_GAS);
+                paid += _payHolder(holders[i], asset, rpt, stipend);
             }
             _reduceDividendsOwed(paid);
+        } else if (cooldown) {
+            // Distinct from the two below on purpose: this keeper has to wait a block, not wait for
+            // earnings or re-price a floor.
+            revert DividendProcessCooldown();
         } else if (outcome == FundOutcome.NotReady) {
             // Two different situations, two different errors: a keeper that sees `BelowDividendThreshold`
             // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
@@ -232,9 +260,19 @@ abstract contract DividendDistributionLogic is DividendDistribution {
             // past — and the next call simply tries again with a floor priced off the live pool.
             if (minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
 
-            // Zero floor and still nothing came back: the pool cannot produce a single wei at any price,
-            // so "try again" never terminates. The slice goes to the treasury instead of sitting owed to
-            // holders forever — see the contract docstring for why that beats repointing the asset.
+            // Zero floor and still nothing came back: the pool cannot produce a single wei at any price.
+            // That is a SNAPSHOT, though, and a snapshot is manufacturable — anyone can empty a pool for
+            // the length of one transaction and put it back after. Staleness is what makes the reading
+            // persistent: `dividendPeriodFinish` only moves when a distribution SUCCEEDS, so a token
+            // whose pool still works cannot go stale (any keeper can distribute), and a token whose pool
+            // is genuinely dead reaches it on its own `STALE_DIVIDEND_WINDOW` after the last one. A
+            // manipulator therefore cannot open this door; they can only walk through one already open on
+            // a token that has been unable to distribute for a month.
+            if (!stale) return (FundOutcome.ConversionFailed, 0, 0);
+
+            // The pool has been failing long enough that "try again" never terminates. The slice goes to
+            // the treasury instead of sitting owed to holders forever — see the contract docstring for
+            // why that beats repointing the asset.
             _sweepFailedConversion(asset, spend);
             return (FundOutcome.SweptToTreasury, 0, 0);
         }
@@ -307,8 +345,9 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///      pays it. This is what a reverting `receive()` or a payout-asset blacklist degrades into.
     /// @dev Settling before reading is not optional: the caller has already advanced the accumulator, so
     ///      this holder's share of the interval that just closed is only in `Acct.rewards` after this.
-    /// @param gasStipend Gas forwarded to a native payout: `NATIVE_PAYOUT_GAS` from a keeper batch,
-    ///        `gasleft()` from `claimDividends` (which, under EIP-150's 63/64 rule, is an uncapped call).
+    /// @param gasStipend Gas forwarded to the payout call: `NATIVE_PAYOUT_GAS` or `ASSET_PAYOUT_GAS` from
+    ///        a keeper batch, `gasleft()` from `claimDividends` (which, under EIP-150's 63/64 rule, is an
+    ///        uncapped call).
     /// @return The amount actually delivered, 0 if the holder was skipped or the send failed.
     function _payHolder(address holder, address asset, uint256 rpt, uint256 gasStipend) private returns (uint256) {
         // An excluded address never accrues, so its `Acct` is a stale checkpoint against a live balance
@@ -326,16 +365,19 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         return amount;
     }
 
-    /// @dev Delivers one payout, reporting failure instead of reverting — for BOTH shapes. Native goes
-    ///      out with a bounded stipend. A third asset is the creator's choice, and a creator's choice can
-    ///      blacklist addresses, so a reverting `safeTransfer` on ONE holder would take down the whole
-    ///      batch and `claimDividends` for everyone.
+    /// @dev Delivers one payout, reporting failure instead of reverting — for BOTH shapes. A third asset
+    ///      is the creator's choice, and a creator's choice can blacklist addresses, so a reverting
+    ///      `safeTransfer` on ONE holder would take down the whole batch and `claimDividends` for everyone.
+    /// @dev BOTH shapes are gas-bounded too, for the same reason and with different numbers: an
+    ///      unbounded `receive()` starves the batch, and so does an unbounded `transfer` on a payout asset
+    ///      the registry only ever vetted for liquidity. `claimDividends` passes `gasleft()` either way,
+    ///      so a stipend never becomes an eligibility gate.
     function _payDividend(address asset, address to, uint256 amount, uint256 gasStipend) private returns (bool) {
         if (asset == address(0)) {
             (bool sent,) = to.call{value: amount, gas: gasStipend}("");
             return sent;
         }
-        (bool ok, bytes memory ret) = asset.call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        (bool ok, bytes memory ret) = asset.call{gas: gasStipend}(abi.encodeCall(IERC20.transfer, (to, amount)));
         // `SafeERC20`'s success test minus the revert: empty returndata is success (non-standard ERC20s),
         // and anything too short to decode is failure rather than a panic. `asset` is known to be a
         // contract — its pot could only have been funded through a `balanceOf` call on it.

@@ -17,6 +17,18 @@ import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 ///         continuous accumulator, threshold-gated funding, the drip that makes a flash loan worthless,
 ///         the push payout, and the committed-funds guards that keep undelivered dividends away from
 ///         every sweep path.
+/// @notice Stand-in for the universal router on a PARTIAL fill: the pool takes half the native, the rest
+///         comes back with the router's `SWEEP`, and some token is delivered either way. A real V4 pool
+///         reaches this when the swap cannot absorb the whole input, so the branch is mocked rather than
+///         contrived.
+contract PartialFillRouterStub {
+    function execute(bytes calldata, bytes[] calldata, uint256) external payable {
+        (bool sent,) = msg.sender.call{value: msg.value / 2}("");
+        require(sent, "refund failed");
+        IERC20(msg.sender).transfer(msg.sender, 1e18);
+    }
+}
+
 contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
@@ -198,6 +210,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         uint256 firstRate = token.dividendRate();
 
         skip(token.DIVIDEND_DRIP_DURATION() / 2);
+        vm.roll(block.number + 1); // the funding leg is once per block
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders()); // no revert, no wait
 
@@ -316,11 +329,14 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         token.processDividends(0, _noHolders());
         skip(token.DIVIDEND_DRIP_DURATION());
+        vm.roll(block.number + 1); // the funding leg is once per block
         token.processDividends(0, _batch(buyer)); // holder2 omitted
 
         _accrue(token, 1 ether);
+        vm.roll(block.number + 1);
         token.processDividends(0, _noHolders());
         skip(token.DIVIDEND_DRIP_DURATION());
+        vm.roll(block.number + 1);
 
         assertApproxEqRel(token.previewDividend(holder2), 0.5 ether, 1e14, "two streams' worth, still owed");
         token.processDividends(0, _batch(holder2));
@@ -505,6 +521,30 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertLt(markerAt, type(uint256).max, "the precursor marker was emitted");
         assertLt(swapAt, type(uint256).max, "the hook's buy event was emitted");
         assertLt(markerAt, swapAt, "the marker must precede the swap it flags");
+    }
+
+    /// @dev Native the router sweeps back on a partial fill must stay on the DIVIDEND ledger. The base
+    ///      debits `pendingNative` by the full amount it offered, so without the credit-back the unspent
+    ///      remainder becomes stray and `sweepStrayEth` re-splits holders' money into the burn, liquidity
+    ///      and fund buckets. Measured against stray native rather than the raw balance because a
+    ///      buy-back is a swap: the hook's `accrueFees` can land native here mid-call.
+    function test_selfTokenBuyBack_unspentEthStaysEarmarked() public {
+        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        _accrue(token, 1 ether);
+
+        uint256 pending = token.pendingNative();
+        assertGt(pending, 0, "the self-token leg buffered ETH");
+        uint256 cap = token.MAX_DIVIDEND_PER_CONVERSION();
+        uint256 spend = pending < cap ? pending : cap;
+
+        // The stub delivers a fixed amount of the token, so it needs a balance at the router's address.
+        address router = token.UNIV4_UNIVERSAL_ROUTER();
+        deal(address(token), router, 1e18);
+        vm.etch(router, type(PartialFillRouterStub).runtimeCode);
+
+        token.processDividends(0, _noHolders());
+
+        assertEq(token.pendingNative(), pending - spend / 2, "only the half the pool took left the buffer");
     }
 
     /// @dev Undelivered self-token dividends are the token's OWN balance, shared with the tax pool. They

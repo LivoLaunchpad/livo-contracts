@@ -368,6 +368,11 @@ point. It converts the buffer, folds the proceeds into the running stream, and p
 whichever of the three there is anything to do. A keeper whose holder list does not fit in one block
 just calls it again; there is no phase to sequence and no state that a second call could disturb.
 
+The FUNDING leg — steps 1 and 1b — runs at most once per block. A second call in the same block that
+actually moved the buffer skips straight to the payouts, and reverts `DividendProcessCooldown` if it
+was given no holders either. Pushing payouts is never rate-limited, so splitting a large holder set
+across several transactions in one block works exactly as before.
+
 1. Only if the buffer cleared `DIVIDEND_THRESHOLD`: **`DividendsFunded`**
    (`asset, nativeIn, assetOut, rate, periodFinish`). `rate` and `periodFinish` describe the stream
    AFTER the fold-in — a distribution landing mid-stream adds the undelivered remainder to the new
@@ -375,9 +380,12 @@ just calls it again; there is no phase to sequence and no state that a second ca
    always moves to `block.timestamp + DIVIDEND_DRIP_DURATION`. The threshold stops applying in exactly
    one case, so a residual that can no longer grow is never stranded: the token has gone
    `STALE_DIVIDEND_WINDOW` (30 days) without a distribution.
-1b. Instead of `DividendsFunded`, when a zero-floor conversion came back empty:
-   **`DividendBufferSweptToTreasury`** (`asset, nativeAmount`). The pool cannot produce a single wei at
-   any price, so that slice of the native buffer went to `DIVIDEND_TREASURY` rather than sitting owed to
+1b. Instead of `DividendsFunded`, when a zero-floor conversion came back empty AND the token has gone
+   `STALE_DIVIDEND_WINDOW` without a distribution: **`DividendBufferSweptToTreasury`**
+   (`asset, nativeAmount`). The pool cannot produce a single wei at any price and has been unable to for
+   a month — staleness is what makes that a persistent reading rather than a snapshot anyone could
+   manufacture inside one transaction, since every successful distribution pushes the staleness anchor
+   forward. That slice of the native buffer went to `DIVIDEND_TREASURY` rather than sitting owed to
    holders forever, and the call returned successfully instead of reverting. It is bounded by
    `MAX_DIVIDEND_PER_CONVERSION` per call, so a dead pool's whole buffer takes several calls to clear.
    Nothing else changes: the payout asset, the stream, the accumulator and every unclaimed accrual are
@@ -394,16 +402,19 @@ just calls it again; there is no phase to sequence and no state that a second ca
    it likes.
 
    A call that funds nothing AND was given no holders reverts rather than emitting:
-   `DividendConversionFailed` when the buffer was fundable and the caller's floor was not reachable,
-   `BelowDividendThreshold` when it had not earned enough to try. A call that swept does NOT revert —
+   `DividendConversionFailed` when the buffer was fundable and the conversion did not happen (an
+   unreachable floor, or a dead pool on a token not yet stale), `BelowDividendThreshold` when it had not
+   earned enough to try, and `DividendProcessCooldown` when the funding leg already ran this block.
+   A call that swept does NOT revert —
    it resolved the buffer, and reverting would undo the sweep. A call carrying holders never reverts for
    either reason — it pushes the payouts it was asked to push.
 
 **`claimDividends()`** — the self-serve backstop, emitting the same single **`DividendPaid`** for
 `msg.sender`. It differs from a batch payout in one respect: a native payout inside `processDividends`
-is capped at the chain's `NATIVE_PAYOUT_GAS`, so one expensive `receive()` cannot starve the batch,
-while `claimDividends` forwards all remaining gas — a holder skipped by a batch can therefore always be
-paid by claiming. It never funds a stream.
+is gas-capped, so one expensive holder cannot starve the batch — at the chain's `NATIVE_PAYOUT_GAS` for
+a native payout, and at the far larger `ASSET_PAYOUT_GAS` for an ERC20 one, whose `transfer` is a
+contract the registry only ever vetted for liquidity. `claimDividends` forwards all remaining gas for
+both shapes, so a holder skipped by a batch can always be paid by claiming. It never funds a stream.
 
 
 ### `LivoDividendSwapRegistry` (one per chain)

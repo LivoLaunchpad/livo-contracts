@@ -193,7 +193,10 @@ contract DividendAccountingTests is Test {
         h.activate();
     }
 
+    /// @dev Fresh earnings arrive in a new block: the funding leg of `processDividends` is once per
+    ///      block, and none of these tests is about two conversions racing inside one.
     function _fund(uint256 amount) internal {
+        vm.roll(block.number + 1);
         vm.deal(address(this), amount);
         h.accrue{value: amount}();
     }

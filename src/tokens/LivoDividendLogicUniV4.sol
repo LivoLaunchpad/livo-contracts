@@ -30,9 +30,36 @@ contract LivoDividendLogicUniV4 is LivoTaxableTokenUniV4Base, DividendDistributi
 
         address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
         uint256 balanceBefore = balanceOf(address(this));
+        // Balance AND reserves, not either alone. A buy-back is a SWAP, so the hook's `accrueFees` lands
+        // native here mid-call: it raises the balance and the buffers together, and only the router's
+        // spend moves the two apart. `_sweepableNative()` is the same quantity but CLAMPED at zero, and
+        // the clamp bites exactly here — `pendingNative` still holds the amount being spent (the base
+        // debits it after this returns), so the token is fully reserved and stray reads 0 both times.
+        uint256 balanceBeforeEth = address(this).balance;
+        uint256 reservedBefore = _reservedNative();
         emit DividendBuyBackInitiated(nativeIn);
         _buyBackTokensWithEth(hook, nativeIn, minOut);
-        return balanceOf(address(this)) - balanceBefore;
+        uint256 bought = balanceOf(address(this)) - balanceBefore;
+
+        // Nothing bought: the base either leaves the buffer alone or sweeps the whole `nativeIn` to the
+        // treasury, and both of those already account for the native the router handed back. Re-earmarking
+        // here would double-count it.
+        if (bought == 0) return 0;
+
+        // The base is about to debit the FULL `nativeIn`, so whatever the pool did not take — returned by
+        // the router's `SWEEP` on a partial fill — has to go back on the dividend ledger. Without this it
+        // becomes stray and `sweepStrayEth` re-splits holders' money into the burn / liquidity / fund
+        // buckets. Read defensively: assuming the whole spend merely under-credits, an underflow would
+        // revert a good conversion.
+        // `spent = (balance drop) + (reserve growth)`, arranged so neither side can underflow: an
+        // accrual that lands mid-swap shows up in both terms and cancels out.
+        uint256 lhs = balanceBeforeEth + _reservedNative();
+        uint256 rhs = address(this).balance + reservedBefore;
+        uint256 spent = lhs > rhs ? lhs - rhs : 0;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (spent < nativeIn) pendingNative = uint88(pendingNative + (nativeIn - spent));
+
+        return bought;
     }
 
     /// @notice Creation-time dividend configuration, executed here on the token's storage. Guarded by

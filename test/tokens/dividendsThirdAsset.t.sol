@@ -52,6 +52,14 @@ contract DividendHarness is DividendDistributionLogic {
     receive() external payable {}
 }
 
+/// @notice A payout asset whose `transfer` never returns. The registry vets an asset's LIQUIDITY, never
+///         its behaviour, so a token like this can pass creation and then meet a keeper batch.
+contract GasBombToken {
+    fallback() external {
+        while (true) {}
+    }
+}
+
 /// @notice An ERC20 with no pool anywhere, standing in for an asset a creator names without liquidity.
 contract GhostToken is ERC20 {
     constructor() ERC20("Ghost", "GHOST") {
@@ -110,6 +118,14 @@ contract DividendsThirdAssetTests is Test {
         list = new address[](0);
     }
 
+    /// @dev Ages the token past `STALE_DIVIDEND_WINDOW`, the gate the treasury sweep sits behind. Only a
+    ///      token that has been UNABLE to distribute for that long reaches it — every successful
+    ///      distribution pushes `dividendPeriodFinish` forward — which is what makes the sweep condition
+    ///      persistent rather than a snapshot anyone can manufacture inside one transaction.
+    function _goStale(DividendHarness h) internal {
+        skip(h.STALE_DIVIDEND_WINDOW() + 1);
+    }
+
     //////////////////////// the payout shape //////////////////////
 
     function test_thirdAsset_boughtOnFundingAndStreamedToHolders() public {
@@ -154,6 +170,7 @@ contract DividendsThirdAssetTests is Test {
         harness.processDividends(0, _holders());
         assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion took exactly the cap");
 
+        vm.roll(block.number + 1); // the funding leg is once per block
         harness.processDividends(0, _noHolders());
         assertEq(harness.pendingNative(), 1 ether - 2 * cap, "and the next one takes the next slice");
     }
@@ -256,7 +273,7 @@ contract DividendsThirdAssetTests is Test {
     ///      sweeps a capped slice to the treasury each time. The sweep condition is deliberately the swap
     ///      itself, with no reason code consulted, so an admin lifting the veto later recovers only what
     ///      keepers have not already swept. Livo owns both ends of that, which is what makes it tolerable.
-    function test_blacklistingAnAssetSweepsRatherThanHoldingTheBuffer() public {
+    function test_blacklistingAnAssetHoldsTheBufferUntilTheVetoLifts() public {
         _fundAndActivate(harness);
 
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
@@ -265,16 +282,16 @@ contract DividendsThirdAssetTests is Test {
         registry.setTrustStatus(DAI, blacklisted);
 
         uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
-        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "a capped slice went to the treasury");
-        assertEq(harness.pendingNative(), 1 ether - cap, "the rest is still buffered");
+        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "a live veto sweeps nothing");
+        assertEq(harness.pendingNative(), 1 ether, "the whole buffer waits for the veto to lift");
 
         uint8 unknown = registry.TRUST_UNKNOWN();
         vm.prank(registryOwner);
         registry.setTrustStatus(DAI, unknown);
         harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "and what survived converts again once the veto is lifted");
+        assertGt(harness.dividendsOwed(), 0, "and it converts in full once the veto is lifted");
     }
 
     /// @dev The registry is a swap venue, not a vault: it forwards everything it buys inside the same
@@ -312,6 +329,7 @@ contract DividendsThirdAssetTests is Test {
     function test_aCodelessRegistryFailsClosedInsteadOfBurningTheBuffer() public {
         _fundAndActivate(harness);
         vm.etch(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, hex"");
+        _goStale(harness); // the sweep is gated on staleness; a codeless registry never lets a stream run
 
         // A call CARRYING holders never reverts for a broken swap, so nothing rolls the transfer back:
         // this is the shape in which a codeless registry would silently pocket the buffer, every call.
@@ -360,15 +378,100 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.previewDividend(holder), 0, "the payout was accepted, not skipped");
     }
 
+    //////////////////////// the funding cooldown //////////////////////
+
+    /// @dev The per-call cap only bounds a manipulated block if the block allows ONE conversion. Without
+    ///      this gate a caller re-enters at the same distorted price until the buffer is gone, paying the
+    ///      manipulation cost once instead of once per block — the same argument `processBurn` and
+    ///      `processLiquidity` already make with their own cooldowns.
+    function test_theFundingLegIsOncePerBlock() public {
+        _fundAndActivate(harness);
+        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion went through");
+
+        vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.pendingNative(), 1 ether - cap, "and a second one in the same block converts nothing");
+
+        vm.roll(block.number + 1);
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "the next block converts again");
+    }
+
+    /// @dev The gate is on FUNDING alone. A keeper splitting a large holder set across several
+    ///      transactions in one block is ordinary, and those calls read a buffer the first already
+    ///      resolved — rate-limiting them would rate-limit paying people.
+    function test_theCooldownDoesNotBlockPayouts() public {
+        _fundAndActivate(harness);
+        harness.processDividends(0, _noHolders());
+        _drain(harness);
+
+        uint256 owed = harness.previewDividend(holder);
+        assertGt(owed, 0, "the holder accrued the stream");
+
+        // Same block as the funding call above: it must pay, not revert.
+        harness.processDividends(0, _holders());
+        assertEq(IERC20(DAI).balanceOf(holder), owed, "paid in full despite the funding cooldown");
+    }
+
+    /// @dev The block is claimed only when the buffer actually MOVED. A call whose swap failed spent
+    ///      nothing, so it must not lock the block against an honest keeper with a better floor.
+    function test_aFailedConversionDoesNotClaimTheBlock() public {
+        _fundAndActivate(harness);
+
+        // Carries holders, so a failed conversion reports rather than reverts — the shape that would
+        // otherwise leave a marker behind.
+        harness.processDividends(1_000_000e18, _holders());
+        assertEq(harness.pendingNative(), 1 ether, "nothing was spent");
+
+        harness.processDividends(0, _noHolders());
+        assertEq(
+            harness.pendingNative(),
+            1 ether - harness.MAX_DIVIDEND_PER_CONVERSION(),
+            "a reachable floor still converts in the same block"
+        );
+    }
+
+    //////////////////////// the payout gas bound //////////////////////
+
+    /// @dev Both payout shapes are gas-bounded, for the same reason and with different numbers. The
+    ///      payout asset is the creator's choice and the registry only ever vetted its liquidity, so an
+    ///      unbounded `transfer` would burn 63/64 of the batch's gas on ONE holder and starve the rest —
+    ///      and `claimDividends` with it. Capped, it degrades into the ordinary skip: the holder is not
+    ///      paid, keeps every unit accrued, and the batch carries on.
+    function test_aGasBombPayoutAssetCannotStarveTheBatch() public {
+        _fundAndActivate(harness);
+        harness.processDividends(0, _noHolders()); // buy DAI, fund the stream
+        _drain(harness);
+
+        uint256 owed = harness.previewDividend(holder);
+        assertGt(owed, 0, "the holder accrued the stream");
+
+        // Etched AFTER the conversion, and called in the SAME block as it, so the funding leg is under
+        // its own cooldown and never touches the bomb — only the payout leg does.
+        vm.etch(DAI, type(GasBombToken).runtimeCode);
+
+        uint256 before = gasleft();
+        harness.processDividends(0, _holders());
+        uint256 used = before - gasleft();
+
+        assertLt(used, 2 * harness.ASSET_PAYOUT_GAS(), "the bomb was capped, not handed the whole batch");
+        assertEq(harness.previewDividend(holder), owed, "and the unpaid holder keeps every unit accrued");
+    }
+
     //////////////////////// the dead-pool escape //////////////////////
 
     /// @dev Nobody can repair a dead pool, and a buffer that can never be converted must not sit owed to
     ///      holders forever. Once a zero-floor swap comes back empty — the proof that the pool cannot
-    ///      produce a single wei at ANY price — that slice goes to the treasury and the call reports
-    ///      success instead of reverting. No wait, no staleness gate: the condition is the swap itself.
+    ///      produce a single wei at ANY price, on a token that has been unable to distribute for a whole
+    ///      `STALE_DIVIDEND_WINDOW` — that slice goes to the treasury and the call reports success instead
+    ///      of reverting.
     function test_aPermanentlyDeadPoolSweepsTheBufferToTheTreasury() public {
         _fundAndActivate(harness);
         _killTheV2Router();
+        _goStale(harness);
 
         uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
@@ -395,6 +498,8 @@ contract DividendsThirdAssetTests is Test {
         assertGt(daiOwed, 0, "the holder accrued DAI it never claimed");
 
         _killTheV2Router();
+        _goStale(harness);
+        vm.roll(block.number + 1); // the funding leg above already claimed this block
         vm.deal(address(this), 1 ether);
         harness.accrue{value: 1 ether}();
         harness.processDividends(0, _noHolders());
@@ -405,8 +510,26 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.committedDividends(DAI), owedBefore, "the DAI stays holders' money, not rescuable");
 
         // The holder can still take it: claiming never depended on the pool being alive.
+        vm.roll(block.number + 1);
         harness.processDividends(0, _holders());
         assertEq(IERC20(DAI).balanceOf(holder), daiOwed, "paid in full, in the asset they accrued");
+    }
+
+    /// @dev A snapshot is not a proof. Anyone can empty a pool for the length of one transaction and put
+    ///      it back after, so a single failed zero-floor swap must not hand the buffer over. Staleness is
+    ///      what makes the reading persistent: every SUCCESSFUL distribution pushes `dividendPeriodFinish`
+    ///      forward, so a token whose pool still works can never reach it, and a manipulator cannot open
+    ///      the door — only walk through one a genuinely dead pool has already opened.
+    function test_aFreshTokenWithADeadPoolDoesNotSweep() public {
+        _fundAndActivate(harness);
+        _killTheV2Router();
+
+        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        harness.processDividends(0, _noHolders());
+
+        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "the treasury got nothing");
+        assertEq(harness.pendingNative(), 1 ether, "and the buffer is exactly where it was");
     }
 
     /// @dev The sweep cannot be triggered by a caller's bad price. A floor the pool has merely moved past
