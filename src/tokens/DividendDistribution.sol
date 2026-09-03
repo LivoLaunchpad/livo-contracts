@@ -94,9 +94,11 @@ abstract contract DividendDistribution {
     ///      arrival.
     uint256 public constant DIVIDEND_DRIP_DURATION = 15 minutes;
 
-    /// @notice Time without a distribution after which the token is treated as DEAD. One thing unlocks
-    ///         there, and it is a last resort: funding below `DIVIDEND_THRESHOLD`, so a residual that can
-    ///         no longer grow is not stranded in the buffer forever.
+    /// @notice Time without a distribution after which the token is treated as DEAD. Two things unlock
+    ///         there, both last resorts: funding below `DIVIDEND_THRESHOLD`, so a residual that can no
+    ///         longer grow is not stranded in the buffer forever, and the treasury sweep of a buffer no
+    ///         swap can convert (see `DividendDistributionLogic._fundDividends`, which also records what
+    ///         that second use does and does not prove).
     /// @dev Anchored on `dividendPeriodFinish`, which every distribution pushes forward, so a token that
     ///      is merely quiet never comes near this and the threshold keeps behaving exactly as it does
     ///      today. Only a token nobody is trading ages into it.

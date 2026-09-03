@@ -262,12 +262,19 @@ abstract contract DividendDistributionLogic is DividendDistribution {
 
             // Zero floor and still nothing came back: the pool cannot produce a single wei at any price.
             // That is a SNAPSHOT, though, and a snapshot is manufacturable — anyone can empty a pool for
-            // the length of one transaction and put it back after. Staleness is what makes the reading
-            // persistent: `dividendPeriodFinish` only moves when a distribution SUCCEEDS, so a token
-            // whose pool still works cannot go stale (any keeper can distribute), and a token whose pool
-            // is genuinely dead reaches it on its own `STALE_DIVIDEND_WINDOW` after the last one. A
-            // manipulator therefore cannot open this door; they can only walk through one already open on
-            // a token that has been unable to distribute for a month.
+            // the length of one transaction and put it back after. Staleness narrows the door:
+            // `dividendPeriodFinish` only moves when a distribution SUCCEEDS, so a genuinely dead pool
+            // reaches it on its own a `STALE_DIVIDEND_WINDOW` after the last one, and an actively
+            // distributing token never does.
+            //
+            // KNOWN LIMIT, accepted: staleness reads "no distribution in a month", which a dead pool
+            // guarantees but does not uniquely cause. A token with a HEALTHY pool that no keeper has
+            // called for a month is equally stale, so a griefer there can still manufacture the failure
+            // and sweep — one `MAX_DIVIDEND_PER_CONVERSION` slice per block, since the funding leg is
+            // rate-limited, each slice costing its own round trip. Measuring pool death properly would
+            // need a persistence marker of its own (the failure observed twice, blocks apart); this
+            // reuses the window instead, on the grounds that the money lands in Livo's own treasury and
+            // holders are made whole off-chain. Do not read this gate as proof the pool is dead.
             if (!stale) return (FundOutcome.ConversionFailed, 0, 0);
 
             // The pool has been failing long enough that "try again" never terminates. The slice goes to

@@ -516,10 +516,11 @@ contract DividendsThirdAssetTests is Test {
     }
 
     /// @dev A snapshot is not a proof. Anyone can empty a pool for the length of one transaction and put
-    ///      it back after, so a single failed zero-floor swap must not hand the buffer over. Staleness is
-    ///      what makes the reading persistent: every SUCCESSFUL distribution pushes `dividendPeriodFinish`
-    ///      forward, so a token whose pool still works can never reach it, and a manipulator cannot open
-    ///      the door — only walk through one a genuinely dead pool has already opened.
+    ///      it back after, so a single failed zero-floor swap must not hand the buffer over. Staleness
+    ///      narrows it: every SUCCESSFUL distribution pushes `dividendPeriodFinish` forward, so an
+    ///      actively distributing token never reaches the gate. It narrows rather than closes — a healthy
+    ///      pool no keeper has called for a month is stale too — which is the accepted limit spelled out
+    ///      at the gate itself.
     function test_aFreshTokenWithADeadPoolDoesNotSweep() public {
         _fundAndActivate(harness);
         _killTheV2Router();
