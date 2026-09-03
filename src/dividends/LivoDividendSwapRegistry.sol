@@ -242,8 +242,14 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         // vouched for is never refused for lacking the V2 pair it was admitted for lacking. Same
         // resolution order as `_venueSwap`, and the two must never diverge: an asset judged eligible on
         // one venue and then swapped on another would convert through a pool nobody vetted.
-        if (_routes[asset].length != 0) return (true, trust, SwapRejection.OK);
-        if (_v3Routes[asset].length != 0) return (true, trust, SwapRejection.OK);
+        // Scoped to the NATIVE quote, because that is the only quote a route can start at: `_venueSwap`
+        // builds every V4 hop from the native currency and pins every V3 path to `nativeQuoteToken()`.
+        // A second allowed quote — which `setV3Route` needs for its intermediates, since
+        // `V3IntermediateNotAllowed` reads this same mapping — must fall through to the V2 pair test
+        // below, which resolves per-quote, rather than inherit a route it cannot use.
+        if (_routes[asset].length != 0 || _v3Routes[asset].length != 0) {
+            if (quote == nativeQuoteToken()) return (true, trust, SwapRejection.OK);
+        }
 
         (address pair, uint256 quoteDepth) = pairFor(quote, asset);
         if (pair == address(0)) return (false, trust, SwapRejection.NoPair);
