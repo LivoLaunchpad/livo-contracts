@@ -117,7 +117,9 @@ abstract contract EarningsAllocation {
 
         // `fund` accumulates the fund-wallet slice plus whatever each leg leaves unconsumed. Residuals
         // fold into FUND, never back into `remaining` — that would re-split them over dividends.
-        // `denom == 0` only for a token routing 100% to burn+liquidity, where `remaining` is 0 too.
+        // `denom == 0` means every bucket was already peeled, so `remaining` is whatever survived them
+        // and belongs to the fund wallets whole — on V4 that is 0, on V2 (which peels in token space and
+        // passes `burnShare == liquidityShare == 0`) it is the ETH left after the upstream peels.
         // A venue may also peel part of the DIVIDENDS slice upstream in token-space (the Uniswap-V2
         // self-token leg, which cannot be bought back with ETH); that share is out of both the numerator
         // and the denominator here, exactly like the burn/liquidity shares it sits beside.

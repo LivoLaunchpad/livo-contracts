@@ -248,6 +248,11 @@ abstract contract LivoTaxableToken is
         uint16 _liquidityBps,
         address _dividendToken
     ) external virtual {
+        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
+        _burnBps;
+        _dividendsBps;
+        _liquidityBps;
+        _dividendToken;
         // Runs in the extension: the payout configuration is validated once, at creation, and the
         // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
         // rather than duplicated, so there is exactly one copy of the rules.
