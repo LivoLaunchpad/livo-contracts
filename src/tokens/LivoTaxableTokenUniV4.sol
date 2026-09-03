@@ -115,12 +115,13 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
 
         address hook = ILivoV4Graduator(graduator).HOOK_ADDRESS();
         uint256 balanceBefore = balanceOf(address(this));
-        // Stray native, NOT the raw balance `processLiquidity` can use: this one is a SWAP, so the hook's
-        // `accrueFees` lands native here mid-call. That accrual raises the balance and the buffers by the
-        // same amount (the fund slice leaves immediately), so it moves `_sweepableNative()` by zero and
-        // only the router's spend does. `burnPendingEth` was debited above, so `ethIn` counts as stray
-        // for the duration of the call.
-        uint256 strayBefore = _sweepableNative();
+        // Balance AND reserves, NOT the raw balance `processLiquidity` can use and NOT the clamped
+        // `_sweepableNative()`: this one is a SWAP, so the hook's `accrueFees` lands native here
+        // mid-call, raising the balance and the buffers by the same amount (the fund slice leaves
+        // immediately). Tracking the two separately lets that accrual cancel while the router's spend
+        // still shows. `burnPendingEth` was debited above, so `ethIn` is unreserved for the call.
+        uint256 balanceBeforeEth = address(this).balance;
+        uint256 reservedBefore = _reservedNative();
         // Precursor marker: must stay BEFORE the swap so indexers can classify the resulting
         // `LivoSwapHook.LivoSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
         emit BuyBackInitiated(ethIn);
@@ -130,11 +131,15 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
         // Whatever the pool did not take came back with the router's `SWEEP` and stays earmarked for
         // burning, mirroring `processLiquidity`: without this the unspent remainder rejoins the stray
         // pool and `sweepStrayEth` re-splits it into the fund / dividend / liquidity buckets, spending
-        // an allocation meant for burning. Stray cannot legitimately grow across the call; read
-        // defensively anyway, because assuming the whole spend merely under-credits while an underflow
-        // would revert an otherwise good buy-back.
-        uint256 strayAfter = _sweepableNative();
-        uint256 ethSpent = strayBefore >= strayAfter ? strayBefore - strayAfter : ethIn;
+        // an allocation meant for burning.
+        // `spent = (balance drop) + (reserve growth)`, the same shape `LivoDividendLogicUniV4` uses and
+        // for the same reason: `_sweepableNative()` CLAMPS AT ZERO, and a native dividend payout
+        // reentering here mid-`claimDividends` (the balance already sent, `dividendsOwed` not yet
+        // reduced) pins both readings to zero — reporting a spend of 0 and re-crediting the whole
+        // `ethIn` that the swap really consumed. Arranged so neither side can underflow.
+        uint256 lhs = balanceBeforeEth + _reservedNative();
+        uint256 rhs = address(this).balance + reservedBefore;
+        uint256 ethSpent = lhs > rhs ? lhs - rhs : 0;
         if (ethSpent < ethIn) burnPendingEth += ethIn - ethSpent;
 
         if (tokensBought > 0) _burn(address(this), tokensBought);

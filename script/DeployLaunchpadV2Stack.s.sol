@@ -221,6 +221,15 @@ contract DeployLaunchpadV2Stack is Script {
             revert("Unsupported chain");
         }
 
+        // The registry address is a compile-time constant baked into every taxable-token implementation,
+        // and clones are not upgradeable: an impl deployed while the constant still points at the
+        // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
+        // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
+        require(
+            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
+        );
+
         // Belt-and-braces: catch a stale or zero address in the manifest before we waste a deploy.
         require(d.oldLaunchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 // The universal router is v4-periphery's client, so its `PoolKey` pin is the one `IV4Router` types
 // against — building the key from this import avoids the abi round-trip `LivoUniv4BuyBacks` needs for
@@ -41,9 +42,12 @@ library UniversalRouterVenue {
     ///      is handed to the router untouched. It MUST start at the router's WETH: the `WRAP_ETH`
     ///      command funds the router in WETH, and a path starting anywhere else would spend a balance
     ///      the router does not have. The registry validates that on write, not here.
+    /// @param weth the token `path` starts at — the currency `WRAP_ETH` funds the router in, and so the
+    ///        currency a partial fill would leave behind there.
     /// @param minOut minimum output in the FINAL token's own decimals.
-    /// @return ok false if the swap reverted (dead pool anywhere along the path, slippage floor missed).
-    function swapNativeToAssetV3Path(address router, bytes memory path, uint256 nativeIn, uint256 minOut)
+    /// @return ok false if the swap reverted (dead pool anywhere along the path, slippage floor missed)
+    ///         or filled only partially.
+    function swapNativeToAssetV3Path(address router, address weth, bytes memory path, uint256 nativeIn, uint256 minOut)
         internal
         returns (bool ok)
     {
@@ -52,18 +56,30 @@ library UniversalRouterVenue {
         // `payerIsUser = false`: the router pays with the WETH the first command just wrapped for it.
         inputs[1] = abi.encode(address(this), nativeIn, minOut, path, false);
 
+        // A DELTA, not an absolute: the router is not supposed to hold anything between calls, but dust
+        // somebody else left there must not fail an otherwise good swap of ours.
+        uint256 routerHeld = IERC20(weth).balanceOf(router);
+
         (ok,) = router.call{value: nativeIn}(
             abi.encodeCall(
                 IUniversalRouter.execute, (abi.encodePacked(WRAP_ETH, V3_SWAP_EXACT_IN), inputs, block.timestamp)
             )
         );
+
+        // The whole `nativeIn` was wrapped up front, but a V3 exact-in swap stops at the price limit and
+        // consumes only what the pool's liquidity could take. The unspent WETH stays in the router, which
+        // never refunds and which anyone may sweep — while the caller debits the FULL spend. Refuse the
+        // fill instead: `false` here reverts the registry, so the buffer and the native survive intact
+        // and the next call retries. Same rule as `_executeAndRequireFullFill` applies to the V4 legs.
+        if (ok && IERC20(weth).balanceOf(router) > routerHeld) ok = false;
     }
 
     /// @notice Buys `asset` on the V4 pool keyed by `(native, asset, fee, tickSpacing, hooks)`, delivering
     ///         it to `address(this)`. Native ETH is `address(0)`, which sorts below every asset, so the
     ///         pool is always native -> asset in `currency0 -> currency1` order.
     /// @param minOut minimum output in the ASSET's own decimals.
-    /// @return ok false if the swap reverted (uninitialized pool, slippage floor missed, reverting hook).
+    /// @return ok false if the swap reverted (uninitialized pool, slippage floor missed, reverting hook)
+    ///         or filled only partially.
     function swapNativeToAssetV4(
         address router,
         address asset,
@@ -105,9 +121,7 @@ library UniversalRouterVenue {
             params
         );
 
-        (ok,) = router.call{value: nativeIn}(
-            abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp))
-        );
+        ok = _executeAndRequireFullFill(router, inputs, nativeIn);
     }
 
     /// @notice Buys the currency at the END of `path` by spending `nativeIn` of the chain's native coin,
@@ -120,7 +134,7 @@ library UniversalRouterVenue {
     ///        be non-empty; the last hop's `intermediateCurrency` is what the caller receives.
     /// @param minOut minimum output in the FINAL currency's own decimals.
     /// @return ok false if the swap reverted (uninitialized pool anywhere on the path, slippage floor
-    ///         missed, reverting hook).
+    ///         missed, reverting hook) or filled only partially.
     function swapNativeToAssetV4Path(address router, PathKey[] memory path, uint256 nativeIn, uint256 minOut)
         internal
         returns (bool ok)
@@ -163,8 +177,25 @@ library UniversalRouterVenue {
             abi.encodePacked(uint8(Actions.SWAP_EXACT_IN), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL)), params
         );
 
+        ok = _executeAndRequireFullFill(router, inputs, nativeIn);
+    }
+
+    /// @dev Runs a single `V4_SWAP` command and reports a PARTIAL FILL as a failure.
+    ///      `SETTLE_ALL` settles the debt the swap actually incurred, not `nativeIn`: a pool whose
+    ///      liquidity runs out mid-swap fills only part of it and the rest stays in the router, which
+    ///      never refunds on its own and which anyone may sweep — while the caller has already debited
+    ///      the full spend. Returning `false` reverts the registry, so nothing is stranded: the native
+    ///      goes back to the caller with its buffer untouched, and the next call retries.
+    /// @dev Measured as a DELTA on the router's own native balance, never an absolute — dust somebody
+    ///      else left there is not ours to fail on.
+    function _executeAndRequireFullFill(address router, bytes[] memory inputs, uint256 nativeIn)
+        private
+        returns (bool ok)
+    {
+        uint256 routerHeld = router.balance;
         (ok,) = router.call{value: nativeIn}(
             abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp))
         );
+        if (ok && router.balance > routerHeld) ok = false;
     }
 }

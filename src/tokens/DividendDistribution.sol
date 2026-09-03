@@ -356,9 +356,15 @@ abstract contract DividendDistribution {
         // `rpt` is read straight out of `uint128 rewardPerTokenStored`.
         // forge-lint: disable-next-line(unsafe-typecast)
         acct.rewardPerTokenPaid = uint128(rpt);
-        // See `Acct`: bounded by everything the token has ever distributed.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        acct.rewards += uint120(_dividendBalanceOf(account) * (rpt - paid) / DIVIDEND_PRECISION);
+        // See `Acct`: bounded by everything the token has ever distributed, and out of reach for any
+        // sanely-priced payout asset. SATURATING rather than wrapping, and rather than reverting — the
+        // registry vets an asset's liquidity, never its decimals or its supply, so the ceiling is not
+        // provably unreachable, and this runs inside `_update`. An unchecked cast would erase a holder's
+        // whole banked accrual silently; a revert would freeze their transfers for good. Capping loses
+        // only the part above the ceiling and keeps both the token and the claim working, the same
+        // trade `_reduceDividendsOwed` makes on the other side of the ledger.
+        uint256 accrued = uint256(acct.rewards) + _dividendBalanceOf(account) * (rpt - paid) / DIVIDEND_PRECISION;
+        acct.rewards = accrued > type(uint120).max ? type(uint120).max : uint120(accrued);
     }
 
     /// @dev The instant the stream has accrued up to: now, or its end, whichever came first.

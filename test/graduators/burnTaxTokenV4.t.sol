@@ -19,6 +19,28 @@ contract RefundingUniversalRouterStub {
     }
 }
 
+/// @notice Claims a native dividend and re-enters `processBurn` from its `receive()`. The token has
+///         already sent the payout at that point but has not yet reduced `dividendsOwed`, so the
+///         contract reads as fully reserved from the inside.
+contract ReentrantDividendClaimer {
+    LivoTaxableTokenUniV4 public token;
+    bool public reentered;
+
+    function setToken(LivoTaxableTokenUniV4 t) external {
+        token = t;
+    }
+
+    function claim() external {
+        token.claimDividends();
+    }
+
+    receive() external payable {
+        if (address(token) == address(0) || reentered) return;
+        reentered = true;
+        token.processBurn(0);
+    }
+}
+
 /// @notice Integration tests for the V4 buy-back-and-burn earnings-allocation leg.
 contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via the allocation-aware
@@ -113,6 +135,83 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         assertEq(burnToken.burnPendingEth(), pending, "swept-back ETH stays earmarked for burning");
         assertEq(token.balance, ethBefore, "and never left the token");
+    }
+
+    /// @dev Same as `_createBurnTaxToken`, plus a NATIVE dividends leg, so the token holds both a burn
+    ///      buffer and a payout that hands control to a holder.
+    function _createBurnAndDividendToken(uint16 burnBps, uint16 dividendsBps) internal returns (address token) {
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "BurnDivToken",
+            symbol: "BDIV",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 400,
+            taxDurationSeconds: uint32(14 days),
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: burnBps, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: address(0)
+            })
+        });
+        vm.prank(creator);
+        token = factoryTax.createToken(
+            setup,
+            cfg,
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+    }
+
+    /// @dev `processBurn` must measure its spend from the RAW balance and the UNCLAMPED reserves, never
+    ///      from `_sweepableNative()`. Re-entered from inside a native dividend payout — the ETH already
+    ///      sent, `dividendsOwed` not yet reduced — the clamp pins the stray reading to zero on both
+    ///      sides of the buy-back, so the call concludes it spent nothing and hands the whole `ethIn`
+    ///      back to `burnPendingEth`. Repeat once per block and the burn budget becomes phantom, spent
+    ///      out of the dividend and liquidity reserves until holders' claims start failing.
+    function test_v4ProcessBurn_reenteredFromADividendPayout_doesNotRefillTheBuffer() public {
+        address token = _createBurnAndDividendToken(2500, 5000);
+        testToken = token;
+        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _graduateToken();
+
+        // The attacker needs a real, dividend-eligible balance to have anything to claim.
+        ReentrantDividendClaimer claimer = new ReentrantDividendClaimer();
+        claimer.setToken(burnToken);
+        uint256 stake = IERC20(token).balanceOf(buyer) / 2;
+        vm.prank(buyer);
+        IERC20(token).transfer(address(claimer), stake);
+
+        // Earnings fill both buffers at once: 25% to burn, half the remainder to holders.
+        vm.deal(address(this), 4 ether);
+        burnToken.accrueFees{value: 4 ether}();
+
+        burnToken.processDividends(0, new address[](0));
+        skip(burnToken.DIVIDEND_DRIP_DURATION());
+        vm.roll(block.number + 1);
+
+        uint256 burnPending = burnToken.burnPendingEth();
+        assertGt(burnPending, 0, "burn buffer funded");
+        assertGt(burnToken.previewDividend(address(claimer)), 0, "attacker has a payout to trigger on");
+
+        uint256 supplyBefore = IERC20(token).totalSupply();
+        claimer.claim();
+
+        assertTrue(claimer.reentered(), "the payout did re-enter processBurn");
+        assertLt(IERC20(token).totalSupply(), supplyBefore, "the buy-back really spent the ETH and burned");
+        assertLt(burnToken.burnPendingEth(), burnPending, "and the buffer was debited for it, not refilled");
     }
 
     function test_v4ProcessBurn_revertsWhenNothingPending() public {

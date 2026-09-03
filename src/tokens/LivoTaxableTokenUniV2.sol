@@ -130,7 +130,11 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     ///      Unused ETH does NOT: `_processCollectedTokens` clamps its split to `_sweepableNative()`, so a
     ///      refund never folds into the next swap-back — `sweepStrayEth()` is what routes it, and on V2
     ///      (no native-side burn or liquidity handler) both slices fall through to the fund wallets.
-    function processLiquidity(uint256 amountOutMinWei) external {
+    /// @dev `nonReentrant` on top of `_inSwap`, matching the V4 twin. `_inSwap` is a TAX suppressor, not
+    ///      a serializer: a re-entrant call would find it already true — taxes and the auto swap-back
+    ///      silently off — with `liquidityPendingTokens` already debited. Nothing reachable calls back
+    ///      here today; the guard is what keeps that true when a venue or payout asset later does.
+    function processLiquidity(uint256 amountOutMinWei) external nonReentrant {
         require(graduated, NotGraduated());
         // Once per block + capped at the swap-back's own per-sell size: bounds what a sandwich of the
         // half-sell can extract per manipulated block; the remainder stays buffered for later calls.

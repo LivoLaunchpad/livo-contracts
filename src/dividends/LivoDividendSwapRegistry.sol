@@ -331,7 +331,10 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
             // admin found its V3 pool better than whatever V2 offers, so the route wins where both exist.
             bytes memory v3Path = _v3Routes[asset];
             if (v3Path.length != 0) {
-                return UniversalRouterVenue.swapNativeToAssetV3Path(UNIV3_UNIVERSAL_ROUTER, v3Path, msg.value, minOut);
+                return
+                    UniversalRouterVenue.swapNativeToAssetV3Path(
+                        UNIV3_UNIVERSAL_ROUTER, quote, v3Path, msg.value, minOut
+                    );
             }
             address[] memory path = new address[](2);
             path[0] = quote;

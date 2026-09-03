@@ -98,8 +98,11 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
 
     /// @dev The share of total earnings the self-token dividend payout takes, in token space: all of
     ///      the dividends slice when the payout asset IS this token, none of it otherwise.
+    /// @dev Gated on the warm `hasDividends` flag first, as `_sweepableAsset` below is: without dividends
+    ///      `dividendToken` is structurally zero and the answer can only be 0, so the cold SLOAD buys
+    ///      nothing on the swap-back and earnings-routing paths of every non-dividend token.
     function _tokenSpaceDividendBps() internal view override returns (uint256) {
-        return dividendToken == address(this) ? dividendsBps : 0;
+        return hasDividends && dividendToken == address(this) ? dividendsBps : 0;
     }
 
     /// @dev The token's own balance is shared by the tax pool, the liquidity buffer, the self-token

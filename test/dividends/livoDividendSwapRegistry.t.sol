@@ -18,6 +18,21 @@ contract Ghost is ERC20 {
     }
 }
 
+/// @notice Stand-in for the universal router on a PARTIAL fill: the pool takes only half the native and
+///         the rest stays with the router, which never refunds on its own and which anyone may sweep.
+///         A real V4 pool reaches this when its liquidity runs out before the input does — `SETTLE_ALL`
+///         then settles the debt the swap actually incurred, not what was sent.
+contract PartialFillV4RouterStub {
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address internal constant SINK = 0x000000000000000000000000000000000000dEaD;
+
+    function execute(bytes calldata, bytes[] calldata, uint256) external payable {
+        (bool spent,) = SINK.call{value: msg.value / 2}("");
+        require(spent, "sink failed");
+        IERC20(USDC).transfer(msg.sender, 1e6);
+    }
+}
+
 /// @notice The eligibility gate and swap venue for third-asset dividends, tested on its own. The rule it
 ///         enforces is deliberately permissionless — a deep enough Uniswap V2 pair, nothing else — so
 ///         most of what is asserted here is what the admin levers CANNOT do.
@@ -357,6 +372,27 @@ contract LivoDividendSwapRegistryTests is Test {
         vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
         registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
         assertEq(address(registry).balance, 0);
+    }
+
+    /// @dev A partial fill must FAIL the conversion, not book it. `SETTLE_ALL` settles what the swap
+    ///      actually took, so the unspent native stays in the router — unrefunded, sweepable by anyone —
+    ///      while the token has already debited the full spend from its dividend buffer. Refusing it
+    ///      leaves the caller exactly the state it assumes after a failed swap: buffer intact, native
+    ///      returned, retry next call. The real-pool route tests above are the full-fill control.
+    function test_aPartialV4FillIsRefusedInsteadOfStrandingTheRest() public {
+        _setRoute(USDC, _hop(USDC, V4_FEE_005, V4_SPACING_10, address(0)));
+
+        address router = registry.UNIV4_UNIVERSAL_ROUTER();
+        vm.etch(router, address(new PartialFillV4RouterStub()).code);
+        deal(USDC, router, 1000e6);
+
+        vm.deal(address(this), 1 ether);
+        uint256 balanceBefore = address(this).balance;
+        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
+        registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
+
+        assertEq(address(this).balance, balanceBefore, "the native never left the caller");
+        assertEq(IERC20(USDC).balanceOf(recipient), 0, "and nothing was delivered on a half-spent swap");
     }
 
     //////////////////////// helpers //////////////////////

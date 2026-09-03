@@ -19,6 +19,26 @@ import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.
 ///      sell-side market maker looks like, and it is exactly the shape a buyer wants — so any gate that
 ///      judged depth by reading the pool's quote-side balance would reject precisely the pools this
 ///      venue was added to reach. That test is the regression guard for ever reintroducing one.
+interface IWETH9 {
+    function deposit() external payable;
+}
+
+/// @notice Stand-in for the universal router on a PARTIAL V3 fill. `WRAP_ETH` wraps the whole input up
+///         front but the swap consumes only what the pool's liquidity could take, so the unspent WETH
+///         stays with the router — unrefunded, sweepable by anyone — while the caller has already
+///         debited the full spend.
+contract PartialFillV3RouterStub {
+    address internal constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant NVDA = 0xC763873bb5509b6Bfe0a76A902207E41f2AaF340;
+    address internal constant SINK = 0x000000000000000000000000000000000000dEaD;
+
+    function execute(bytes calldata, bytes[] calldata, uint256) external payable {
+        IWETH9(WETH9).deposit{value: msg.value}();
+        IERC20(WETH9).transfer(SINK, msg.value / 2); // the half the pool actually took
+        IERC20(NVDA).transfer(msg.sender, 1e18);
+    }
+}
+
 contract LivoDividendSwapRegistryV3Tests is Test {
     uint256 internal constant BLOCKNUMBER = 25880000;
 
@@ -156,6 +176,26 @@ contract LivoDividendSwapRegistryV3Tests is Test {
         vm.expectRevert();
         registry.swapNativeToAsset{value: 0.2 ether}(NVDAon, 1_000_000e18, recipient);
         assertEq(address(this).balance, balanceBefore, "native never left");
+    }
+
+    /// @dev The V3 twin of the V4 partial-fill guard, and it needs its own check because the leftover is
+    ///      WETH rather than native: `WRAP_ETH` funds the router in WETH before the swap, so whatever the
+    ///      pool did not take stays there in wrapped form. Refuse the fill rather than book a full spend
+    ///      against a half-spent swap. The real-pool tests above are the full-fill control.
+    function test_aPartialV3FillIsRefusedInsteadOfStrandingTheRest() public {
+        _route(NVDAon, _path(WETH, FEE_030, NVDAon));
+
+        address router = registry.UNIV3_UNIVERSAL_ROUTER();
+        vm.etch(router, address(new PartialFillV3RouterStub()).code);
+        deal(NVDAon, router, 1000e18);
+
+        vm.deal(address(this), 1 ether);
+        uint256 balanceBefore = address(this).balance;
+        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
+        registry.swapNativeToAsset{value: 1 ether}(NVDAon, 1, recipient);
+
+        assertEq(address(this).balance, balanceBefore, "the native never left the caller");
+        assertEq(IERC20(NVDAon).balanceOf(recipient), 0, "and nothing was delivered on a half-spent swap");
     }
 
     /// @dev A route registered on the wrong fee tier names a pool that does not exist. Nothing on-chain
