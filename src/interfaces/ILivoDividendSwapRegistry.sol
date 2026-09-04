@@ -83,6 +83,13 @@ interface ILivoDividendSwapRegistry {
     /// @return quoteDepth quote-side reserve, scaled to native 18-dec units
     function pairFor(address quote, address asset) external view returns (address pair, uint256 quoteDepth);
 
+    /// @notice Whether the protocol has explicitly vouched for `asset`: an admin marked it whitelisted,
+    ///         or gave it a curated V4/V3 route (which is the same act of curation). False for a
+    ///         blacklisted asset regardless of any route it carries.
+    /// @dev A UI badge, nothing more. Eligibility is `isSwapSupported`, and an asset can be perfectly
+    ///      swappable — a deep permissionless V2 pair — while this returns false.
+    function isTrusted(address asset) external view returns (bool);
+
     /// @notice The curated Uniswap V4 route a conversion into `asset` crosses, hop by hop, starting from
     ///         the chain's native coin. Empty when the asset has none, which means it goes through the
     ///         permissionless V2 path instead.

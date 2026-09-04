@@ -276,6 +276,15 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     }
 
     /// @inheritdoc ILivoDividendSwapRegistry
+    function isTrusted(address asset) public view returns (bool) {
+        uint8 trust = trustStatus[asset];
+        if (trust == TRUST_BLACKLISTED) return false;
+        // A curated route counts as a vouch: an admin only files one after checking the pool's depth and
+        // its price against the real market, which is the same judgement the whitelist badge records.
+        return trust == TRUST_WHITELISTED || _routes[asset].length != 0 || _v3Routes[asset].length != 0;
+    }
+
+    /// @inheritdoc ILivoDividendSwapRegistry
     function routeOf(address asset) external view returns (Hop[] memory) {
         return _routes[asset];
     }

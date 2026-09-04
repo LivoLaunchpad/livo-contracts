@@ -235,6 +235,27 @@ contract LivoDividendSwapRegistryTests is Test {
         registry.setDefaultThreshold(0);
     }
 
+    /// @dev The UI badge: whitelisted OR routed means "we vouched for it", and blacklisted overrides a
+    ///      route. Eligibility is a separate question, which is why a deep V2 pair alone is not "trusted".
+    function test_isTrustedTracksBothVouches() public {
+        (uint8 unknown, uint8 whitelisted, uint8 blacklisted) =
+            (registry.TRUST_UNKNOWN(), registry.TRUST_WHITELISTED(), registry.TRUST_BLACKLISTED());
+        assertFalse(registry.isTrusted(DAI), "unknown, even with a deep pair");
+
+        vm.prank(admin);
+        registry.setTrustStatus(DAI, whitelisted);
+        assertTrue(registry.isTrusted(DAI), "badge");
+
+        vm.prank(admin);
+        registry.setTrustStatus(DAI, unknown);
+        _setRoute(DAI, _hop(DAI, V4_FEE_005, V4_SPACING_10, address(0)));
+        assertTrue(registry.isTrusted(DAI), "a curated route is a vouch too");
+
+        vm.prank(admin);
+        registry.setTrustStatus(DAI, blacklisted);
+        assertFalse(registry.isTrusted(DAI), "the veto wins over the route");
+    }
+
     function test_trustStatusIsBounded() public {
         vm.prank(admin);
         vm.expectRevert(LivoDividendSwapRegistry.InvalidTrustStatus.selector);
