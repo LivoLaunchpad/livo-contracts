@@ -28,8 +28,15 @@ abis:
     
 
 ##################### TESTING ################################
-fast-test:
+fast-test: check-dividend-layout
     forge test --no-match-contract Invariants --no-match-path "test/integration/**"
+
+# Fails if a taxable token and its dividend extension disagree on storage layout. The extension is
+# `delegatecall`ed with the token's storage, so this is the one property no Solidity test can assert
+# for itself. It builds under the `layout` profile (its own `out` dir, so enabling `extra_output` does
+# not thrash the default cache) and costs ~2s incrementally, hence running it before every `fast-test`.
+check-dividend-layout:
+    @python3 script/checks/dividend_layout.py
 
 gas-report:
     forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report
@@ -87,13 +94,19 @@ _retarget taxlib gradsuffix="":
     @just _taxtoken {{taxlib}} "{{gradsuffix}}"
     @just _graduators "{{gradsuffix}}"
 
-# (internal) Repoints the two taxable-token impls' `DeploymentAddresses` import, and the V2 taxable
-# token's venue lib (swap-back path), to the target chain. Use a `chain-*` recipe.
+# (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
+# mixin and the dividend swap registry) `DeploymentAddresses` import, the venue lib used by the V2
+# swap-back AND the registry's third-asset conversion, and the V4 token-side pool-constants lib, to the
+# target chain. Use a `chain-*` recipe.
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
-        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol \
+        src/tokens/LivoTaxableTokenUniV2Base.sol \
+        src/tokens/DividendDistribution.sol src/dividends/LivoDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
-        src/tokens/LivoTaxableTokenUniV2.sol
+        src/tokens/LivoTaxableTokenUniV2.sol src/dividends/LivoDividendSwapRegistry.sol
+    sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
+        src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol
 
 # (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
@@ -230,6 +243,21 @@ export-deployments:
 # Needs MAINNET_RPC_URL exported (or a sibling .env); robinhood uses its public RPC by default.
 unfunded-creators:
     uv run script/operations/unfunded-accounts/check_unfunded_creators.py
+
+# Rebuild the curated Uniswap V4 dividend routes for Robinhood Chain's xStocks by scanning the
+# pool manager on-chain. Writes script/operations/dividend-routes/routes.robinhood.mainnet.json.
+# Review the diff before writing it on-chain — a wrong pool routes a token's dividends elsewhere.
+discover-dividend-routes:
+    uv run script/operations/dividend-routes/discover_xstock_routes.py
+
+# Write those routes into the registry, and — without --broadcast — the health check for the ones
+# already live: it probes each asset's CURRENT route next to the fresh candidates and flags any that
+# has stopped working. Only routes that differ from what is live get written, so re-running is a no-op.
+# Needs DIVIDEND_SWAP_REGISTRY exported and an admin/owner signer. Set ROUTES_JSON to a narrowed file
+# (discover_xstock_routes.py --only SYMBOL -o …) to add a single asset without touching the rest.
+set-dividend-routes:
+    just chain-robinhood
+    forge script SetDividendRoutes --rpc-url robinhood-mainnet --account livo.dev
 
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS

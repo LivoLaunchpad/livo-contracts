@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
 import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -20,6 +22,7 @@ import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
 import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
@@ -35,6 +38,10 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 
 contract LaunchpadBaseTests is Test {
+    /// @notice Eligibility gate + swap venue for third-asset dividends, installed at the constant
+    ///         address every taxable token implementation compiles against.
+    LivoDividendSwapRegistry internal dividendSwapRegistry;
+
     LivoLaunchpad public launchpad;
 
     LivoToken public livoToken;
@@ -420,6 +427,10 @@ contract LaunchpadBaseTests is Test {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
 
+        // Must precede the token implementations: they bake the registry's address in as a constant,
+        // and a third-asset dividend configuration calls it at creation.
+        dividendSwapRegistry = installDividendSwapRegistry(admin);
+
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);
         vm.deal(seller, INITIAL_ETH_BALANCE);
@@ -453,6 +464,10 @@ contract LaunchpadBaseTests is Test {
 
         feeHandler = new LivoMasterFeeHandler();
 
+        // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
+        // and taxable tokens point at the same one).
+        address univ4LiquidityAdder = address(new LivoUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
+
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
@@ -460,7 +475,8 @@ contract LaunchpadBaseTests is Test {
             permit2Address,
             TEST_HOOK_ADDRESS,
             715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER
+            UniswapV4PoolConstants.TICK_UPPER,
+            univ4LiquidityAdder
         );
 
         livoTaxTokenV2 = new LivoTaxableTokenUniV2();
@@ -483,7 +499,8 @@ contract LaunchpadBaseTests is Test {
             permit2Address,
             TEST_HOOK_ADDRESS,
             1012340326367404053977557838594048, // THIN graduation sqrtPriceX96 (6.125 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER_THIN
+            UniswapV4PoolConstants.TICK_UPPER_THIN,
+            univ4LiquidityAdder
         );
         graduatorV4Thick = new LivoGraduatorUniswapV4(
             address(launchpad),
@@ -492,7 +509,8 @@ contract LaunchpadBaseTests is Test {
             permit2Address,
             TEST_HOOK_ADDRESS,
             506170163183702026988778919297024, // THICK graduation sqrtPriceX96 (24.5 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER
+            UniswapV4PoolConstants.TICK_UPPER,
+            univ4LiquidityAdder
         );
 
         address factoryV2Impl = address(

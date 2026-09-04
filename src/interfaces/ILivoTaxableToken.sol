@@ -43,6 +43,39 @@ struct TaxConfigs {
     uint32 taxDecayDuration; // seconds over which the decay rate falls from its start to 0; 0 = no decay
 }
 
+/// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
+///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions. The
+///         fund wallets take the remainder. All-zero = no allocation (100% to the fund wallets).
+/// @dev A non-zero `dividendsBps` also needs `dividendToken`, the ONE asset holders are paid in:
+///      `address(0)` for native, `DividendDistribution.DIVIDEND_SELF_TOKEN` for the token itself, or any
+///      ERC20 `LivoDividendSwapRegistry` can reach at creation time: one with a Uniswap V2 pair deep
+///      enough to swap against — no whitelist, no per-asset approval — or one an admin has given a
+///      curated Uniswap V4 route. Permanent: a clone cannot be patched afterwards.
+struct EarningsAllocationConfig {
+    uint16 burnBps;
+    uint16 dividendsBps;
+    uint16 liquidityBps;
+    address dividendToken;
+}
+
+/// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split. Consumed
+///         by the allocation-aware `createToken` overload, which lifts the tax fields back into a
+///         `TaxConfigs` for the shared creation pipeline and forwards `earningsAllocation` to
+///         `initializeEarningsAllocation` at creation.
+/// @dev A non-zero allocation requires a token with a long-term static tax (`taxDurationSeconds != 0`);
+///      decay-only tokens are rejected by the factories (`EarningsAllocationRequiresTax`).
+///      The leading fields mirror `TaxConfigs` exactly.
+struct TaxConfigsWithAllocation {
+    uint16 buyTaxBps;
+    uint16 sellTaxBps;
+    uint32 taxDurationSeconds;
+    bool startTaxFromLaunch;
+    uint16 buyTaxDecayStartBps;
+    uint16 sellTaxDecayStartBps;
+    uint32 taxDecayDuration;
+    EarningsAllocationConfig earningsAllocation;
+}
+
 /// @title ILivoTaxableToken
 /// @notice Unified interface for Livo taxable tokens, regardless of the underlying graduation
 ///         venue (Uniswap V2 with intrinsic taxation, Uniswap V4 with hook-driven taxation).
@@ -72,4 +105,18 @@ interface ILivoTaxableToken is ILivoToken {
     /// @notice Owner-only setter for `buyTaxBps` / `sellTaxBps`. Currently enforces decrease-only —
     ///         attempts to raise either rate revert.
     function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external;
+
+    /// @notice Factory-only, creation-time setter for the earnings-allocation split (burn / dividends /
+    ///         liquidity bps; the fund wallets take the remainder). Guarded by the transient factory,
+    ///         so it is only callable during the deploy tx.
+    function initializeEarningsAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) external;
+
+    /// @notice Same as above plus the dividend payout asset. Separate overload so the original
+    ///         signature is untouched.
+    function initializeEarningsAllocation(
+        uint16 burnBps,
+        uint16 dividendsBps,
+        uint16 liquidityBps,
+        address dividendToken
+    ) external;
 }

@@ -78,6 +78,15 @@ contract DeployTokenImplementations is Script {
         } else {
             revert("Unsupported chain");
         }
+
+        // The registry address is a compile-time constant baked into every taxable-token implementation,
+        // and clones are not upgradeable: an impl deployed while the constant still points at the
+        // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
+        // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
+        require(
+            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
+        );
     }
 
     function run() public {
