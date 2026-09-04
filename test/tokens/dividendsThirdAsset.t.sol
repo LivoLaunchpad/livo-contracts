@@ -60,6 +60,23 @@ contract GasBombToken {
     }
 }
 
+/// @notice A payout asset whose `transfer` succeeds but returns a huge buffer. The callee's memory
+///         expansion is paid inside the stipend; the CALLER's `returndatacopy` is not, so a naive
+///         `(bool, bytes memory)` call would make the payout unaffordable for the caller instead.
+contract ReturnBombToken {
+    fallback() external {
+        assembly {
+            let w := 0
+            for {} 1 {} {
+                w := add(w, 512)
+                mstore(mul(w, 32), 0)
+                if lt(gas(), 60000) { break }
+            }
+            return(0, mul(w, 32))
+        }
+    }
+}
+
 /// @notice An ERC20 with no pool anywhere, standing in for an asset a creator names without liquidity.
 contract GhostToken is ERC20 {
     constructor() ERC20("Ghost", "GHOST") {
@@ -124,6 +141,17 @@ contract DividendsThirdAssetTests is Test {
     ///      persistent rather than a snapshot anyone can manufacture inside one transaction.
     function _goStale(DividendHarness h) internal {
         skip(h.STALE_DIVIDEND_WINDOW() + 1);
+    }
+
+    /// @dev The treasury sweep needs the zero-floor failure on record from an EARLIER block, so the first
+    ///      call only records it and still reports `DividendConversionFailed`. This makes that call and
+    ///      moves to the next block, leaving the harness one call away from sweeping.
+    function _recordFailedConversion(DividendHarness h) internal {
+        // Returns quietly rather than reverting: the call WROTE the marker, and `DividendConversionFailed`
+        // would have rolled it straight back.
+        h.processDividends(0, _noHolders());
+        assertEq(h.failedConversionBlock(), block.number, "the failure is on record");
+        vm.roll(block.number + 1);
     }
 
     //////////////////////// the payout shape //////////////////////
@@ -298,10 +326,14 @@ contract DividendsThirdAssetTests is Test {
     ///      call and is empty before and after.
     function test_theRegistryHoldsNothing() public {
         _fundAndActivate(harness);
+        // A DELTA, not zero: the registry constant is `address(0)` until the proxy is deployed, and on a
+        // mainnet fork that address already holds every ETH ever burned to it.
+        uint256 registryBalanceBefore = address(registry).balance;
+        uint256 registryDaiBefore = IERC20(DAI).balanceOf(address(registry));
         harness.processDividends(0, _noHolders());
 
-        assertEq(address(registry).balance, 0, "no native retained");
-        assertEq(IERC20(DAI).balanceOf(address(registry)), 0, "no asset retained");
+        assertEq(address(registry).balance, registryBalanceBefore, "no native retained");
+        assertEq(IERC20(DAI).balanceOf(address(registry)), registryDaiBefore, "no asset retained");
         assertEq(IERC20(DAI).balanceOf(address(harness)), harness.dividendsOwed(), "it all reached the token");
     }
 
@@ -334,12 +366,20 @@ contract DividendsThirdAssetTests is Test {
         // A call CARRYING holders never reverts for a broken swap, so nothing rolls the transfer back:
         // this is the shape in which a codeless registry would silently pocket the buffer, every call.
         uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+        uint256 registryBalanceBefore = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance;
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+        // A call carrying holders reports nothing, so the first one only records the failure.
+        harness.processDividends(0, _holders());
+        vm.roll(block.number + 1);
         harness.processDividends(0, _holders());
 
         // The point of the guard: the native went to the treasury, which can hand it back, instead of to
         // a codeless address, which cannot. Without it the raw `call` would have succeeded and kept it.
-        assertEq(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance, 0, "the codeless address got nothing");
+        assertEq(
+            DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance,
+            registryBalanceBefore,
+            "the codeless address got nothing"
+        );
         assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "the treasury caught it instead");
         assertEq(harness.pendingNative(), 1 ether - cap, "and only the attempted slice left the buffer");
         assertEq(harness.dividendsOwed(), 0, "no stream was funded");
@@ -472,6 +512,7 @@ contract DividendsThirdAssetTests is Test {
         _fundAndActivate(harness);
         _killTheV2Router();
         _goStale(harness);
+        _recordFailedConversion(harness);
 
         uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
@@ -502,6 +543,7 @@ contract DividendsThirdAssetTests is Test {
         vm.roll(block.number + 1); // the funding leg above already claimed this block
         vm.deal(address(this), 1 ether);
         harness.accrue{value: 1 ether}();
+        _recordFailedConversion(harness);
         harness.processDividends(0, _noHolders());
 
         assertEq(harness.dividendToken(), DAI, "the payout asset is never repointed");
@@ -513,6 +555,63 @@ contract DividendsThirdAssetTests is Test {
         vm.roll(block.number + 1);
         harness.processDividends(0, _holders());
         assertEq(IERC20(DAI).balanceOf(holder), daiOwed, "paid in full, in the asset they accrued");
+    }
+
+    //////////////////////// weird payout assets //////////////////////
+
+    /// @dev The accumulator's scale comes from the PAYOUT ASSET's decimals, not from a fixed 1e18. With
+    ///      1e18 against a 1e27 supply, one accumulator step was worth 1e9 asset units — 1000 USDC — so
+    ///      every increment of a realistic distribution truncated to zero and a 6-decimal payout streamed
+    ///      NOTHING while `dividendsOwed` kept counting it. USDC is a first-class payout asset here.
+    function test_aSixDecimalPayoutAssetStreamsTheWholeDistribution() public {
+        DividendHarness h = _harness(USDC);
+        assertEq(h.dividendPrecisionExp(), 30, "36 - 6, so one step is 1e-18 of a whole USDC");
+
+        // A realistic graduated token: 1e27 supply, most of it outside the pair, and one holder.
+        h.setBalance(holder, 8e26);
+        h.activate();
+        vm.deal(address(this), 1 ether);
+        h.accrue{value: 1 ether}();
+        h.processDividends(0, _noHolders());
+
+        uint256 streamed = h.dividendsOwed();
+        assertGt(streamed, 0, "the conversion bought USDC");
+
+        _drain(h);
+        h.processDividends(0, _holders());
+        // Not exact: the accumulator truncates towards the protocol at every step, which is what keeps
+        // the stream solvent. What matters is that the loss is dust rather than the whole distribution.
+        assertApproxEqRel(IERC20(USDC).balanceOf(holder), streamed, 0.0001e18, "the sole holder got it all");
+    }
+
+    /// @dev `DAI` is unchanged by the same rule — an 18-decimal asset keeps the scale it always had, so
+    ///      nothing about the existing shape moved.
+    function test_anEighteenDecimalPayoutAssetKeepsTheOriginalScale() public {
+        assertEq(harness.dividendPrecisionExp(), 18, "36 - 18");
+        assertEq(_harness(address(0)).dividendPrecisionExp(), 18, "native is 18-decimal too");
+    }
+
+    /// @dev `claimDividends` forwards `gasleft()`, and under EIP-150 the callee always receives 63/64 of
+    ///      it — far more than the caller keeps. An asset that expands memory before returning would
+    ///      therefore make the caller's returndata copy unaffordable and revert the claim whatever gas the
+    ///      holder supplied, killing the one payout route that is supposed to always work. The payout call
+    ///      copies at most one word, so the bomb costs the caller nothing and just reports failure.
+    function test_aReturnBombingAssetCannotBrickTheSelfServeClaim() public {
+        DividendHarness h = _harness(DAI);
+        h.setBalance(holder, 1_000e18);
+        h.activate();
+        vm.deal(address(this), 1 ether);
+        h.accrue{value: 1 ether}();
+        h.processDividends(0, _noHolders());
+        _drain(h);
+
+        vm.etch(DAI, address(new ReturnBombToken()).code);
+        assertGt(h.previewDividend(holder), 0, "the holder has accrued");
+
+        uint256 accrued = h.previewDividend(holder);
+        vm.prank(holder);
+        h.claimDividends{gas: 5_000_000}(); // must not revert
+        assertEq(h.previewDividend(holder), accrued, "unpaid, but the accrual is intact for a later try");
     }
 
     /// @dev A snapshot is not a proof. Anyone can empty a pool for the length of one transaction and put
@@ -531,6 +630,53 @@ contract DividendsThirdAssetTests is Test {
 
         assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "the treasury got nothing");
         assertEq(harness.pendingNative(), 1 ether, "and the buffer is exactly where it was");
+    }
+
+    /// @dev Staleness alone is not enough either. The registry refuses whenever the pair's quote depth
+    ///      merely dips under its threshold, which one sell causes and one buy undoes — so a griefer on a
+    ///      quiet-but-healthy token could otherwise manufacture the failure and sweep atomically. The
+    ///      failure has to be on record from an EARLIER block, which costs them the same position held
+    ///      across a block boundary, twice, per slice.
+    function test_aSingleBlockFailureNeverSweepsHoweverStaleTheToken() public {
+        _fundAndActivate(harness);
+        _killTheV2Router();
+        _goStale(harness);
+
+        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
+
+        // First sighting: recorded, nothing swept. It returns quietly instead of reverting precisely
+        // because it wrote the marker — a revert would undo it and the gate would never be reachable.
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.failedConversionBlock(), block.number, "the failure is on record");
+        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "nothing swept on the first sighting");
+
+        // A second sighting in the SAME block proves nothing new, so it still cannot sweep.
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "nor within the same block");
+        assertEq(harness.pendingNative(), 1 ether, "and the buffer is exactly where it was");
+
+        // Only once the failure has outlived a block does the slice move.
+        vm.roll(block.number + 1);
+        harness.processDividends(0, _noHolders());
+        assertEq(
+            harness.DIVIDEND_TREASURY().balance - treasuryBefore,
+            harness.MAX_DIVIDEND_PER_CONVERSION(),
+            "swept once the failure outlived a block"
+        );
+    }
+
+    /// @dev The marker is evidence of a CURRENT failure, not a permanent unlock. A conversion that goes
+    ///      through clears it, so a pool that recovers cannot be swept off a month-old sighting.
+    function test_aSuccessfulConversionClearsTheFailureRecord() public {
+        _fundAndActivate(harness);
+        _killTheV2Router();
+        _goStale(harness);
+        _recordFailedConversion(harness);
+
+        _reviveTheV2Router();
+        harness.processDividends(0, _noHolders());
+        assertEq(harness.failedConversionBlock(), 0, "the record is cleared by a working conversion");
+        assertGt(harness.dividendsOwed(), 0, "and the stream funded normally");
     }
 
     /// @dev The sweep cannot be triggered by a caller's bad price. A floor the pool has merely moved past
@@ -557,5 +703,9 @@ contract DividendsThirdAssetTests is Test {
             abi.encodeWithSelector(IUniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens.selector),
             ""
         );
+    }
+
+    function _reviveTheV2Router() internal {
+        vm.clearMockedCalls();
     }
 }

@@ -49,6 +49,20 @@ import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 ///      the accumulator and every accrual survive untouched. This is a backstop for a case that should
 ///      not occur — a token whose payout asset has no liquidity has, by then, no activity either.
 ///
+/// @dev ⚠️ ACCEPTED, AND THE ONE GAP THE SWEEP DOES NOT COVER: it moves UNCONVERTED native only. Once
+///      the native has been swapped, the asset sits in this contract and nothing can ever take it out
+///      again — `_sweepableAsset` subtracts `committedDividends`, so `rescueTokens` cannot reach it
+///      either, which is deliberate (that subtraction is what stops an owner draining holders' pot). So
+///      a payout asset that becomes permanently undeliverable AFTER a conversion — it blacklists this
+///      token, or pauses transfers for good — strands whatever had already been bought. There is no
+///      second escape hatch for that, and adding one would mean an owner-reachable path into a live
+///      dividend pot, which is a worse trade than the case it insures against.
+///      This used to have a much more likely cause: an accumulator scaled to 18 decimals truncated every
+///      increment to zero for a low-decimal payout asset, so USDC-style tokens streamed nothing while
+///      `dividendsOwed` kept counting it, and the whole pot ended up here. That is fixed — the scale is
+///      now derived from the asset's own decimals (see `dividendPrecisionExp`) — and what is left is the
+///      genuinely exotic case above.
+///
 /// @dev NO HOLDER SET. The contract never enumerates holders. `processDividends(minOut, address[])`
 ///      takes the push list from the caller and reads each amount out of that holder's own accrued
 ///      balance, so the call is idempotent and unforgeable: a duplicate pays 0, a wrong address pays 0,
@@ -126,16 +140,26 @@ abstract contract DividendDistribution {
     ///      wallet population `NATIVE_PAYOUT_GAS` is sized against.
     uint256 public constant ASSET_PAYOUT_GAS = 500_000;
 
-    /// @notice Fixed-point scale of `rewardPerTokenStored`: accumulated payout per whole unit of
-    ///         eligible supply, times this.
-    uint256 internal constant DIVIDEND_PRECISION = 1e18;
+    /// @notice Decimal exponent every payout asset's fixed-point scale is measured against:
+    ///         `dividendPrecisionExp = DIVIDEND_PRECISION_DECIMALS - asset decimals`.
+    /// @dev 36 rather than 18 because 18 is not a scale, it is a scale that happens to suit an
+    ///      18-decimal asset. The accumulator's granularity is `supply / 10**exp` asset units, and with a
+    ///      fixed 1e27 supply an exponent of 18 makes one accumulator step worth 1e9 asset units — 1000
+    ///      USDC. A 0.2 ETH distribution buys less than that, so EVERY increment truncated to zero and a
+    ///      6-decimal payout delivered nothing at all while `dividendsOwed` kept counting it. Measuring
+    ///      the exponent from the asset's own decimals makes the granularity `1e-18` of ONE whole unit of
+    ///      the payout asset whatever its decimals are, which is what the design always assumed.
+    uint256 internal constant DIVIDEND_PRECISION_DECIMALS = 36;
 
     /// @notice Eligible supply below which the stream PAUSES. One whole token, against a fixed total
     ///         supply of 1e27.
     /// @dev Two jobs, one line. It is the division guard — eligible supply reaches zero on a token whose
     ///      holders have all sold back into the pool — and it is the bound that keeps
     ///      `rewardPerTokenStored` inside its `uint128`: the accumulator's growth is
-    ///      `payout * 1e18 / supply`, so a floor on the denominator is a ceiling on the accumulator.
+    ///      `payout * 10**exp / supply`, so a floor on the denominator is a ceiling on the accumulator.
+    ///      With `exp = 36 - decimals` that ceiling is `total distributed, in WHOLE units, times 1e18`,
+    ///      i.e. 3.4e20 whole units of the payout asset over the token's life — the same bound for a
+    ///      6-decimal asset as for an 18-decimal one, and out of reach for both.
     /// @dev The paused interval's clock still advances (see `_syncDividends`), and the stream's finish
     ///      line moves out by the same span. Freezing the clock instead would bank the skipped seconds
     ///      and hand the whole lot to whoever bought in first once supply recovered — a just-in-time
@@ -183,7 +207,7 @@ abstract contract DividendDistribution {
     mapping(address account => Acct) public dividendAccounts;
 
     /// @notice Payout per unit of eligible supply, accumulated over the token's life, scaled by
-    ///         `DIVIDEND_PRECISION`. Monotonic: it only ever advances with the clock.
+    ///         `10 ** dividendPrecisionExp`. Monotonic: it only ever advances with the clock.
     /// @dev Packed with the two clocks and the epoch: the hot path touches this ONE global slot, and
     ///      only when the accumulator has actually moved.
     uint128 public rewardPerTokenStored;
@@ -200,6 +224,14 @@ abstract contract DividendDistribution {
     ///         sweep. Gates the FUNDING leg of `processDividends` to once per block.
     /// @dev Free: it lands in the 48 bits this slot had spare, which the hot path already warms.
     uint40 public lastDividendProcessBlock;
+
+    /// @notice `rewardPerTokenStored`'s fixed-point scale, as a power of ten:
+    ///         `DIVIDEND_PRECISION_DECIMALS - payout asset decimals`, written once at creation.
+    /// @dev Storage rather than a constant because the right scale depends on the payout asset, and the
+    ///      asset is the creator's choice — see `DIVIDEND_PRECISION_DECIMALS`. It costs no slot (the last
+    ///      8 bits this one had spare) and no extra SLOAD (the hot path already loads this slot for the
+    ///      accumulator and the clocks), only the `EXP` in `_dividendPrecision`.
+    uint8 public dividendPrecisionExp;
 
     /// @notice Payout-asset units this token owes holders: everything it has streamed into the
     ///         accumulator, minus everything it has actually delivered.
@@ -224,6 +256,21 @@ abstract contract DividendDistribution {
     ///      everywhere: on ARC it is 18-dec USDC, where `uint80` would cap the buffer at ~1.2M USDC —
     ///      large, but a dollar figure a token could conceivably reach, unlike 1.2M ETH.
     uint88 public pendingNative;
+
+    /// @notice Block in which a zero-floor conversion was last seen to return nothing, i.e. the first
+    ///         half of the treasury sweep's proof that the pool is really gone. 0 = no failure on record.
+    /// @dev The PERSISTENCE MARKER. "The pool produced nothing at any price" is a snapshot, and a
+    ///      snapshot is manufacturable — and far more cheaply than emptying the pool, because the
+    ///      registry also refuses whenever depth merely dips under its threshold. One sell is enough to
+    ///      cause the failure and one buy to undo it. Requiring the same failure in a LATER block forces
+    ///      the griefer to hold that position across a block boundary, twice, per slice swept. A genuinely
+    ///      dead pool just needs one extra call.
+    /// @dev A FULL WORD on purpose, and declared last of the dividend fields. A `uint40` would be packed
+    ///      by the compiler into the head of the tax/allocation slot that follows, evicting
+    ///      `graduationTimestamp` from it — and that slot is read on every taxed trade, so the tax read
+    ///      would cost two SLOADs instead of one. Taking a slot of its own keeps the hot path untouched;
+    ///      the slot itself is free until written, and only the funding leg ever writes it.
+    uint256 public failedConversionBlock;
 
     /// @dev Reentrancy guard for every dividend entry point that makes an external call: the payouts,
     ///      which send to arbitrary addresses, and the funding, which swaps through the venue. One lock
@@ -325,7 +372,7 @@ abstract contract DividendDistribution {
 
         uint256 supply = _dividendEligibleSupply();
         if (supply >= MIN_DIVIDEND_SUPPLY) {
-            rpt += (applicable - last) * dividendRate * DIVIDEND_PRECISION / supply;
+            rpt += (applicable - last) * dividendRate * _dividendPrecision() / supply;
             // Bounded by `MIN_DIVIDEND_SUPPLY`: the accumulator's lifetime growth cannot exceed the
             // total ever distributed times `1e18 / MIN_DIVIDEND_SUPPLY`, which is 1.
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -363,8 +410,17 @@ abstract contract DividendDistribution {
         // whole banked accrual silently; a revert would freeze their transfers for good. Capping loses
         // only the part above the ceiling and keeps both the token and the claim working, the same
         // trade `_reduceDividendsOwed` makes on the other side of the ledger.
-        uint256 accrued = uint256(acct.rewards) + _dividendBalanceOf(account) * (rpt - paid) / DIVIDEND_PRECISION;
+        uint256 accrued = uint256(acct.rewards) + _dividendBalanceOf(account) * (rpt - paid) / _dividendPrecision();
         acct.rewards = accrued > type(uint120).max ? type(uint120).max : uint120(accrued);
+    }
+
+    /// @dev The accumulator's fixed-point scale for THIS token's payout asset. See
+    ///      `dividendPrecisionExp`. `unchecked` because the exponent is at most
+    ///      `DIVIDEND_PRECISION_DECIMALS`, and `10 ** 36` is nowhere near a `uint256`.
+    function _dividendPrecision() internal view returns (uint256) {
+        unchecked {
+            return 10 ** dividendPrecisionExp;
+        }
     }
 
     /// @dev The instant the stream has accrued up to: now, or its end, whichever came first.
@@ -405,7 +461,7 @@ abstract contract DividendDistribution {
 
         uint256 supply = _dividendEligibleSupply();
         if (supply < MIN_DIVIDEND_SUPPLY) return rpt;
-        return rpt + (applicable - last) * dividendRate * DIVIDEND_PRECISION / supply;
+        return rpt + (applicable - last) * dividendRate * _dividendPrecision() / supply;
     }
 
     /// @notice What `holder` would receive if they claimed right now: banked accruals plus whatever the
@@ -414,7 +470,7 @@ abstract contract DividendDistribution {
         if (_dividendExcluded(holder)) return 0;
         Acct storage acct = dividendAccounts[holder];
         return acct.rewards + _dividendBalanceOf(holder) * (dividendRewardPerToken() - acct.rewardPerTokenPaid)
-            / DIVIDEND_PRECISION;
+            / _dividendPrecision();
     }
 
     /// @notice Dividend money already streamed to holders in `asset` but not yet delivered.

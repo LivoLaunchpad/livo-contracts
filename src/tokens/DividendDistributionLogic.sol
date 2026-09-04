@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {ILivoDividendSwapRegistry, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 
@@ -57,6 +58,10 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         Funded,
         /// @dev Enough was buffered and the conversion did not happen. The buffer is untouched.
         ConversionFailed,
+        /// @dev Same as `ConversionFailed`, but this call put the failure ON RECORD for the treasury
+        ///      sweep's persistence gate. Reported separately because it WROTE, so the caller must not
+        ///      revert it away.
+        FailureRecorded,
         /// @dev The conversion could not happen at ANY price, so that slice of the buffer went to
         ///      `DIVIDEND_TREASURY`. Nothing was streamed, and nothing accrued was written off.
         SweptToTreasury
@@ -75,16 +80,37 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     /// @dev The registry is a proxy behind a constant address, so a token created today is bound to the
     ///      RULE rather than to today's version of it: raising the threshold, blacklisting an asset or
     ///      adding a venue reaches this token too, for every conversion it has not made yet.
+    ///
+    /// @dev ⚠️ ACCEPTED: THE ELIGIBILITY PROOF IS A SPOT READ AND CAN BE FLASH-PASSED. The registry
+    ///      measures the pair's reserves at this instant, so a creator can add liquidity, create the
+    ///      token, and pull the liquidity back out in the same transaction. What that buys them is
+    ///      nothing: the registry re-checks eligibility on EVERY conversion, so the token simply never
+    ///      converts, and after `STALE_DIVIDEND_WINDOW` the buffer goes to `DIVIDEND_TREASURY` rather
+    ///      than to the creator. Nothing is stolen from holders — they were promised a payout asset the
+    ///      token cannot reach, which is a disclosure problem for the frontend, not a value leak here.
+    ///      Making it un-fakeable would need depth measured across blocks, which is not worth the
+    ///      permanent complexity for a gate whose only failure mode is a token that pays nobody.
     function _initializeDividends(address token) internal {
         // Resolve the "pay in the token itself" sentinel now, so every later read is a plain address.
         if (token == DIVIDEND_SELF_TOKEN) token = address(this);
 
-        // Native and the token itself have nothing to buy: no pool, nothing to prove.
+        // Native and the token itself are both 18-decimal and have nothing to buy: no pool, nothing to
+        // prove, and no `decimals()` to ask (native has no contract, and self-calling this token for a
+        // constant would be a wasted CALL).
+        uint8 assetDecimals = 18;
         if (token != address(0) && token != address(this)) {
             ILivoDividendSwapRegistry registry = ILivoDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
             (bool supported,, SwapRejection rejection) = registry.checkSwapSupported(registry.nativeQuoteToken(), token);
             require(supported, DividendAssetNotSupported(rejection));
+            // Not `try`/`catch`: an asset with no `decimals()` reverts the CREATION, which is the only
+            // moment this is cheap to discover. Defaulting to 18 instead would silently under-scale the
+            // accumulator for the rest of that token's life, and a clone cannot be patched.
+            assetDecimals = IERC20Metadata(token).decimals();
         }
+        // Clamped rather than reverted above 36 decimals: an exponent of 0 is simply the coarsest scale,
+        // and such an asset has so many units per whole token that it needs no help.
+        dividendPrecisionExp =
+            assetDecimals >= DIVIDEND_PRECISION_DECIMALS ? 0 : uint8(DIVIDEND_PRECISION_DECIMALS - assetDecimals);
 
         dividendToken = token;
         emit DividendsInitialized(token);
@@ -167,8 +193,9 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         } else if (outcome == FundOutcome.ConversionFailed) {
             revert DividendConversionFailed();
         }
-        // `SweptToTreasury` falls through: the call could not stream anything, but it did resolve the
-        // buffer, and reverting would undo the sweep it just made.
+        // `SweptToTreasury` and `FailureRecorded` fall through: neither could stream anything, but both
+        // CHANGED something — the buffer in one case, the sweep's persistence marker in the other — and
+        // reverting would undo the very write the call was made to perform.
         // A call carrying holders never reverts for the buffer being short or the swap being broken: it
         // asked to push payouts, and it pushed them.
     }
@@ -200,22 +227,34 @@ abstract contract DividendDistributionLogic is DividendDistribution {
         uint256 finish = dividendPeriodFinish;
         uint256 remaining = finish > block.timestamp ? (finish - block.timestamp) * dividendRate : 0;
 
-        uint256 rate = (amount + remaining) / DIVIDEND_DRIP_DURATION;
-        // Unreachable for any asset the registry accepts: `uint96` holds 7.9e28 units per second, i.e.
-        // 7.1e31 units — 71 trillion whole tokens of an 18-decimal asset — inside one 15-minute window.
-        // A revert here is a cold-path failure that leaves the buffer untouched, never a stuck token.
-        require(rate <= type(uint96).max, DividendRateOverflow());
+        uint256 total = amount + remaining;
+        uint256 duration = DIVIDEND_DRIP_DURATION;
+        uint256 rate = total / duration;
+        // A `uint96` holds 7.9e28 units per second, i.e. 7.1e31 units inside one 15-minute window. That
+        // is 71 trillion whole tokens of an 18-decimal asset — but the payout asset is the CREATOR's
+        // choice, and a quadrillion-supply memecoin with a barely-eligible pair can put a single 0.2 ETH
+        // conversion over it. Reverting there would brick `processDividends` permanently on a token that
+        // is otherwise fine, so the rate is CLAMPED and the window stretched to carry the same total
+        // instead: everything is still delivered, just more slowly, which errs the safe way (a slower
+        // slope is strictly harder to time into than a faster one).
+        if (rate > type(uint96).max) {
+            rate = type(uint96).max;
+            duration = total / rate;
+        }
+        // Now genuinely unreachable — `total` would have to exceed 8.7e40 units for the stretched window
+        // to overflow the `uint40` clock — and a revert here leaves the buffer untouched.
+        require(block.timestamp + duration <= type(uint40).max, DividendRateOverflow());
 
-        // Owed grows by the whole distribution. Integer division leaves a sub-`DIVIDEND_DRIP_DURATION`
-        // residue the stream cannot deliver, which stays owed and simply never leaves the balance —
-        // dust, and dust that errs towards holders rather than towards a sweep.
+        // Owed grows by the whole distribution. Integer division leaves a sub-`duration` residue the
+        // stream cannot deliver, which stays owed and simply never leaves the balance — dust, and dust
+        // that errs towards holders rather than towards a sweep.
         // `uint160` holds 1.5e48 payout-asset units; `amount` is bounded by the conversion cap.
         // forge-lint: disable-next-line(unsafe-typecast)
         dividendsOwed = uint160(uint256(dividendsOwed) + amount);
         // forge-lint: disable-next-line(unsafe-typecast)
         dividendRate = uint96(rate);
         // forge-lint: disable-next-line(unsafe-typecast)
-        dividendPeriodFinish = uint40(block.timestamp + DIVIDEND_DRIP_DURATION);
+        dividendPeriodFinish = uint40(block.timestamp + duration);
         // The caller synced first, so this only ever moves the clock FORWARD across a gap between
         // streams — seconds in which the rate was zero and nothing could have accrued.
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -261,28 +300,44 @@ abstract contract DividendDistributionLogic is DividendDistribution {
             if (minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
 
             // Zero floor and still nothing came back: the pool cannot produce a single wei at any price.
-            // That is a SNAPSHOT, though, and a snapshot is manufacturable — anyone can empty a pool for
-            // the length of one transaction and put it back after. Staleness narrows the door:
-            // `dividendPeriodFinish` only moves when a distribution SUCCEEDS, so a genuinely dead pool
-            // reaches it on its own a `STALE_DIVIDEND_WINDOW` after the last one, and an actively
-            // distributing token never does.
+            // That is a SNAPSHOT, though, and a snapshot is manufacturable — and cheaply, because the
+            // registry refuses whenever the pair's quote depth merely dips under its threshold, so one
+            // sell causes the failure and one buy undoes it. TWO gates stand between that and a sweep,
+            // and both have to hold:
+            //   1. staleness — `dividendPeriodFinish` only moves when a distribution SUCCEEDS, so a
+            //      genuinely dead pool reaches it on its own a `STALE_DIVIDEND_WINDOW` after the last
+            //      distribution, and an actively distributing token never does;
+            //   2. persistence — the same failure has to be on record from an EARLIER block, which costs
+            //      a griefer a second round trip held across a block boundary, per slice.
             //
             // KNOWN LIMIT, accepted: staleness reads "no distribution in a month", which a dead pool
-            // guarantees but does not uniquely cause. A token with a HEALTHY pool that no keeper has
-            // called for a month is equally stale, so a griefer there can still manufacture the failure
-            // and sweep — one `MAX_DIVIDEND_PER_CONVERSION` slice per block, since the funding leg is
-            // rate-limited, each slice costing its own round trip. Measuring pool death properly would
-            // need a persistence marker of its own (the failure observed twice, blocks apart); this
-            // reuses the window instead, on the grounds that the money lands in Livo's own treasury and
-            // holders are made whole off-chain. Do not read this gate as proof the pool is dead.
+            // guarantees but does not uniquely cause, and persistence proves only that the failure
+            // outlived a block. Neither is proof the pool is dead — they make manufacturing one cost real
+            // money for a griefer who cannot profit (the native lands in Livo's own treasury, never
+            // theirs) and holders are made whole off-chain. Do not read this gate as proof of anything
+            // stronger.
             if (!stale) return (FundOutcome.ConversionFailed, 0, 0);
 
-            // The pool has been failing long enough that "try again" never terminates. The slice goes to
-            // the treasury instead of sitting owed to holders forever — see the contract docstring for
-            // why that beats repointing the asset.
+            uint256 recorded = failedConversionBlock;
+            if (recorded == 0 || block.number <= recorded) {
+                // First sighting (or a second one inside the same block, which proves nothing new).
+                // Reported as `FailureRecorded`, not `ConversionFailed`: this branch WRITES, and the
+                // caller reverts on `ConversionFailed` — which would roll the record back and leave the
+                // gate unreachable forever. Same reasoning as the sweep's own fall-through below.
+                if (recorded != block.number) failedConversionBlock = block.number;
+                return (FundOutcome.FailureRecorded, 0, 0);
+            }
+
+            // The pool has been failing across blocks, long enough that "try again" never terminates. The
+            // slice goes to the treasury instead of sitting owed to holders forever — see the contract
+            // docstring for why that beats repointing the asset.
             _sweepFailedConversion(asset, spend);
             return (FundOutcome.SweptToTreasury, 0, 0);
         }
+
+        // A conversion went through, so whatever the marker was recording is over. Cleared under a guard
+        // so the common path (nothing on record) pays no SSTORE.
+        if (failedConversionBlock != 0) failedConversionBlock = 0;
 
         // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
         // during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
@@ -384,13 +439,31 @@ abstract contract DividendDistributionLogic is DividendDistribution {
             (bool sent,) = to.call{value: amount, gas: gasStipend}("");
             return sent;
         }
-        (bool ok, bytes memory ret) = asset.call{gas: gasStipend}(abi.encodeCall(IERC20.transfer, (to, amount)));
+        bytes memory payload = abi.encodeCall(IERC20.transfer, (to, amount));
+        bool ok;
+        uint256 size;
+        uint256 word;
+        // Raw `call` with a 32-byte output window, NOT Solidity's `(bool, bytes memory)` form. That form
+        // copies the WHOLE returndata into memory at the CALLER's expense, outside the stipend — so an
+        // asset that expands memory before returning makes the copy unaffordable. Under EIP-150 the
+        // callee always receives 63/64 of what is left, i.e. far more than the caller keeps, which made
+        // `claimDividends` (it forwards `gasleft()`) revert no matter how much gas the holder supplied —
+        // the one payout route that is supposed to always work. Capping the window at one word costs the
+        // caller nothing whatever the asset returns.
+        assembly ("memory-safe") {
+            // Scratch space (0x00-0x3f) is free for this; zeroed first so a short return cannot leave a
+            // stale word behind for the `size` checks below to read.
+            mstore(0, 0)
+            ok := call(gasStipend, asset, 0, add(payload, 32), mload(payload), 0, 32)
+            size := returndatasize()
+            word := mload(0)
+        }
         // `SafeERC20`'s success test minus the revert: empty returndata is success (non-standard ERC20s),
         // and anything too short to decode is failure rather than a panic. `asset` is known to be a
         // contract — its pot could only have been funded through a `balanceOf` call on it.
-        // Decoded as a WORD, not a `bool`: `abi.decode(_, (bool))` reverts on any value above 1, which a
-        // non-standard ERC20 may legally return — and reverting here is precisely what this function
-        // exists not to do (it would brick the batch and `claimDividends`).
-        return ok && (ret.length == 0 || (ret.length >= 32 && abi.decode(ret, (uint256)) != 0));
+        // Compared as a WORD, not decoded as a `bool`: `abi.decode(_, (bool))` reverts on any value above
+        // 1, which a non-standard ERC20 may legally return — and reverting here is precisely what this
+        // function exists not to do (it would brick the batch and `claimDividends`).
+        return ok && (size == 0 || (size >= 32 && word != 0));
     }
 }

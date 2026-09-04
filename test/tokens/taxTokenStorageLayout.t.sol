@@ -33,11 +33,13 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev The three `EarningsAllocation` bps + the eight tax fields: 240 bits, one slot. The per-trade
     ///      tax read and the earnings-split read must hit the SAME warm slot.
     /// @dev Moved 21 -> 19 when the dividend round machinery was replaced by the streaming accumulator,
-    ///      which needs three global slots instead of five.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 19;
+    ///      which needs three global slots instead of five, then 19 -> 20 when the treasury sweep's
+    ///      persistence marker (`failedConversionBlock`) took a full word ahead of it — a full word
+    ///      precisely so it could NOT pack into the head of this slot and evict `graduationTimestamp`.
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 20;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 20;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 21;
 
     LivoTaxableTokenUniV2 internal tok;
 
